@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800;900&display=swap');
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #root { height: 100%; }
+body { background: #0b1622; font-family: 'Overpass', -apple-system, BlinkMacSystemFont, sans-serif; }
+::-webkit-scrollbar { height: 6px; width: 6px; }
+::-webkit-scrollbar-track { background: #0b1622; }
+::-webkit-scrollbar-thumb { background: #1f2d3d; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #516170; }
+input:focus { outline: none; border-color: #3db4f2 !important; }
+button { cursor: pointer; }
+button:hover { opacity: 0.9; }
+
+.stat-card {
+  background: #151f2e; border-radius: 12px; padding: 20px 22px;
+  display: flex; flex-direction: column; gap: 4px;
+  border: 1px solid #1f2d3d; transition: transform 0.2s, box-shadow 0.2s;
+}
+.stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+.chart-card {
+  background: #151f2e; border-radius: 12px; padding: 20px;
+  border: 1px solid #1f2d3d;
+}
+.media-card {
+  background: #151f2e; border-radius: 10px; overflow: hidden;
+  border: 1px solid #1f2d3d; display: flex; flex-direction: column;
+  width: 155px; flex-shrink: 0; transition: transform 0.2s, box-shadow 0.2s;
+}
+.media-card:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(0,0,0,0.4); }
+.tab-btn {
+  background: none; border: none; padding: 12px 20px; font-size: 14px;
+  font-weight: 600; font-family: inherit; transition: all 0.15s;
+  border-bottom: 2px solid transparent; color: #8ba0b2;
+}
+.tab-btn:hover { color: #edf1f5; }
+.tab-btn.active { color: #3db4f2; border-bottom-color: #3db4f2; }
+
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+.fade-in { animation: fadeIn 0.4s ease forwards; }
+.fade-in-delay-1 { animation-delay: 0.05s; opacity: 0; }
+.fade-in-delay-2 { animation-delay: 0.1s; opacity: 0; }
+.fade-in-delay-3 { animation-delay: 0.15s; opacity: 0; }
+.fade-in-delay-4 { animation-delay: 0.2s; opacity: 0; }
+
+.year-btn {
+  background: #151f2e; border: 1px solid #1f2d3d; color: #8ba0b2;
+  padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 600;
+  font-family: inherit; transition: all 0.15s;
+}
+.year-btn:hover { border-color: #3db4f2; color: #edf1f5; }
+.year-btn.active { background: #3db4f2; border-color: #3db4f2; color: #fff; }
