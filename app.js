@@ -397,6 +397,7 @@ function App() {
       }
       setLoaded(true);
       setLoading(false);
+      if (!background) setInputVal("");
       if (isProfileStale && !background) {
         devLog("profile stale -> background refresh", normalized);
         fetchData(name, { forceNetwork: true, background: true });
@@ -423,6 +424,7 @@ function App() {
         setMangaActivityCache({});
         setLoaded(true);
         setResource(profileKey, "success");
+        if (!background) setInputVal("");
       } catch (err) {
         if (err?.name !== "AbortError") {
           setError(err.message || "Erreur lors du chargement");
@@ -472,6 +474,7 @@ function App() {
         setMangaActivityCache({});
       }
       setLoaded(true);
+      if (!background) setInputVal("");
       safeWriteCache(profileUserCacheKey(normalized), ud.User, PROFILE_USER_TTL_MS);
       safeWriteCache(profileAnimeCacheKey(normalized), aa, PROFILE_LIST_TTL_MS);
       safeWriteCache(profileMangaCacheKey(normalized), am, PROFILE_LIST_TTL_MS);
@@ -496,7 +499,7 @@ function App() {
       profileInFlightRef.current.delete(profileKey);
       if (!background) setLoading(false);
     }
-  }, [metricInc, metricProfileFetchDuration, setResource]);
+  }, [metricInc, metricProfileFetchDuration, setResource, setInputVal]);
 
   useEffect(() => { fetchData("Kirikou"); }, []);
   useEffect(() => () => {
@@ -1055,37 +1058,66 @@ function App() {
     return [...yearsSet].sort((a, b) => b - a);
   }, [resourceStatus, user?.id]);
 
+  const anilistProfileUrl = user
+    ? `https://anilist.co/user/${encodeURIComponent(user.name)}/`
+    : null;
+  const profileEpisodesAll = user?.statistics?.anime?.episodesWatched ?? 0;
+  const profileChaptersAll = user?.statistics?.manga?.chaptersRead ?? 0;
+  const profileEpisodesFmt = profileEpisodesAll.toLocaleString("fr-FR");
+  const profileChaptersFmt = profileChaptersAll.toLocaleString("fr-FR");
+
   return (
     <div style={{background:C.bg, minHeight:"100vh", color:C.text, fontFamily:"'Overpass',sans-serif"}}>
 
       {/* HEADER */}
-      <div style={{
-        background: user?.bannerImage
-          ? `linear-gradient(to bottom, rgba(11,22,34,0.3), ${C.bg}), url(${user.bannerImage}) center/cover`
-          : `linear-gradient(135deg, #151f2e, ${C.bg})`,
-        padding:"32px 24px 24px", borderBottom:`1px solid ${C.border}`,
-      }}>
+      <div
+        className={`header-surface ${user?.bannerImage ? "header-surface--banner" : "header-surface--plain"}`}
+        style={
+          user?.bannerImage
+            ? { backgroundImage: `linear-gradient(to bottom, rgba(11,22,34,0.3), ${C.bg}), url(${user.bannerImage})` }
+            : undefined
+        }
+      >
         <div style={{maxWidth:1100,margin:"0 auto"}}>
-          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18,flexWrap:"wrap"}}>
-            <div style={{fontSize:24,fontWeight:900,color:C.accent,letterSpacing:-0.5,flexShrink:0}}>AL</div>
-            <div style={{display:"flex",flex:"1 1 280px",maxWidth:440,minWidth:0}}>
+          <div className="header-top-row">
+            <div className="header-brand" aria-label="AniList Stat">
+              <span className="header-brand-mark">
+                <span className="header-brand-a">A</span>
+                <span className="header-brand-s" style={{color:C.accent}}>S</span>
+              </span>
+            </div>
+            <div className="header-search-group">
               <input value={inputVal} onChange={e=>setInputVal(e.target.value)}
-                onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
+                onKeyDown={(e)=>{ if (e.key === "Enter" && inputVal.trim()) handleSubmit(); }}
                 placeholder="Nom d'utilisateur AniList"
                 style={{
                   flex:1,background:C.cardBg,border:`1px solid ${C.border}`,
                   borderRight:"none",borderRadius:"8px 0 0 8px",
                   padding:"10px 14px",color:C.text,fontSize:14,fontFamily:"inherit",
                 }} />
-              <button onClick={handleSubmit} style={{
-                background:C.accent,color:"#fff",border:"none",
-                borderRadius:"0 8px 8px 0",padding:"10px 20px",
-                fontWeight:700,fontSize:14,fontFamily:"inherit",
-              }}>Charger</button>
+              <button
+                type="button"
+                className="header-search-submit"
+                aria-label="Rechercher ce profil"
+                disabled={!inputVal.trim()}
+                onClick={handleSubmit}
+                style={{
+                  background:C.accent,color:"#fff",border:`1px solid ${C.accent}`,
+                  borderLeft:"none",borderRadius:"0 8px 8px 0",
+                  padding:"10px 14px",minWidth:48,
+                  display:"inline-flex",alignItems:"center",justifyContent:"center",
+                  fontFamily:"inherit",
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="M20 20 16.65 16.65" />
+                </svg>
+              </button>
             </div>
+            <div className="header-nav-fill" aria-hidden />
             {showApiBadge && (
               <div style={{
-                marginLeft: "auto",
                 background: "rgba(255,255,255,0.03)",
                 border: `1px solid ${C.border}`,
                 borderRadius: 999,
@@ -1119,33 +1151,54 @@ function App() {
 
           <div className="period-panel">
             <div className="period-panel-title">Période d'analyse</div>
-            <div className="period-section">
-              <span className="period-label">Année</span>
-              <div className="period-pills period-pills--years">
-                {years.map(y => (
-                  <button key={y} type="button" className={`period-pill ${y===year?"active":""}`}
-                    onClick={()=>changeYear(y)}>{y}</button>
-                ))}
-              </div>
+            <div className="period-pills period-pills--years">
+              {years.map(y => (
+                <button key={y} type="button" className={`period-pill ${y===year?"active":""}`}
+                  onClick={()=>changeYear(y)}>{y}</button>
+              ))}
             </div>
             <div className="period-divider" />
-            <div className="period-section">
-              <span className="period-label">Mois</span>
-              <div className="period-pills period-pills--months">
-                <button type="button" className={`period-pill period-pill--wide ${month===0?"active":""}`} onClick={() => setMonth(0)}>Toute l'année</button>
-                {MONTHS.map((m, idx) => (
-                  <button key={m} type="button" className={`period-pill ${month===idx+1?"active":""}`} onClick={() => setMonth(idx+1)}>{m}</button>
-                ))}
-              </div>
+            <div className="period-pills period-pills--months">
+              <button type="button" className={`period-pill period-pill--wide ${month===0?"active":""}`} onClick={() => setMonth(0)}>Toute l'année</button>
+              {MONTHS.map((m, idx) => (
+                <button key={m} type="button" className={`period-pill ${month===idx+1?"active":""}`} onClick={() => setMonth(idx+1)}>{m}</button>
+              ))}
             </div>
           </div>
 
           {user && (
-            <div className="fade-in" style={{display:"flex",alignItems:"center",gap:16,marginTop:4}}>
-              <img src={user.avatar?.large||user.avatar?.medium} alt={user.name}
-                style={{width:64,height:64,borderRadius:12,border:`2px solid ${C.accent}`,flexShrink:0}} />
-              <div style={{fontSize:24,fontWeight:800,lineHeight:1.2,display:"flex",alignItems:"center",minHeight:64}}>{user.name}</div>
-            </div>
+              <div className="header-profile fade-in">
+                <img
+                  className="header-profile-avatar"
+                  src={user.avatar?.large||user.avatar?.medium}
+                  alt=""
+                  style={{border:`2px solid ${C.accent}`}}
+                />
+                <div className="header-profile-text">
+                  <a
+                    className="header-profile-name-link"
+                    href={anilistProfileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {user.name}
+                  </a>
+                  <div
+                    className="header-profile-meta"
+                    aria-label={`${profileEpisodesFmt} épisodes vus et ${profileChaptersFmt} chapitres lus au total sur AniList`}
+                  >
+                    <div className="header-profile-stat-block">
+                      <span className="header-profile-stat-value">{profileEpisodesFmt}</span>
+                      <span className="header-profile-stat-caption">Épisodes vus</span>
+                    </div>
+                    <div className="header-profile-meta-rule" aria-hidden />
+                    <div className="header-profile-stat-block">
+                      <span className="header-profile-stat-value">{profileChaptersFmt}</span>
+                      <span className="header-profile-stat-caption">Chapitres lus</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
           )}
         </div>
       </div>
