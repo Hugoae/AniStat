@@ -12,7 +12,7 @@ query ($userName: String!, $type: MediaType!) {
       entries {
         id
         status
-        score(format: POINT_10)
+        score(format: POINT_10_DECIMAL)
         progress
         progressVolumes
         startedAt { year month day }
@@ -22,6 +22,7 @@ query ($userName: String!, $type: MediaType!) {
           id
           title { romaji english }
           coverImage { large medium color }
+          countryOfOrigin
           episodes
           chapters
           volumes
@@ -30,6 +31,7 @@ query ($userName: String!, $type: MediaType!) {
           genres
           averageScore
           status
+          siteUrl
         }
       }
     }
@@ -47,6 +49,15 @@ query ($name: String!) {
       anime { count meanScore minutesWatched episodesWatched }
       manga { count meanScore chaptersRead volumesRead }
     }
+  }
+}`;
+
+  /** Requête légère pour avatars du menu raccourcis (évite de retélécharger stats + listes). */
+  const USER_AVATAR_QUERY = `
+query ($name: String!) {
+  User(name: $name) {
+    name
+    avatar { large medium }
   }
 }`;
 
@@ -379,6 +390,7 @@ query ($userId: Int!, $type: ActivityType!, $page: Int!, $perPage: Int!) {
     getProxyCacheStats,
     subscribeProxyCache,
     USER_QUERY,
+    USER_AVATAR_QUERY,
     MEDIA_LIST_QUERY,
   };
 })();

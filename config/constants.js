@@ -22,8 +22,8 @@
 
   const MONTHS = ["Jan", "Fev", "Mar", "Avr", "Mai", "Jun", "Jul", "Aou", "Sep", "Oct", "Nov", "Dec"];
   const MONTHS_FULL = [
-    "janvier", "fevrier", "mars", "avril", "mai", "juin",
-    "juillet", "aout", "septembre", "octobre", "novembre", "decembre"
+    "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre"
   ];
 
   const STATUS_LABELS = {
@@ -44,5 +44,28 @@
     REPEATING: C.purple,
   };
 
-  window.AppConfig = { C, PIE_COLORS, MONTHS, MONTHS_FULL, STATUS_LABELS, STATUS_COLORS };
+  /**
+   * Raccourcis recherche : liste locale des pseudos (pas d’autocomplétition globale).
+   * userName = pseudo AniList exact. label = libellé affiché (optionnel).
+   * avatarUrl = image forcée (optionnel) ; sinon l’app charge l’avatar via une requête
+   * GraphQL légère au focus du menu, ou réutilise le cache si le profil a déjà été ouvert.
+   */
+  const PROFILE_QUICK_SUGGESTIONS = [
+    { userName: "Kirikou"},
+    { userName: "LilTurcos"},
+    { userName: "ArtusooDeLaNoche"},
+    { userName: "Sofiane7"},
+    // { userName: "UnAmi", label: "Prénom" },
+    // { userName: "Autre", label: "", avatarUrl: "https://..." },
+  ];
+
+  window.AppConfig = {
+    C,
+    PIE_COLORS,
+    MONTHS,
+    MONTHS_FULL,
+    STATUS_LABELS,
+    STATUS_COLORS,
+    PROFILE_QUICK_SUGGESTIONS,
+  };
 })();

@@ -1,11 +1,20 @@
-const { useState, useEffect, useCallback, useMemo, useRef } = React;
+const { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } = React;
 const {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, RadarChart, Radar, PolarGrid,
   PolarAngleAxis, PolarRadiusAxis, LineChart, Line, LabelList,
+  CartesianGrid, Area,
 } = Recharts;
 
-const { C, PIE_COLORS, MONTHS, STATUS_LABELS, STATUS_COLORS } = window.AppConfig;
+const {
+  C,
+  PIE_COLORS,
+  MONTHS,
+  MONTHS_FULL,
+  STATUS_LABELS,
+  STATUS_COLORS,
+  PROFILE_QUICK_SUGGESTIONS = [],
+} = window.AppConfig;
 const {
   dedupeEntriesByMedia,
   completedInYear,
@@ -32,11 +41,98 @@ const {
   getProxyCacheStats,
   subscribeProxyCache,
   USER_QUERY,
+  USER_AVATAR_QUERY,
   MEDIA_LIST_QUERY,
 } = window.AppApi;
 const { StatCard, ChartCard, MediaCard, CTooltip, PeriodCompareLegend, CompareLineTooltip } = window.AppUi;
 
+/** Tri pour les tops : note perso d'abord, puis moyenne AniList, puis progression. */
+function compareEntriesByUserScoreThenAverage(a, b) {
+  const sa = Number(a?.score) || 0;
+  const sb = Number(b?.score) || 0;
+  if (sa !== sb) return sb - sa;
+  const aa = Number(a?.media?.averageScore) || 0;
+  const ab = Number(b?.media?.averageScore) || 0;
+  if (aa !== ab) return ab - aa;
+  return (Number(b?.progress) || 0) - (Number(a?.progress) || 0);
+}
+
+/** Courbe période courante vs comparaison (overview) : grille, aire sous la courbe actuelle. */
+function OverviewActivityLineChart({ data, month, year, fillGradientId }) {
+  return (
+    <ResponsiveContainer width="100%" height={240}>
+      <LineChart data={data} margin={{ top: 24, right: 12, left: 0, bottom: 6 }}>
+        <defs>
+          <linearGradient id={fillGradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={C.accent} stopOpacity={0.5} />
+            <stop offset="45%" stopColor={C.accent} stopOpacity={0.2} />
+            <stop offset="82%" stopColor={C.accent} stopOpacity={0.06} />
+            <stop offset="100%" stopColor={C.accent} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 6" vertical={false} stroke="rgba(139, 160, 178, 0.1)" />
+        <XAxis
+          dataKey="label"
+          tick={{ fill: C.textDim, fontSize: 11 }}
+          axisLine={false}
+          tickLine={false}
+          interval={month === 0 ? 0 : "preserveStartEnd"}
+          dy={4}
+        />
+        <YAxis
+          tick={{ fill: C.textDim, fontSize: 12 }}
+          axisLine={false}
+          tickLine={false}
+          allowDecimals={false}
+          width={40}
+        />
+        <Tooltip
+          content={(props) => <CompareLineTooltip {...props} year={year} month={month} />}
+          cursor={{ stroke: "rgba(139, 160, 178, 0.2)", strokeWidth: 1 }}
+        />
+        <Area type="monotone" dataKey="current" stroke="none" fill={`url(#${fillGradientId})`} isAnimationActive={false} />
+        <Line
+          type="monotone"
+          dataKey="current"
+          stroke={C.accent}
+          strokeWidth={2.25}
+          dot={{
+            r: 5,
+            fill: "rgba(61, 180, 242, 0.78)",
+            stroke: "rgba(11, 22, 34, 0.55)",
+            strokeWidth: 1,
+          }}
+          activeDot={{ r: 7, fill: "rgba(61, 180, 242, 0.95)", stroke: "#0d1621", strokeWidth: 1 }}
+          isAnimationActive={false}
+        >
+          <LabelList
+            dataKey="current"
+            position="top"
+            offset={8}
+            fill="#edf1f5"
+            fontSize={month === 0 ? 13 : 12}
+            fontWeight={600}
+            formatter={(v) => (v != null && Number(v) > 0 ? String(v) : "")}
+          />
+        </Line>
+        <Line
+          type="monotone"
+          dataKey="compare"
+          stroke="#4a5d6e"
+          strokeOpacity={0.42}
+          strokeWidth={2}
+          dot={false}
+          activeDot={{ r: 4, fill: "rgba(74, 93, 110, 0.68)" }}
+          isAnimationActive={false}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
 const CACHE_PREFIX = "aniliststat:v3";
+/** Dernier pseudo recherché avec succès — préremplit la barre au chargement suivant (sans fetch automatique). */
+const LAST_PROFILE_SEARCH_KEY = `${CACHE_PREFIX}:lastProfileSearch`;
 const LEGACY_CACHE_PREFIXES = ["aniliststat:v1", "aniliststat:v2"];
 const PROFILE_USER_TTL_MS = 24 * 60 * 60 * 1000;
 const PROFILE_LIST_TTL_MS = 6 * 60 * 60 * 1000;
@@ -48,9 +144,6 @@ const ACTIVITY_RATE_LIMIT_COOLDOWN_MS = 60 * 1000;
 const ACTIVITY_MAX_AUTO_RETRY = 3;
 const CACHE_MAX_ENTRIES = 120;
 const IS_DEV_LOCAL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-
-/** Évite un second fetch du profil par défaut (ex. remontage React StrictMode en dev). */
-let defaultProfileBootstrapDone = false;
 
 if (window.location.hostname === "localhost") {
   const target = new URL(window.location.href);
@@ -141,9 +234,38 @@ function runCacheLruCleanup() {
 }
 
 const normalizeName = (name) => String(name || "").trim().toLowerCase();
+
+/** Filtre les pistes locales PROFILE_QUICK_SUGGESTIONS (sans API). */
+function filterQuickProfileSuggestions(inputRaw, list) {
+  if (!list || list.length === 0) return [];
+  const q = normalizeName(inputRaw);
+  /* Sans saisie : pas de menu (évite des requêtes avatar sur tous les raccourcis au focus). */
+  const rows = !q
+    ? []
+    : list.filter((p) => {
+        const n = normalizeName(p.userName);
+        const lbl = normalizeName(p.label || "");
+        return n.startsWith(q) || n.includes(q) || (lbl && lbl.includes(q));
+      });
+  return rows.slice(0, 12);
+}
 const profileUserCacheKey = (name) => `${CACHE_PREFIX}:profile:user:${normalizeName(name)}`;
-const profileAnimeCacheKey = (name) => `${CACHE_PREFIX}:profile:anime:${normalizeName(name)}`;
-const profileMangaCacheKey = (name) => `${CACHE_PREFIX}:profile:manga:${normalizeName(name)}`;
+/* Suffixe : invalider les listes mises en cache avant l’ajout de media.countryOfOrigin. */
+const profileAnimeCacheKey = (name) => `${CACHE_PREFIX}:profile:anime:${normalizeName(name)}:cov3`;
+const profileMangaCacheKey = (name) => `${CACHE_PREFIX}:profile:manga:${normalizeName(name)}:cov3`;
+const QUICKPICK_AVATAR_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const quickPickAvatarCacheKey = (name) => `${CACHE_PREFIX}:quickpick:avatar:${normalizeName(name)}`;
+
+/** Avatar pour raccourcis : cache profil complet si déjà visité, sinon cache URL léger. */
+function readQuickPickAvatarStored(userName) {
+  const key = normalizeName(userName);
+  if (!key) return null;
+  const prof = safeReadCache(profileUserCacheKey(key));
+  const fromProf = prof?.avatar?.large || prof?.avatar?.medium;
+  if (fromProf) return fromProf;
+  const raw = safeReadCache(quickPickAvatarCacheKey(key));
+  return typeof raw === "string" && /^https?:\/\//.test(raw) ? raw : null;
+}
 const legacyProfileCacheKey = (name) => `${LEGACY_CACHE_PREFIXES[0]}:profile:${normalizeName(name)}`;
 const activityCacheKey = (userId, type, year) => `${CACHE_PREFIX}:acts:${userId}:${type}:${year}`;
 
@@ -187,9 +309,204 @@ async function fetchActivitiesWithRetry(userId, type, year, signal) {
   }
 }
 
+function readLastProfileSearchInput() {
+  try {
+    const raw = window.localStorage.getItem(LAST_PROFILE_SEARCH_KEY);
+    return typeof raw === "string" && raw.trim() ? raw.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+function rememberLastProfileSearch(nameTrimmed) {
+  try {
+    if (nameTrimmed) window.localStorage.setItem(LAST_PROFILE_SEARCH_KEY, nameTrimmed);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Route SPA : `#/` ou `#/home` = accueil ; `#/user/Pseudo` = stats (refresh = même URL). */
+function parseRouteFromHash() {
+  try {
+    const raw = window.location.hash.replace(/^#/, "").trim();
+    if (!raw || raw === "/" || /^\/home\/?$/i.test(raw)) return { type: "home" };
+    const path = raw.startsWith("/") ? raw.slice(1) : raw;
+    const m = path.match(/^user\/(.+)$/i);
+    if (m) {
+      const name = decodeURIComponent(m[1].replace(/\/$/, ""));
+      if (name.trim()) return { type: "user", name: name.trim() };
+    }
+    return { type: "home" };
+  } catch {
+    return { type: "home" };
+  }
+}
+
+function profileHashForUserName(name) {
+  const n = String(name || "").trim();
+  if (!n) return "#/";
+  return `#/user/${encodeURIComponent(n)}`;
+}
+
+function initialLoadingFromHash() {
+  const r = parseRouteFromHash();
+  return r.type === "user" && Boolean(r.name && r.name.trim());
+}
+
+/** Page d’accueil plein écran : décor, titre et recherche. */
+function HomeLanding({
+  C,
+  inputVal,
+  setInputVal,
+  headerSearchInputRef,
+  headerSearchFocused,
+  setHeaderSearchFocused,
+  handleSubmit,
+  showHeaderQuickPicks,
+  headerQuickPickMatches,
+  pickQuickProfile,
+}) {
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => {
+      try {
+        headerSearchInputRef.current?.focus({ preventScroll: true });
+      } catch {
+        headerSearchInputRef.current?.focus();
+      }
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [headerSearchInputRef]);
+
+  return (
+    <div className="home-landing">
+      <div className="home-landing__bg" aria-hidden>
+        <div className="home-landing__rings" />
+        <div className="home-landing__glow home-landing__glow--1" />
+        <div className="home-landing__glow home-landing__glow--2" />
+      </div>
+
+      <div className="home-landing__inner">
+        <div className="home-landing__brand-row">
+          <span className="home-landing__brand-mark" aria-hidden>
+            <span className="header-brand-a">A</span>
+            <span className="header-brand-s" style={{ color: C.accent }}>S</span>
+          </span>
+          <span className="home-landing__brand-text">AniList Stat</span>
+        </div>
+
+        <header className="home-landing__hero">
+          <h1 className="home-landing__title">Vos statistiques AniList</h1>
+          <p className="home-landing__subtitle">
+            Visualisez l&apos;activité, les tops et les graphiques d&apos;un profil public à un seul endroit
+          </p>
+        </header>
+
+        <div className="home-landing__search-block">
+          <div className="header-search-wrap home-landing__search-wrap">
+            <div className="header-search-group">
+              <input
+                ref={headerSearchInputRef}
+                value={inputVal}
+                onChange={(e) => setInputVal(e.target.value)}
+                onFocus={() => setHeaderSearchFocused(true)}
+                onBlur={() => {
+                  window.setTimeout(() => setHeaderSearchFocused(false), 120);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && inputVal.trim()) handleSubmit();
+                  if (e.key === "Escape") setHeaderSearchFocused(false);
+                }}
+                placeholder="Rechercher un pseudo AniList…"
+                autoComplete="off"
+                aria-autocomplete="list"
+                aria-expanded={showHeaderQuickPicks}
+                aria-controls="landing-quick-picks"
+                className="home-landing__search-input"
+                style={{
+                  flex: 1,
+                  background: "rgba(15, 24, 36, 0.92)",
+                  border: `1px solid ${C.border}`,
+                  borderRight: "none",
+                  borderRadius: "var(--radius-control) 0 0 var(--radius-control)",
+                  padding: "14px 18px",
+                  color: C.text,
+                  fontSize: 15,
+                  fontFamily: "inherit",
+                }}
+              />
+              <button
+                type="button"
+                className="header-search-submit"
+                aria-label="Rechercher ce profil"
+                disabled={!inputVal.trim()}
+                onClick={handleSubmit}
+                style={{
+                  background: C.accent,
+                  color: "#fff",
+                  border: `1px solid ${C.accent}`,
+                  borderLeft: "none",
+                  borderRadius: "0 var(--radius-control) var(--radius-control) 0",
+                  padding: "14px 18px",
+                  minWidth: 52,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontFamily: "inherit",
+                }}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="M20 20 16.65 16.65" />
+                </svg>
+              </button>
+            </div>
+            {showHeaderQuickPicks ? (
+              <ul id="landing-quick-picks" className="header-search-suggestions" role="listbox">
+                {headerQuickPickMatches.map((p) => (
+                  <li key={p.userName} role="presentation">
+                    <button
+                      type="button"
+                      role="option"
+                      className="header-search-suggestion-btn"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        pickQuickProfile(p.userName);
+                      }}
+                    >
+                      {p.displayAvatar ? (
+                        <img className="header-search-suggestion-avatar" src={p.displayAvatar} alt="" />
+                      ) : (
+                        <span className="header-search-suggestion-initial" aria-hidden>
+                          {String(p.userName).trim().charAt(0).toUpperCase() || "?"}
+                        </span>
+                      )}
+                      <span className="header-search-suggestion-meta">
+                        <span className="header-search-suggestion-user">{p.userName}</span>
+                        {p.label ? <span className="header-search-suggestion-label">{p.label}</span> : null}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+          <p className="home-landing__search-hint">Profils publics uniquement · données fournies par AniList</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
-  const [inputVal, setInputVal] = useState("Kirikou");
-  const [loading, setLoading] = useState(false);
+  const [inputVal, setInputVal] = useState(() =>
+    parseRouteFromHash().type === "home" ? "" : readLastProfileSearchInput()
+  );
+  const [headerSearchFocused, setHeaderSearchFocused] = useState(false);
+  const [pendingProfileName, setPendingProfileName] = useState(null);
+  const [quickPickResolvedAvatars, setQuickPickResolvedAvatars] = useState({});
+  const [hashTick, setHashTick] = useState(0);
+  const [loading, setLoading] = useState(initialLoadingFromHash);
   const [error, setError] = useState(null);
   const [user, setUser] = useState(null);
   const [tab, setTab] = useState("overview");
@@ -211,6 +528,7 @@ function App() {
   const [proxyCacheStats, setProxyCacheStats] = useState(() => getProxyCacheStats());
   const [showDevPanel, setShowDevPanel] = useState(false);
   const [debugMetricsView, setDebugMetricsView] = useState(null);
+  const [showBackToTop, setShowBackToTop] = useState(false);
   const profileInFlightRef = useRef(new Map());
   const activityInFlightRef = useRef(new Map());
   const profileAbortRef = useRef(null);
@@ -219,10 +537,13 @@ function App() {
   const latestUserIdRef = useRef(null);
   /** Profil que l’utilisateur consulte (requêtes !background). Les refresh stale en arrière-plan ne doivent pas l’écraser. */
   const activeProfileIntentRef = useRef(null);
+  /** Dernier profil chargé hors arrière-plan : pour réinitialiser période au changement d’utilisateur. */
+  const lastForegroundProfileKeyRef = useRef(null);
   const activityCooldownRef = useRef(new Map());
   const activityRetryCountRef = useRef(new Map());
   const activityYearsInFlightRef = useRef(new Set());
   const activityMissLogRef = useRef(new Set());
+  const headerSearchInputRef = useRef(null);
   const loadingMessageTransitionRef = useRef(null);
   const loadingActivitiesRef = useRef(false);
   const activityYearsPendingCountRef = useRef(0);
@@ -249,8 +570,56 @@ function App() {
     }));
   }, []);
 
+  const resetToHomeLanding = useCallback(() => {
+    if (profileAbortRef.current) {
+      try {
+        profileAbortRef.current.abort();
+      } catch (_) {
+        /* noop */
+      }
+    }
+    activityCooldownRef.current.clear();
+    activityRetryCountRef.current.clear();
+    activityYearsInFlightRef.current.clear();
+    activityMissLogRef.current.clear();
+    latestUserIdRef.current = null;
+    activeProfileIntentRef.current = null;
+    lastForegroundProfileKeyRef.current = null;
+
+    setUser(null);
+    setLoaded(false);
+    setLoading(false);
+    setError(null);
+    setPendingProfileName(null);
+    setAllAnime([]);
+    setAllManga([]);
+    setAnimeActivities([]);
+    setMangaActivities([]);
+    setAnimeActivityCache({});
+    setMangaActivityCache({});
+    setLoadingActivities(false);
+    setActivityWarning(null);
+    setTab("overview");
+    setYear(new Date().getFullYear());
+    setMonth(0);
+    setInputVal("");
+    setResourceStatus({});
+  }, []);
+
   useEffect(() => {
     runCacheMigrationOnce();
+  }, []);
+
+  useEffect(() => {
+    const threshold = 420;
+    const onScroll = () => {
+      const y = window.scrollY ?? document.documentElement?.scrollTop ?? 0;
+      setShowBackToTop(y > threshold);
+    };
+    onScroll();
+    const scrollOpts = { passive: true };
+    window.addEventListener("scroll", onScroll, scrollOpts);
+    return () => window.removeEventListener("scroll", onScroll, scrollOpts);
   }, []);
 
   useEffect(() => {
@@ -454,9 +823,22 @@ function App() {
   const fetchData = useCallback(async (name, options = {}) => {
     const { forceNetwork = false, background = false } = options;
     const normalized = normalizeName(name);
+    if (!normalized) {
+      if (!background) {
+        setLoading(false);
+        setError(null);
+      }
+      return;
+    }
     const profileKey = `profile:${normalized}`;
     if (!background) {
       activeProfileIntentRef.current = profileKey;
+      const prevFg = lastForegroundProfileKeyRef.current;
+      if (prevFg && prevFg !== profileKey) {
+        const cy = new Date().getFullYear();
+        setYear(cy);
+        setMonth(0);
+      }
     }
     const activeProfileKey = profileAbortKeyRef.current;
     const isUserSwitch = activeProfileKey && activeProfileKey !== profileKey;
@@ -498,11 +880,15 @@ function App() {
       }
       setLoaded(true);
       setLoading(false);
-      if (!background) setInputVal("");
+      if (!background) {
+        rememberLastProfileSearch(String(name).trim());
+        setInputVal("");
+      }
       if (isProfileStale && !background) {
         devLog("profile stale -> background refresh", normalized);
         fetchData(name, { forceNetwork: true, background: true });
       }
+      if (!background) lastForegroundProfileKeyRef.current = profileKey;
       return;
     }
 
@@ -512,6 +898,7 @@ function App() {
     const existingReq = profileInFlightRef.current.get(profileKey);
     if (existingReq) {
       devLog("profile dedup", normalized);
+      if (!background) setPendingProfileName(name.trim());
       try {
         const { ud, ad, md } = await existingReq;
         if (background && activeProfileIntentRef.current !== profileKey) {
@@ -530,11 +917,17 @@ function App() {
         setMangaActivityCache({});
         setLoaded(true);
         setResource(profileKey, "success");
-        if (!background) setInputVal("");
+        if (!background) {
+          rememberLastProfileSearch(String(name).trim());
+          setPendingProfileName(null);
+          setInputVal("");
+        }
+        if (!background) lastForegroundProfileKeyRef.current = profileKey;
       } catch (err) {
         if (err?.name !== "AbortError") {
           setError(err.message || "Erreur lors du chargement");
           setResource(profileKey, "error", err.message || "Erreur profil");
+          if (!background) setPendingProfileName(null);
         }
       }
       return;
@@ -544,6 +937,7 @@ function App() {
     profileAbortRef.current = abortController;
     profileAbortKeyRef.current = profileKey;
     if (!background) {
+      setPendingProfileName(name.trim());
       setLoading(true); setError(null); setLoaded(false);
     } else {
       setError(null);
@@ -552,6 +946,10 @@ function App() {
     try {
       const req = (async () => {
         const ud = await fetchAL(USER_QUERY, { name }, { signal: abortController.signal });
+        if (!background && ud?.User && activeProfileIntentRef.current === profileKey) {
+          setUser(ud.User);
+          setPendingProfileName(null);
+        }
         await sleep(200, abortController.signal);
         const ad = await fetchAL(
           MEDIA_LIST_QUERY,
@@ -585,13 +983,18 @@ function App() {
         setMangaActivityCache({});
       }
       setLoaded(true);
-      if (!background) setInputVal("");
+      if (!background) {
+        rememberLastProfileSearch(String(name).trim());
+        setInputVal("");
+      }
+      if (!background) lastForegroundProfileKeyRef.current = profileKey;
       safeWriteCache(profileUserCacheKey(normalized), ud.User, PROFILE_USER_TTL_MS);
       safeWriteCache(profileAnimeCacheKey(normalized), aa, PROFILE_LIST_TTL_MS);
       safeWriteCache(profileMangaCacheKey(normalized), am, PROFILE_LIST_TTL_MS);
       metricInc("cacheWrite", 3);
       devLog("profile write", normalized);
       setResource(profileKey, "success");
+      if (!background) setPendingProfileName(null);
     } catch (err) {
       if (err?.name === "AbortError") {
         devLog("profile aborted", normalized);
@@ -599,6 +1002,7 @@ function App() {
       }
       if (!background) {
         setError(err.message || "Erreur lors du chargement");
+        setPendingProfileName(null);
       }
       setResource(profileKey, "error", err.message || "Erreur profil");
     } finally {
@@ -610,13 +1014,39 @@ function App() {
       profileInFlightRef.current.delete(profileKey);
       if (!background) setLoading(false);
     }
-  }, [metricInc, metricProfileFetchDuration, setResource, setInputVal]);
+  }, [metricInc, metricProfileFetchDuration, setResource, setInputVal, setYear, setMonth]);
 
   useEffect(() => {
-    if (defaultProfileBootstrapDone) return;
-    defaultProfileBootstrapDone = true;
-    fetchData("Kirikou");
-  }, [fetchData]);
+    const onHash = () => setHashTick((x) => x + 1);
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  /** Harmonise l’URL (#/user/…) avec la casse renvoyée par AniList (sans recharger). */
+  useEffect(() => {
+    if (!loaded || !user?.name) return;
+    const want = profileHashForUserName(user.name);
+    if (want === window.location.hash) return;
+    try {
+      const path = `${window.location.pathname}${window.location.search}${want}`;
+      window.history.replaceState(null, "", path);
+    } catch {
+      /* ignore */
+    }
+  }, [loaded, user?.name]);
+
+  useEffect(() => {
+    const r = parseRouteFromHash();
+    if (r.type === "home") {
+      resetToHomeLanding();
+      return;
+    }
+    if (r.type === "user" && r.name.trim()) {
+      setInputVal(r.name);
+      fetchData(r.name.trim());
+    }
+  }, [hashTick, fetchData, resetToHomeLanding]);
+
   useEffect(() => () => {
     if (profileAbortRef.current) profileAbortRef.current.abort();
   }, []);
@@ -624,7 +1054,11 @@ function App() {
   const changeYear = (y) => setYear(y);
 
   const handleSubmit = () => {
-    if (inputVal.trim()) fetchData(inputVal.trim());
+    const q = inputVal.trim();
+    if (!q) return;
+    headerSearchInputRef.current?.blur();
+    setHeaderSearchFocused(false);
+    window.location.hash = profileHashForUserName(q);
   };
 
   const retryYearNow = useCallback((targetYear) => {
@@ -698,7 +1132,7 @@ function App() {
   }, [metricInc, setResource]);
 
   useEffect(() => {
-    if (!user?.id || !year) return;
+    if (!loaded || !user?.id || !year) return;
     const ownerId = user.id;
 
     const yearsNeeded = new Set([year]);
@@ -947,7 +1381,7 @@ function App() {
       cancelled = true;
       activityAbortController.abort();
     };
-  }, [user?.id, year, month, animeActivityCache, mangaActivityCache, metricInc, prefetchYearActivities, setResource]);
+  }, [loaded, user?.id, year, month, animeActivityCache, mangaActivityCache, metricInc, prefetchYearActivities, setResource]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -1146,11 +1580,11 @@ function App() {
   }, [mangaEntries]);
 
   const sortedA = useMemo(
-    () => [...animeEntries].sort((a,b)=>(b.score||0)-(a.score||0)||(b.progress||0)-(a.progress||0)),
+    () => [...animeEntries].sort(compareEntriesByUserScoreThenAverage),
     [animeEntries]
   );
   const sortedM = useMemo(
-    () => [...mangaEntries].sort((a,b)=>(b.score||0)-(a.score||0)||(b.progress||0)-(a.progress||0)),
+    () => [...mangaEntries].sort(compareEntriesByUserScoreThenAverage),
     [mangaEntries]
   );
 
@@ -1162,6 +1596,108 @@ function App() {
     () => sortedM.filter((e) => e.status !== "PLANNING"),
     [sortedM]
   );
+
+  const overviewTopCount = 10;
+  const overviewTopAnime = useMemo(() => topA.slice(0, overviewTopCount), [topA, overviewTopCount]);
+  const overviewTopManga = useMemo(() => topM.slice(0, overviewTopCount), [topM, overviewTopCount]);
+  const overviewTopPeriodTitle = month === 0 ? `${year}` : `${MONTHS_FULL[month - 1]} ${year}`;
+
+  const overviewMangaTopScrollRef = useRef(null);
+  const overviewAnimeTopScrollRef = useRef(null);
+  const [overviewMangaTopFades, setOverviewMangaTopFades] = useState({ left: false, right: false });
+  const [overviewAnimeTopFades, setOverviewAnimeTopFades] = useState({ left: false, right: false });
+
+  const updateOverviewTopScrollFades = useCallback(() => {
+    const apply = (el, set) => {
+      if (!el) {
+        set({ left: false, right: false });
+        return;
+      }
+      const maxScroll = Math.max(0, Math.round(el.scrollWidth - el.clientWidth));
+      const hasOverflow = maxScroll > 2;
+      const slop = 8;
+      const showLeft = hasOverflow && el.scrollLeft > slop;
+      const showRight = hasOverflow && el.scrollLeft + slop < maxScroll;
+      set({ left: showLeft, right: showRight });
+    };
+    apply(overviewMangaTopScrollRef.current, setOverviewMangaTopFades);
+    apply(overviewAnimeTopScrollRef.current, setOverviewAnimeTopFades);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (tab !== "overview") {
+      setOverviewMangaTopFades({ left: false, right: false });
+      setOverviewAnimeTopFades({ left: false, right: false });
+      return;
+    }
+    const reset = () => {
+      const m = overviewMangaTopScrollRef.current;
+      const a = overviewAnimeTopScrollRef.current;
+      if (m) m.scrollLeft = 0;
+      if (a) a.scrollLeft = 0;
+    };
+    reset();
+    const rafIds = { inner: 0 };
+    const rafOuter = requestAnimationFrame(() => {
+      reset();
+      rafIds.inner = requestAnimationFrame(() => {
+        reset();
+        updateOverviewTopScrollFades();
+      });
+    });
+    return () => {
+      cancelAnimationFrame(rafOuter);
+      cancelAnimationFrame(rafIds.inner);
+    };
+  }, [tab, year, month, loaded, overviewTopManga.length, overviewTopAnime.length, updateOverviewTopScrollFades]);
+
+  useEffect(() => {
+    if (tab !== "overview" || !loaded) return undefined;
+    const forceStart = () => {
+      const m = overviewMangaTopScrollRef.current;
+      const a = overviewAnimeTopScrollRef.current;
+      if (m) m.scrollLeft = 0;
+      if (a) a.scrollLeft = 0;
+      updateOverviewTopScrollFades();
+    };
+    const t0 = window.setTimeout(forceStart, 0);
+    const t1 = window.setTimeout(forceStart, 80);
+    return () => {
+      window.clearTimeout(t0);
+      window.clearTimeout(t1);
+    };
+  }, [tab, loaded, overviewTopManga.length, overviewTopAnime.length, updateOverviewTopScrollFades]);
+
+  useEffect(() => {
+    if (tab !== "overview") return;
+    const mEl = overviewMangaTopScrollRef.current;
+    const aEl = overviewAnimeTopScrollRef.current;
+    const onScrollOrResize = () => updateOverviewTopScrollFades();
+    const ro =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(onScrollOrResize)
+        : null;
+    if (mEl) {
+      mEl.addEventListener("scroll", onScrollOrResize, { passive: true });
+      ro?.observe(mEl);
+    }
+    if (aEl) {
+      aEl.addEventListener("scroll", onScrollOrResize, { passive: true });
+      ro?.observe(aEl);
+    }
+    window.addEventListener("resize", onScrollOrResize);
+    updateOverviewTopScrollFades();
+    const t1 = window.setTimeout(updateOverviewTopScrollFades, 120);
+    const t2 = window.setTimeout(updateOverviewTopScrollFades, 500);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      if (mEl) mEl.removeEventListener("scroll", onScrollOrResize);
+      if (aEl) aEl.removeEventListener("scroll", onScrollOrResize);
+      ro?.disconnect();
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [tab, updateOverviewTopScrollFades, overviewTopManga.length, overviewTopAnime.length]);
 
   const activeDaysCount = useMemo(
     () => countActiveCalendarDays(year, month, mergedAnimeForTotals, mergedMangaForTotals, animeEntries, mangaEntries),
@@ -1207,69 +1743,227 @@ function App() {
     return [...yearsSet].sort((a, b) => b - a);
   }, [resourceStatus, user?.id]);
 
-  const anilistProfileUrl = user
-    ? `https://anilist.co/user/${encodeURIComponent(user.name)}/`
+  const transitionActive = Boolean(
+    pendingProfileName &&
+      loading &&
+      (!user || normalizeName(user.name) !== normalizeName(pendingProfileName))
+  );
+  const pendingAvatarUrl = transitionActive
+    ? readQuickPickAvatarStored(pendingProfileName) ||
+      quickPickResolvedAvatars[normalizeName(pendingProfileName)] ||
+      null
     : null;
-  const profileEpisodesAll = user?.statistics?.anime?.episodesWatched ?? 0;
-  const profileChaptersAll = user?.statistics?.manga?.chaptersRead ?? 0;
-  const profileEpisodesFmt = profileEpisodesAll.toLocaleString("fr-FR");
-  const profileChaptersFmt = profileChaptersAll.toLocaleString("fr-FR");
+  const headerUser = transitionActive
+    ? { name: pendingProfileName, avatar: { large: pendingAvatarUrl, medium: pendingAvatarUrl } }
+    : user;
+  const headerBannerImage = transitionActive ? null : user?.bannerImage;
+  const anilistProfileUrl = headerUser
+    ? `https://anilist.co/user/${encodeURIComponent(headerUser.name)}/`
+    : null;
+
+  const headerQuickPickMatches = useMemo(() => {
+    const rows = filterQuickProfileSuggestions(inputVal, PROFILE_QUICK_SUGGESTIONS);
+    return rows.map((p) => {
+      const key = normalizeName(p.userName);
+      return {
+        ...p,
+        displayAvatar:
+          p.avatarUrl ||
+          (user && normalizeName(user.name) === key ? user.avatar?.large || user.avatar?.medium : null) ||
+          readQuickPickAvatarStored(p.userName) ||
+          quickPickResolvedAvatars[key] ||
+          null,
+      };
+    });
+  }, [inputVal, user, quickPickResolvedAvatars]);
+  const showHeaderQuickPicks = headerSearchFocused && headerQuickPickMatches.length > 0;
+
+  useEffect(() => {
+    if (!showHeaderQuickPicks) return undefined;
+    const ac = new AbortController();
+    const todo = headerQuickPickMatches.filter((p) => {
+      if (!String(p.userName || "").trim()) return false;
+      if (p.avatarUrl) return false;
+      const key = normalizeName(p.userName);
+      if (user && normalizeName(user.name) === key) return false;
+      if (readQuickPickAvatarStored(p.userName)) return false;
+      if (quickPickResolvedAvatars[key]) return false;
+      return true;
+    });
+    if (todo.length === 0) return undefined;
+
+    let cancelled = false;
+    (async () => {
+      for (const p of todo) {
+        const name = p.userName;
+        if (cancelled || ac.signal.aborted) return;
+        try {
+          const data = await fetchAL(USER_AVATAR_QUERY, { name }, { signal: ac.signal });
+          const url = data?.User?.avatar?.large || data?.User?.avatar?.medium || null;
+          if (url && !cancelled) {
+            const k = normalizeName(name);
+            safeWriteCache(quickPickAvatarCacheKey(k), url, QUICKPICK_AVATAR_TTL_MS);
+            setQuickPickResolvedAvatars((prev) => (prev[k] ? prev : { ...prev, [k]: url }));
+          }
+        } catch (e) {
+          if (e?.name === "AbortError") return;
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
+  }, [showHeaderQuickPicks, headerQuickPickMatches, user, quickPickResolvedAvatars]);
+
+  const pickQuickProfile = useCallback((name) => {
+    const n = String(name || "").trim();
+    if (!n) return;
+    setInputVal(n);
+    setHeaderSearchFocused(false);
+    headerSearchInputRef.current?.blur();
+    window.location.hash = profileHashForUserName(n);
+  }, []);
+
+  const isLandingHome = useMemo(() => parseRouteFromHash().type === "home", [hashTick]);
 
   return (
     <div style={{background:C.bg, minHeight:"100vh", color:C.text, fontFamily:"'Overpass',sans-serif"}}>
 
+      {isLandingHome ? (
+        <HomeLanding
+          C={C}
+          inputVal={inputVal}
+          setInputVal={setInputVal}
+          headerSearchInputRef={headerSearchInputRef}
+          headerSearchFocused={headerSearchFocused}
+          setHeaderSearchFocused={setHeaderSearchFocused}
+          handleSubmit={handleSubmit}
+          showHeaderQuickPicks={showHeaderQuickPicks}
+          headerQuickPickMatches={headerQuickPickMatches}
+          pickQuickProfile={pickQuickProfile}
+        />
+      ) : (
+      <>
       {/* HEADER */}
       <div
-        className={`header-surface ${user?.bannerImage ? "header-surface--banner" : "header-surface--plain"}`}
+        className={`header-surface ${headerBannerImage ? "header-surface--banner" : "header-surface--plain"}`}
         style={
-          user?.bannerImage
-            ? { backgroundImage: `linear-gradient(to bottom, rgba(11,22,34,0.3), ${C.bg}), url(${user.bannerImage})` }
+          headerBannerImage
+            ? { backgroundImage: `linear-gradient(to bottom, rgba(11,22,34,0.3), ${C.bg}), url(${headerBannerImage})` }
             : undefined
         }
       >
         <div style={{maxWidth:1100,margin:"0 auto"}}>
           <div className="header-top-row">
-            <div className="header-brand" aria-label="AniList Stat">
+            <a href="#/" className="header-brand header-brand--home" aria-label="AniList Stat — Accueil">
               <span className="header-brand-mark">
                 <span className="header-brand-a">A</span>
                 <span className="header-brand-s" style={{color:C.accent}}>S</span>
               </span>
+            </a>
+            <div className="header-search-wrap">
+              <div className="header-search-group">
+                <input
+                  ref={headerSearchInputRef}
+                  value={inputVal}
+                  onChange={(e) => setInputVal(e.target.value)}
+                  onFocus={() => setHeaderSearchFocused(true)}
+                  onBlur={() => {
+                    window.setTimeout(() => setHeaderSearchFocused(false), 120);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && inputVal.trim()) handleSubmit();
+                    if (e.key === "Escape") setHeaderSearchFocused(false);
+                  }}
+                  placeholder="Nom d'utilisateur AniList"
+                  autoComplete="off"
+                  aria-autocomplete="list"
+                  aria-expanded={showHeaderQuickPicks}
+                  aria-controls="header-quick-picks"
+                  style={{
+                    flex: 1,
+                    background: C.cardBg,
+                    border: `1px solid ${C.border}`,
+                    borderRight: "none",
+                    borderRadius: "var(--radius-control) 0 0 var(--radius-control)",
+                    padding: "10px 14px",
+                    color: C.text,
+                    fontSize: 14,
+                    fontFamily: "inherit",
+                  }}
+                />
+                <button
+                  type="button"
+                  className="header-search-submit"
+                  aria-label="Rechercher ce profil"
+                  disabled={!inputVal.trim()}
+                  onClick={handleSubmit}
+                  style={{
+                    background: C.accent,
+                    color: "#fff",
+                    border: `1px solid ${C.accent}`,
+                    borderLeft: "none",
+                    borderRadius: "0 var(--radius-control) var(--radius-control) 0",
+                    padding: "10px 14px",
+                    minWidth: 48,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="M20 20 16.65 16.65" />
+                  </svg>
+                </button>
+              </div>
+              {showHeaderQuickPicks ? (
+                <ul id="header-quick-picks" className="header-search-suggestions" role="listbox">
+                  {headerQuickPickMatches.map((p) => (
+                    <li key={p.userName} role="presentation">
+                      <button
+                        type="button"
+                        role="option"
+                        className="header-search-suggestion-btn"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          pickQuickProfile(p.userName);
+                        }}
+                      >
+                        {p.displayAvatar ? (
+                          <img
+                            className="header-search-suggestion-avatar"
+                            src={p.displayAvatar}
+                            alt=""
+                          />
+                        ) : (
+                          <span className="header-search-suggestion-initial" aria-hidden>
+                            {String(p.userName).trim().charAt(0).toUpperCase() || "?"}
+                          </span>
+                        )}
+                        <span className="header-search-suggestion-meta">
+                          <span className="header-search-suggestion-user">{p.userName}</span>
+                          {p.label ? (
+                            <span className="header-search-suggestion-label">{p.label}</span>
+                          ) : null}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
-            <div className="header-search-group">
-              <input value={inputVal} onChange={e=>setInputVal(e.target.value)}
-                onKeyDown={(e)=>{ if (e.key === "Enter" && inputVal.trim()) handleSubmit(); }}
-                placeholder="Nom d'utilisateur AniList"
-                style={{
-                  flex:1,background:C.cardBg,border:`1px solid ${C.border}`,
-                  borderRight:"none",borderRadius:"8px 0 0 8px",
-                  padding:"10px 14px",color:C.text,fontSize:14,fontFamily:"inherit",
-                }} />
-              <button
-                type="button"
-                className="header-search-submit"
-                aria-label="Rechercher ce profil"
-                disabled={!inputVal.trim()}
-                onClick={handleSubmit}
-                style={{
-                  background:C.accent,color:"#fff",border:`1px solid ${C.accent}`,
-                  borderLeft:"none",borderRadius:"0 8px 8px 0",
-                  padding:"10px 14px",minWidth:48,
-                  display:"inline-flex",alignItems:"center",justifyContent:"center",
-                  fontFamily:"inherit",
-                }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <circle cx="11" cy="11" r="7" />
-                  <path d="M20 20 16.65 16.65" />
-                </svg>
-              </button>
-            </div>
+            <a href="#/" className="header-home-link">
+              Accueil
+            </a>
             <div className="header-nav-fill" aria-hidden />
             {showApiBadge && (
               <div style={{
                 background: "rgba(255,255,255,0.03)",
                 border: `1px solid ${C.border}`,
-                borderRadius: 999,
+                borderRadius: "var(--radius-full)",
                 padding: "6px 10px",
                 fontSize: 12,
                 color: apiStatusBadge.color,
@@ -1286,7 +1980,7 @@ function App() {
                   background: "transparent",
                   border: `1px solid ${C.border}`,
                   color: C.textMuted,
-                  borderRadius: 8,
+                  borderRadius: "var(--radius-control)",
                   padding: "6px 10px",
                   fontSize: 12,
                   fontWeight: 600,
@@ -1298,6 +1992,7 @@ function App() {
             )}
           </div>
 
+          {loaded && (
           <div className="period-panel">
             <div className="period-panel-title">Période d'analyse</div>
             <div className="period-pills period-pills--years">
@@ -1314,15 +2009,26 @@ function App() {
               ))}
             </div>
           </div>
+          )}
 
-          {user && (
+          {headerUser && (
               <div className="header-profile fade-in">
-                <img
-                  className="header-profile-avatar"
-                  src={user.avatar?.large||user.avatar?.medium}
-                  alt=""
-                  style={{border:`2px solid ${C.accent}`}}
-                />
+                {headerUser.avatar?.large || headerUser.avatar?.medium ? (
+                  <img
+                    className="header-profile-avatar"
+                    src={headerUser.avatar.large || headerUser.avatar.medium}
+                    alt=""
+                    style={{border:`2px solid ${C.accent}`}}
+                  />
+                ) : (
+                  <span
+                    className="header-profile-avatar header-profile-avatar-placeholder"
+                    style={{ border: `2px solid ${C.accent}` }}
+                    aria-hidden
+                  >
+                    {String(headerUser.name).trim().charAt(0).toUpperCase() || "?"}
+                  </span>
+                )}
                 <div className="header-profile-text">
                   <a
                     className="header-profile-name-link"
@@ -1330,22 +2036,13 @@ function App() {
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    {user.name}
+                    {headerUser.name}
                   </a>
-                  <div
-                    className="header-profile-meta"
-                    aria-label={`${profileEpisodesFmt} épisodes vus et ${profileChaptersFmt} chapitres lus au total sur AniList`}
-                  >
-                    <div className="header-profile-stat-block">
-                      <span className="header-profile-stat-value">{profileEpisodesFmt}</span>
-                      <span className="header-profile-stat-caption">Épisodes vus</span>
+                  {transitionActive ? (
+                    <div className="header-profile-meta header-profile-meta--pending">
+                      Chargement du profil…
                     </div>
-                    <div className="header-profile-meta-rule" aria-hidden />
-                    <div className="header-profile-stat-block">
-                      <span className="header-profile-stat-value">{profileChaptersFmt}</span>
-                      <span className="header-profile-stat-caption">Chapitres lus</span>
-                    </div>
-                  </div>
+                  ) : null}
                 </div>
               </div>
           )}
@@ -1362,17 +2059,17 @@ function App() {
         )}
 
         {error && (
-          <div style={{background:"rgba(229,57,53,0.1)",border:`1px solid ${C.red}`,borderRadius:10,padding:"16px 20px",marginTop:24,color:C.red,fontSize:14}}>
+          <div style={{background:"rgba(229,57,53,0.1)",border:`1px solid ${C.red}`,borderRadius:"var(--radius-card)",padding:"16px 20px",marginTop:24,color:C.red,fontSize:14,boxShadow:"var(--shadow-card)"}}>
             Erreur : {error}
           </div>
         )}
 
         {loaded && !loading && loadingActivities && (
           <div style={{marginTop:24,color:C.textMuted,fontSize:13,display:"inline-flex",alignItems:"center",gap:10}}>
-            <span>
+            <span className="activity-loading-message-blink">
               {displayActivityLoadingMessage || activityLoadingMessage}
               {activityEtaSeconds != null && activityEtaSeconds > 0
-                ? ` — temps restant estimé ~${activityEtaSeconds}s`
+                ? ` ~${activityEtaSeconds}s`
                 : activityEtaSeconds === 0
                   ? " — finalisation…"
                   : ""}
@@ -1404,7 +2101,7 @@ function App() {
                 background: "transparent",
                 color: C.accent,
                 border: `1px solid ${C.accent}`,
-                borderRadius: 8,
+                borderRadius: "var(--radius-control)",
                 padding: "6px 10px",
                 fontSize: 12,
                 fontWeight: 700,
@@ -1422,7 +2119,7 @@ function App() {
                   background: "transparent",
                   color: C.text,
                   border: `1px solid ${C.border}`,
-                  borderRadius: 8,
+                  borderRadius: "var(--radius-control)",
                   padding: "6px 10px",
                   fontSize: 12,
                   fontWeight: 600,
@@ -1436,7 +2133,7 @@ function App() {
         )}
 
         {loaded && !loading && IS_DEV_LOCAL && showDevPanel && (
-          <div style={{marginTop:12,background:C.cardBg,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:12,color:C.textMuted,display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{marginTop:12,background:C.cardBg,border:`1px solid ${C.border}`,borderRadius:"var(--radius-card)",padding:"10px 12px",fontSize:12,color:C.textMuted,display:"flex",flexDirection:"column",gap:10,boxShadow:"var(--shadow-card)"}}>
             <div style={{display:"flex",flexWrap:"wrap",gap:"10px 16px",alignItems:"baseline"}}>
               <strong style={{color:C.text,width:"100%",fontSize:11,letterSpacing:"0.06em",textTransform:"uppercase"}}>Activités (période & graphiques)</strong>
               {activityLoadDebug ? (
@@ -1472,7 +2169,7 @@ function App() {
                 background: "transparent",
                 color: C.accent,
                 border: `1px solid ${C.accent}`,
-                borderRadius: 6,
+                borderRadius: "var(--radius-chip)",
                 padding: "4px 8px",
                 fontSize: 11,
                 fontWeight: 700,
@@ -1496,164 +2193,145 @@ function App() {
 
             {/* OVERVIEW */}
             {tab==="overview" && (
-              <div style={{display:"flex",flexDirection:"column",gap:16}}>
-                <div className="fade-in stat-stat-al-row--overview">
-                  <StatCard label="Épisodes vus" value={totalEp} icon="play" />
-                  <StatCard label="Score anime" value={avgA} icon="star" />
-                  <StatCard label="Chapitres lus" value={totalCh} icon="book" />
-                  <StatCard label="Score manga" value={avgM} icon="star" />
-                  <StatCard label="Jours actifs" value={`${activeDaysCount} / ${periodDayTotal}`} icon="calendar" />
+              <div className="overview-page">
+                <div className="overview-stats-cluster">
+                  <div className="fade-in stat-stat-al-row--overview">
+                    <StatCard label="Épisodes vus" value={totalEp} icon="play" />
+                    <StatCard label="Score anime" value={avgA} icon="star" />
+                    <StatCard label="Chapitres lus" value={totalCh} icon="book" />
+                    <StatCard label="Score manga" value={avgM} icon="star" />
+                    <StatCard
+                      label="Jours actifs"
+                      value={`${activeDaysCount} / ${periodDayTotal}`}
+                      icon="calendar"
+                    />
+                  </div>
+                  <hr className="overview-stats-divider" />
                 </div>
 
-                <div className="fade-in fade-in-delay-1" style={{display:"flex",flexDirection:"column",gap:28}}>
-                  <div className="chart-section">
-                    <h2 className="chart-section__title">Chapitres lus</h2>
-                    <ChartCard noTitle>
-                    <PeriodCompareLegend
-                      legendCurrent={chartPeriodLegend.legendCurrent}
-                      legendCompare={chartPeriodLegend.legendCompare}
-                    />
-                    {compareAvailability.missing && (
-                      <div
-                        className={compareAvailability.loadingComparison ? "compare-chart-loading-hint" : ""}
-                        style={{
-                          color: compareAvailability.loadingComparison ? C.textMuted : C.orange,
-                          fontSize: 12,
-                          marginBottom: 8
-                        }}
-                      >
-                        {compareAvailability.loadingComparison
-                          ? compareAvailability.loadingLabel
-                          : compareAvailability.idleLabel}
+                <div key={`overview-${year}-${month}`} className="overview-period-body">
+                  <div className="overview-main-column">
+                    <div className="overview-section fade-in fade-in-delay-1">
+                      <div className="overview-section__inner">
+                        <div className="chart-section">
+                          <h2 className="overview-block-title">Chapitres lus</h2>
+                          <ChartCard noTitle className="chart-card--overview-line">
+                            <PeriodCompareLegend
+                              legendCurrent={chartPeriodLegend.legendCurrent}
+                              legendCompare={chartPeriodLegend.legendCompare}
+                            />
+                            {compareAvailability.missing && (
+                              <div
+                                style={{
+                                  color: compareAvailability.loadingComparison ? C.textMuted : C.orange,
+                                  fontSize: 12,
+                                  marginBottom: 8,
+                                }}
+                              >
+                                {compareAvailability.loadingComparison
+                                  ? compareAvailability.loadingLabel
+                                  : compareAvailability.idleLabel}
+                              </div>
+                            )}
+                            <OverviewActivityLineChart
+                              data={mangaChaptersChartData}
+                              month={month}
+                              year={year}
+                              fillGradientId="overview-activity-area-manga"
+                            />
+                          </ChartCard>
+                        </div>
+
+                        <div className="fade-in fade-in-delay-2">
+                          <h3 className="overview-block-title">
+                            Ton top {overviewTopCount} manga {overviewTopPeriodTitle}
+                          </h3>
+                          {overviewTopManga.length > 0 ? (
+                            <div
+                              className={[
+                                "overview-top-scroll",
+                                overviewMangaTopFades.left && "overview-top-scroll--fade-start",
+                                overviewMangaTopFades.right && "overview-top-scroll--fade-end",
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
+                            >
+                              <div ref={overviewMangaTopScrollRef} className="overview-top-scroll__track">
+                                {overviewTopManga.map((e) => (
+                                  <MediaCard key={e.id} entry={e} type="MANGA" />
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="overview-top-empty" style={{ color: C.textDim, fontSize: 17, fontWeight: 600, lineHeight: 1.45 }}>
+                              Aucun manga à afficher pour cette période.
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
-                    <ResponsiveContainer width="100%" height={240}>
-                      <LineChart data={mangaChaptersChartData} margin={{ top: 26, right: 10, left: 0, bottom: 4 }}>
-                        <XAxis dataKey="label" tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} interval={month === 0 ? 0 : "preserveStartEnd"} />
-                        <YAxis tick={{ fill: C.textDim, fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} width={36} />
-                        <Tooltip content={(props) => <CompareLineTooltip {...props} year={year} month={month} />} />
-                        <Line
-                          type="monotone"
-                          dataKey="current"
-                          stroke={C.accent}
-                          strokeWidth={2}
-                          dot={{
-                            r: 5,
-                            fill: "rgba(61, 180, 242, 0.72)",
-                            stroke: "rgba(11, 22, 34, 0.45)",
-                            strokeWidth: 1,
-                          }}
-                          activeDot={{ r: 6, fill: "rgba(61, 180, 242, 0.9)" }}
-                          isAnimationActive={false}
-                        >
-                          <LabelList
-                            dataKey="current"
-                            position="top"
-                            offset={8}
-                            fill="#edf1f5"
-                            fontSize={month === 0 ? 11 : 10}
-                            fontWeight={600}
-                            formatter={(v) => (v != null && Number(v) > 0 ? String(v) : "")}
-                          />
-                        </Line>
-                        <Line
-                          type="monotone"
-                          dataKey="compare"
-                          stroke="#4a5d6e"
-                          strokeWidth={2}
-                          dot={false}
-                          activeDot={{ r: 4, fill: "#5a6d7e" }}
-                          isAnimationActive={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                    </ChartCard>
-                  </div>
-                  <div className="chart-section">
-                    <h2 className="chart-section__title">Épisodes vus</h2>
-                    <ChartCard noTitle>
-                    <PeriodCompareLegend
-                      legendCurrent={chartPeriodLegend.legendCurrent}
-                      legendCompare={chartPeriodLegend.legendCompare}
-                    />
-                    {compareAvailability.missing && (
-                      <div
-                        className={compareAvailability.loadingComparison ? "compare-chart-loading-hint" : ""}
-                        style={{
-                          color: compareAvailability.loadingComparison ? C.textMuted : C.orange,
-                          fontSize: 12,
-                          marginBottom: 8
-                        }}
-                      >
-                        {compareAvailability.loadingComparison
-                          ? compareAvailability.loadingLabel
-                          : compareAvailability.idleLabel}
+                    </div>
+
+                    <div className="overview-section fade-in fade-in-delay-3">
+                      <div className="overview-section__inner">
+                        <div className="chart-section">
+                          <h2 className="overview-block-title">Épisodes vus</h2>
+                          <ChartCard noTitle className="chart-card--overview-line">
+                            <PeriodCompareLegend
+                              legendCurrent={chartPeriodLegend.legendCurrent}
+                              legendCompare={chartPeriodLegend.legendCompare}
+                            />
+                            {compareAvailability.missing && (
+                              <div
+                                style={{
+                                  color: compareAvailability.loadingComparison ? C.textMuted : C.orange,
+                                  fontSize: 12,
+                                  marginBottom: 8,
+                                }}
+                              >
+                                {compareAvailability.loadingComparison
+                                  ? compareAvailability.loadingLabel
+                                  : compareAvailability.idleLabel}
+                              </div>
+                            )}
+                            <OverviewActivityLineChart
+                              data={animeEpisodesChartData}
+                              month={month}
+                              year={year}
+                              fillGradientId="overview-activity-area-anime"
+                            />
+                          </ChartCard>
+                        </div>
+
+                        <div className="fade-in fade-in-delay-4">
+                          <h3 className="overview-block-title">
+                            Ton top {overviewTopCount} anime {overviewTopPeriodTitle}
+                          </h3>
+                          {overviewTopAnime.length > 0 ? (
+                            <div
+                              className={[
+                                "overview-top-scroll",
+                                overviewAnimeTopFades.left && "overview-top-scroll--fade-start",
+                                overviewAnimeTopFades.right && "overview-top-scroll--fade-end",
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
+                            >
+                              <div ref={overviewAnimeTopScrollRef} className="overview-top-scroll__track">
+                                {overviewTopAnime.map((e) => (
+                                  <MediaCard key={e.id} entry={e} type="ANIME" />
+                                ))}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="overview-top-empty" style={{ color: C.textDim, fontSize: 17, fontWeight: 600, lineHeight: 1.45 }}>
+                              Aucun anime à afficher pour cette période.
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    )}
-                    <ResponsiveContainer width="100%" height={240}>
-                      <LineChart data={animeEpisodesChartData} margin={{ top: 26, right: 10, left: 0, bottom: 4 }}>
-                        <XAxis dataKey="label" tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} interval={month === 0 ? 0 : "preserveStartEnd"} />
-                        <YAxis tick={{ fill: C.textDim, fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} width={36} />
-                        <Tooltip content={(props) => <CompareLineTooltip {...props} year={year} month={month} />} />
-                        <Line
-                          type="monotone"
-                          dataKey="current"
-                          stroke={C.accent}
-                          strokeWidth={2}
-                          dot={{
-                            r: 5,
-                            fill: "rgba(61, 180, 242, 0.72)",
-                            stroke: "rgba(11, 22, 34, 0.45)",
-                            strokeWidth: 1,
-                          }}
-                          activeDot={{ r: 6, fill: "rgba(61, 180, 242, 0.9)" }}
-                          isAnimationActive={false}
-                        >
-                          <LabelList
-                            dataKey="current"
-                            position="top"
-                            offset={8}
-                            fill="#edf1f5"
-                            fontSize={month === 0 ? 11 : 10}
-                            fontWeight={600}
-                            formatter={(v) => (v != null && Number(v) > 0 ? String(v) : "")}
-                          />
-                        </Line>
-                        <Line
-                          type="monotone"
-                          dataKey="compare"
-                          stroke="#4a5d6e"
-                          strokeWidth={2}
-                          dot={false}
-                          activeDot={{ r: 4, fill: "#5a6d7e" }}
-                          isAnimationActive={false}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                    </ChartCard>
+                    </div>
                   </div>
                 </div>
-
-                {topA.length > 0 && (
-                  <div className="fade-in fade-in-delay-2">
-                    <div style={{fontSize:14,fontWeight:600,color:C.textMuted,textTransform:"uppercase",letterSpacing:0.8,marginBottom:14}}>
-                      Top Anime {periodLabel}
-                    </div>
-                    <div style={{display:"flex",gap:14,overflowX:"auto",paddingBottom:8}}>
-                      {topA.slice(0,10).map(e => <MediaCard key={e.id} entry={e} type="ANIME"/>)}
-                    </div>
-                  </div>
-                )}
-                {topM.length > 0 && (
-                  <div className="fade-in fade-in-delay-3">
-                    <div style={{fontSize:14,fontWeight:600,color:C.textMuted,textTransform:"uppercase",letterSpacing:0.8,marginBottom:14}}>
-                      Top Manga {periodLabel}
-                    </div>
-                    <div style={{display:"flex",gap:14,overflowX:"auto",paddingBottom:8}}>
-                      {topM.slice(0,10).map(e => <MediaCard key={e.id} entry={e} type="MANGA"/>)}
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 
@@ -1669,7 +2347,7 @@ function App() {
                 <ChartCard title="Par statut">
                   <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
                     {Object.entries(statusCntA).map(([s,c]) => (
-                      <div key={s} style={{background:C.bg,borderRadius:8,padding:"10px 16px",display:"flex",alignItems:"center",gap:8}}>
+                      <div key={s} style={{background:C.bg,borderRadius:"var(--radius-control)",padding:"10px 16px",display:"flex",alignItems:"center",gap:8,boxShadow:"var(--shadow-control)"}}>
                         <span style={{fontSize:20,fontWeight:700,color:STATUS_COLORS[s]||C.accent}}>{c}</span>
                         <span style={{fontSize:13,color:C.textMuted}}>{STATUS_LABELS[s]||s}</span>
                       </div>
@@ -1694,7 +2372,7 @@ function App() {
                 <ChartCard title="Par statut">
                   <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
                     {Object.entries(statusCntM).map(([s,c]) => (
-                      <div key={s} style={{background:C.bg,borderRadius:8,padding:"10px 16px",display:"flex",alignItems:"center",gap:8}}>
+                      <div key={s} style={{background:C.bg,borderRadius:"var(--radius-control)",padding:"10px 16px",display:"flex",alignItems:"center",gap:8,boxShadow:"var(--shadow-control)"}}>
                         <span style={{fontSize:20,fontWeight:700,color:STATUS_COLORS[s]||C.pink}}>{c}</span>
                         <span style={{fontSize:13,color:C.textMuted}}>{STATUS_LABELS[s]||s}</span>
                       </div>
@@ -1716,7 +2394,7 @@ function App() {
                       <XAxis type="number" tick={{fill:C.textDim,fontSize:12}} axisLine={false} tickLine={false}/>
                       <YAxis type="category" dataKey="name" tick={{fill:C.textMuted,fontSize:12}} axisLine={false} tickLine={false} width={80}/>
                       <Tooltip content={<CTooltip/>}/>
-                      <Bar dataKey="count" name="Entrées" radius={[0,4,4,0]} fill={C.accent}/>
+                      <Bar dataKey="count" name="Entrées" radius={[0,6,6,0]} fill={C.accent}/>
                     </BarChart>
                   </ResponsiveContainer>
                 </ChartCard>
@@ -1727,7 +2405,7 @@ function App() {
                       <XAxis dataKey="score" tick={{fill:C.textDim,fontSize:12}} axisLine={false} tickLine={false}/>
                       <YAxis tick={{fill:C.textDim,fontSize:12}} axisLine={false} tickLine={false} allowDecimals={false}/>
                       <Tooltip content={<CTooltip/>}/>
-                      <Bar dataKey="count" name="Entrées" radius={[4,4,0,0]}>
+                      <Bar dataKey="count" name="Entrées" radius={[6,6,0,0]}>
                         {scoreData.map((_,i) => (
                           <Cell key={i} fill={i<4?C.red:i<6?C.orange:i<8?C.yellow:C.green}/>
                         ))}
@@ -1748,7 +2426,7 @@ function App() {
                   <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:8}}>
                     {fmtData.map((f,i) => (
                       <div key={f.name} style={{display:"flex",alignItems:"center",gap:4,fontSize:12,color:C.textMuted}}>
-                        <div style={{width:10,height:10,borderRadius:2,background:PIE_COLORS[i%PIE_COLORS.length]}}/>
+                        <div style={{width:10,height:10,borderRadius:"var(--radius-swatch)",background:PIE_COLORS[i%PIE_COLORS.length]}}/>
                         {f.name} ({f.value})
                       </div>
                     ))}
@@ -1777,7 +2455,7 @@ function App() {
                         {v:user.statistics.manga.chaptersRead, l:"Chapitres total", c:C.pink},
                         {v:user.statistics.manga.volumesRead, l:"Volumes total", c:C.pink},
                       ].map((s,i) => (
-                        <div key={i} style={{textAlign:"center",padding:16,background:C.bg,borderRadius:10}}>
+                        <div key={i} style={{textAlign:"center",padding:16,background:C.bg,borderRadius:"var(--radius-card)",boxShadow:"var(--shadow-control)"}}>
                           <div style={{fontSize:26,fontWeight:800,color:s.c}}>{s.v}</div>
                           <div style={{fontSize:12,color:C.textMuted,marginTop:4}}>{s.l}</div>
                         </div>
@@ -1799,7 +2477,26 @@ function App() {
             )}
           </>
         )}
+
       </div>
+
+      </>
+      )}
+
+      {showBackToTop ? (
+        <button
+          type="button"
+          className="back-to-top-btn"
+          onClick={() => {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+          aria-label="Remonter en haut de la page"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M18 15l-6-6-6 6" />
+          </svg>
+        </button>
+      ) : null}
     </div>
   );
 }

@@ -12,7 +12,7 @@ query ($userName: String!, $type: MediaType!) {
       entries {
         id
         status
-        score(format: POINT_10)
+        score(format: POINT_10_DECIMAL)
         progress
         progressVolumes
         startedAt { year month day }
@@ -22,6 +22,7 @@ query ($userName: String!, $type: MediaType!) {
           id
           title { romaji english }
           coverImage { large medium color }
+          countryOfOrigin
           episodes
           chapters
           volumes
@@ -30,6 +31,7 @@ query ($userName: String!, $type: MediaType!) {
           genres
           averageScore
           status
+          siteUrl
         }
       }
     }

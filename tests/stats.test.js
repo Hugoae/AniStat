@@ -64,9 +64,27 @@ function testDeltaCrossYear() {
   assert.strictEqual(janDelta, 3);
 }
 
+function testNormalizeListScoreHundredScale() {
+  const norm = S.normalizeListScoreToPoint10;
+  assert.strictEqual(norm(0), 0);
+  assert.strictEqual(norm(80), 8);
+  assert.strictEqual(norm(72), 7.2);
+  assert.strictEqual(norm(100), 10);
+  assert.strictEqual(norm(11), 1.1);
+}
+
+function testNormalizeListScoreAlreadyPoint10() {
+  const norm = S.normalizeListScoreToPoint10;
+  assert.strictEqual(norm(8.5), 8.5);
+  assert.strictEqual(norm(10), 10);
+  assert.strictEqual(norm(7), 7);
+}
+
 testNoteUpdateNoProgress();
 testFutureMonthFiltered();
 testStatusDuplicateCollapse();
 testDeltaCrossYear();
+testNormalizeListScoreHundredScale();
+testNormalizeListScoreAlreadyPoint10();
 
 console.log("stats tests passed");

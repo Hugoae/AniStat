@@ -34,6 +34,20 @@
     return Number.isFinite(n) ? n : fallback;
   };
 
+  /**
+   * Ramène la note liste sur une échelle 0–10 (décimales possibles), quel que soit le barème AniList
+   * de l’utilisateur (/100, /10, etc.) lorsque la valeur brute est encore sur /100 (ex. 80 → 8, 72 → 7,2).
+   * Les notes déjà en /10 (≤10) ne sont pas modifiées.
+   */
+  function normalizeListScoreToPoint10(raw) {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    if (n > 100) return Math.min(10, n / 10);
+    if (n >= 11 && n <= 100) return n / 10;
+    if (n > 10 && n < 11) return Math.min(10, n);
+    return Math.min(10, n);
+  }
+
   function clampYmd(raw, nowDate = new Date()) {
     const y = toFiniteNumber(raw?.year, 0);
     const m = toFiniteNumber(raw?.month, 0);
@@ -56,7 +70,7 @@
       ...entry,
       id: toFiniteNumber(entry?.id, 0),
       status: safeStatus,
-      score: toFiniteNumber(entry?.score, 0),
+      score: normalizeListScoreToPoint10(toFiniteNumber(entry?.score, 0)),
       progress: toFiniteNumber(entry?.progress, 0),
       progressVolumes: toFiniteNumber(entry?.progressVolumes, 0),
       updatedAt: safeUpdatedAt,
@@ -351,6 +365,7 @@
   }
 
   window.AppStats = {
+    normalizeListScoreToPoint10,
     isInYear,
     isInMonth,
     completedInYear,
