@@ -1,22 +1,103 @@
 (() => {
   const { C, STATUS_COLORS, STATUS_LABELS, MONTHS, MONTHS_FULL } = window.AppConfig;
 
-  function StatCard({ label, value, sub }) {
+  function StatIcon({ name }) {
+    const s = { width: 20, height: 20, display: "block" };
+    switch (name) {
+      case "play":
+        return (
+          <svg viewBox="0 0 24 24" style={s} fill="currentColor" aria-hidden>
+            <path d="M8 5v14l11-7L8 5z" />
+          </svg>
+        );
+      case "tv":
+        return (
+          <svg viewBox="0 0 24 24" style={s} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect x="2" y="7" width="20" height="13" rx="2" />
+            <path d="M17 2l-5 5-5-5" />
+          </svg>
+        );
+      case "percent":
+        return (
+          <svg viewBox="0 0 24 24" style={s} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+            <path d="M19 5L5 19M9 9h.01M15 15h.01" />
+          </svg>
+        );
+      case "star":
+        return (
+          <svg viewBox="0 0 24 24" style={s} fill="currentColor" aria-hidden>
+            <path d="M12 2.5l2.6 5.3 5.8.8-4.2 4.1 1 5.7L12 15.8 6.8 18.4l1-5.7-4.2-4.1 5.8-.8L12 2.5z" />
+          </svg>
+        );
+      case "book":
+        return (
+          <svg viewBox="0 0 24 24" style={s} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M4 19.5A2.5 2.5 0 016.5 17H20" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z" />
+          </svg>
+        );
+      case "calendar":
+        return (
+          <svg viewBox="0 0 24 24" style={s} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <path d="M16 2v4M8 2v4M3 10h18" />
+          </svg>
+        );
+      case "check":
+        return (
+          <svg viewBox="0 0 24 24" style={s} fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+        );
+      case "clock":
+        return (
+          <svg viewBox="0 0 24 24" style={s} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3 2" />
+          </svg>
+        );
+      case "stack":
+        return (
+          <svg viewBox="0 0 24 24" style={s} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 2L2 7l10 5 10-5-10-5z" />
+            <path d="M2 17l10 5 10-5M2 12l10 5 10-5" />
+          </svg>
+        );
+      case "dot":
+      default:
+        return (
+          <svg viewBox="0 0 24 24" style={s} fill="currentColor" aria-hidden>
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+        );
+    }
+  }
+
+  /** label + value + icon (style proche profil AniList). La prop sub est ignorée (rétrocompat). */
+  function StatCard({ label, value, icon = "dot", sub }) {
     return (
-      <div className="stat-card">
-        <div style={{ fontSize: 11, color: C.textMuted, textTransform: "uppercase", letterSpacing: 1.2, fontWeight: 600 }}>
-          {label}
+      <div className="stat-stat-al">
+        <div className="stat-stat-al__bubble">
+          <StatIcon name={icon} />
         </div>
-        <div style={{ fontSize: 28, fontWeight: 700, color: C.text, lineHeight: 1.2 }}>{value}</div>
-        {sub && <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>{sub}</div>}
+        <div className="stat-stat-al__text">
+          <div className="stat-stat-al__value" style={{ color: C.accent }}>{value}</div>
+          <div className="stat-stat-al__label">{label}</div>
+        </div>
       </div>
     );
   }
 
-  function ChartCard({ title, children, style }) {
+  function ChartCard({ title, children, style, noTitle }) {
+    const showInnerTitle = !noTitle && title;
     return (
-      <div className="chart-card" style={style}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: C.textMuted, marginBottom: 16, textTransform: "uppercase", letterSpacing: 0.8 }}>{title}</div>
+      <div
+        className={`chart-card${noTitle ? " chart-card--no-heading" : ""}`}
+        style={style}
+      >
+        {showInnerTitle ? (
+          <div style={{ fontSize: 13, fontWeight: 600, color: C.textMuted, marginBottom: 16, textTransform: "uppercase", letterSpacing: 0.8 }}>{title}</div>
+        ) : null}
         {children}
       </div>
     );

@@ -10,15 +10,82 @@ input:focus { outline: none; border-color: #3db4f2 !important; }
 button { cursor: pointer; }
 button:hover { opacity: 0.9; }
 
-.stat-card {
-  background: #151f2e; border-radius: 12px; padding: 20px 22px;
-  display: flex; flex-direction: column; gap: 4px;
-  border: 1px solid #1f2d3d; transition: transform 0.2s, box-shadow 0.2s;
+/* Stats type AniList : pas de carte pleine, icône en bulle + valeur + libellé */
+.stat-stat-al-row--overview {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px 6px;
+  align-items: center;
+  padding: 14px 0 22px;
+  box-sizing: border-box;
 }
-.stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+@media (max-width: 920px) {
+  .stat-stat-al-row--overview {
+    grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+    gap: 12px 10px;
+  }
+}
+.stat-stat-al {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 2px 2px 2px 0;
+  background: transparent;
+  border: none;
+}
+.stat-stat-al__bubble {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 42, 58, 0.95);
+  border: 1px solid rgba(31, 45, 61, 0.85);
+  color: #8ba0b2;
+}
+.stat-stat-al__bubble svg {
+  display: block;
+}
+.stat-stat-al__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.stat-stat-al__value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+.stat-stat-al__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #8ba0b2;
+  line-height: 1.25;
+}
+.chart-section {
+  display: flex;
+  flex-direction: column;
+}
+.chart-section__title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #b8c5d0;
+  margin: 0 0 14px 2px;
+  letter-spacing: 0.02em;
+  line-height: 1.25;
+}
 .chart-card {
   background: #151f2e; border-radius: 12px; padding: 20px;
   border: 1px solid #1f2d3d;
+}
+.chart-card--no-heading {
+  padding-top: 18px;
 }
 .media-card {
   background: #151f2e; border-radius: 10px; overflow: hidden;

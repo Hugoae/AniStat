@@ -1496,17 +1496,19 @@ function App() {
 
             {/* OVERVIEW */}
             {tab==="overview" && (
-              <div style={{display:"flex",flexDirection:"column",gap:24}}>
-                <div className="fade-in" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(170px, 1fr))",gap:14}}>
-                  <StatCard label="Épisodes" value={totalEp} sub={`≈ ${fmtMin(totalMin)}`} />
-                  <StatCard label="Score anime" value={avgA} sub={`sur ${scoredA.length} notés`} />
-                  <StatCard label="Chapitres" value={totalCh} sub={`${totalVol} volumes`} />
-                  <StatCard label="Score manga" value={avgM} sub={`sur ${scoredM.length} notés`} />
-                  <StatCard label="Jours actifs" value={`${activeDaysCount} / ${periodDayTotal}`} sub="jours uniques avec activité sur la période" />
+              <div style={{display:"flex",flexDirection:"column",gap:16}}>
+                <div className="fade-in stat-stat-al-row--overview">
+                  <StatCard label="Épisodes vus" value={totalEp} icon="play" />
+                  <StatCard label="Score anime" value={avgA} icon="star" />
+                  <StatCard label="Chapitres lus" value={totalCh} icon="book" />
+                  <StatCard label="Score manga" value={avgM} icon="star" />
+                  <StatCard label="Jours actifs" value={`${activeDaysCount} / ${periodDayTotal}`} icon="calendar" />
                 </div>
 
-                <div className="fade-in fade-in-delay-1" style={{display:"flex",flexDirection:"column",gap:20}}>
-                  <ChartCard title="Chapitres lus">
+                <div className="fade-in fade-in-delay-1" style={{display:"flex",flexDirection:"column",gap:28}}>
+                  <div className="chart-section">
+                    <h2 className="chart-section__title">Chapitres lus</h2>
+                    <ChartCard noTitle>
                     <PeriodCompareLegend
                       legendCurrent={chartPeriodLegend.legendCurrent}
                       legendCompare={chartPeriodLegend.legendCompare}
@@ -1565,8 +1567,11 @@ function App() {
                         />
                       </LineChart>
                     </ResponsiveContainer>
-                  </ChartCard>
-                  <ChartCard title="Épisodes vus">
+                    </ChartCard>
+                  </div>
+                  <div className="chart-section">
+                    <h2 className="chart-section__title">Épisodes vus</h2>
+                    <ChartCard noTitle>
                     <PeriodCompareLegend
                       legendCurrent={chartPeriodLegend.legendCurrent}
                       legendCompare={chartPeriodLegend.legendCompare}
@@ -1625,7 +1630,8 @@ function App() {
                         />
                       </LineChart>
                     </ResponsiveContainer>
-                  </ChartCard>
+                    </ChartCard>
+                  </div>
                 </div>
 
                 {topA.length > 0 && (
@@ -1654,11 +1660,11 @@ function App() {
             {/* ANIME TAB */}
             {tab==="anime" && (
               <div style={{display:"flex",flexDirection:"column",gap:20}}>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(170px, 1fr))",gap:14}}>
-                  <StatCard label="Total anime" value={animeEntries.length}/>
-                  <StatCard label="Terminés" value={animeCompleted.length}/>
-                  <StatCard label="Épisodes" value={totalEp}/>
-                  <StatCard label="Temps" value={fmtMin(totalMin)}/>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))",gap:24}}>
+                  <StatCard label="Total anime" value={animeEntries.length} icon="tv" />
+                  <StatCard label="Terminés" value={animeCompleted.length} icon="check" />
+                  <StatCard label="Épisodes" value={totalEp} icon="play" />
+                  <StatCard label="Temps" value={fmtMin(totalMin)} icon="clock" />
                 </div>
                 <ChartCard title="Par statut">
                   <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
@@ -1679,11 +1685,11 @@ function App() {
             {/* MANGA TAB */}
             {tab==="manga" && (
               <div style={{display:"flex",flexDirection:"column",gap:20}}>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(170px, 1fr))",gap:14}}>
-                  <StatCard label="Total manga" value={mangaEntries.length}/>
-                  <StatCard label="Terminés" value={mangaCompleted.length}/>
-                  <StatCard label="Chapitres" value={totalCh}/>
-                  <StatCard label="Volumes" value={totalVol}/>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))",gap:24}}>
+                  <StatCard label="Total manga" value={mangaEntries.length} icon="book" />
+                  <StatCard label="Terminés" value={mangaCompleted.length} icon="check" />
+                  <StatCard label="Chapitres" value={totalCh} icon="book" />
+                  <StatCard label="Volumes" value={totalVol} icon="stack" />
                 </div>
                 <ChartCard title="Par statut">
                   <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
