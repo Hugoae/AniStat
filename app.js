@@ -1,370 +1,187 @@
-const { useState, useEffect, useCallback, useMemo } = React;
+const { useState, useEffect, useCallback, useMemo, useRef } = React;
 const {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, RadarChart, Radar, PolarGrid,
-  PolarAngleAxis, PolarRadiusAxis, AreaChart, Area
+  PolarAngleAxis, PolarRadiusAxis, LineChart, Line, LabelList,
 } = Recharts;
 
-const ANILIST_URL = "https://graphql.anilist.co";
+const { C, PIE_COLORS, MONTHS, STATUS_LABELS, STATUS_COLORS } = window.AppConfig;
+const {
+  dedupeEntriesByMedia,
+  completedInYear,
+  startedInYear,
+  completedInMonth,
+  startedInMonth,
+  fmtMin,
+  countActiveCalendarDays,
+  getPeriodDayTotal,
+  computePeriodDeltaFromActivities,
+  computePeriodAnimeActivityTotals,
+  computeMonthlyDeltasFromActivities,
+  computeDailyDeltasInMonth,
+  getMediaIdsWithProgressInPeriod,
+  getComparisonPeriodMeta,
+  mergeActivitiesForDelta,
+} = window.AppStats;
+const {
+  fetchAL,
+  fetchListActivitiesForYear,
+  sleep,
+  getRateLimitState,
+  subscribeRateLimit,
+  getProxyCacheStats,
+  subscribeProxyCache,
+  USER_QUERY,
+  MEDIA_LIST_QUERY
+} = window.AppApi;
+const { StatCard, ChartCard, MediaCard, CTooltip, PeriodCompareLegend, CompareLineTooltip } = window.AppUi;
 
-const C = {
-  bg: "#0b1622", cardBg: "#151f2e", accent: "#3db4f2",
-  text: "#edf1f5", textMuted: "#8ba0b2", textDim: "#516170",
-  border: "#1f2d3d", green: "#4caf50", orange: "#fb8c00",
-  pink: "#e85d75", purple: "#c063e0", yellow: "#f7c948", red: "#e53935",
-};
+const CACHE_PREFIX = "aniliststat:v3";
+const LEGACY_CACHE_PREFIXES = ["aniliststat:v1", "aniliststat:v2"];
+const PROFILE_USER_TTL_MS = 24 * 60 * 60 * 1000;
+const PROFILE_LIST_TTL_MS = 6 * 60 * 60 * 1000;
+const PROFILE_SWR_STALE_MS = 15 * 60 * 1000;
+const ACTIVITY_SWR_STALE_MS = 10 * 60 * 1000;
+const ACTIVITY_CURRENT_YEAR_TTL_MS = 60 * 60 * 1000;
+const ACTIVITY_PAST_YEAR_TTL_MS = 24 * 60 * 60 * 1000;
+const ACTIVITY_RATE_LIMIT_COOLDOWN_MS = 60 * 1000;
+const ACTIVITY_MAX_AUTO_RETRY = 3;
+const CACHE_MAX_ENTRIES = 120;
+const IS_DEV_LOCAL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 
-const PIE_COLORS = [C.accent, C.pink, C.purple, C.yellow, C.green, C.orange, "#5c6bc0", "#26a69a", "#ef5350", "#ab47bc"];
+if (window.location.hostname === "localhost") {
+  const target = new URL(window.location.href);
+  target.hostname = "127.0.0.1";
+  window.location.replace(target.toString());
+}
 
-const MEDIA_LIST_QUERY = `
-query ($userName: String!, $type: MediaType!) {
-  MediaListCollection(userName: $userName, type: $type) {
-    lists {
-      name
-      status
-      entries {
-        id
-        status
-        score(format: POINT_10)
-        progress
-        progressVolumes
-        startedAt { year month day }
-        completedAt { year month day }
-        updatedAt
-        media {
-          id
-          title { romaji english }
-          coverImage { large medium color }
-          episodes
-          chapters
-          volumes
-          duration
-          format
-          genres
-          averageScore
-          status
-        }
+function devLog(...args) {
+  if (IS_DEV_LOCAL) console.info("[AniListStat cache]", ...args);
+}
+
+function safeReadCacheMeta(key, staleAfterMs = null) {
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const expiresAt = Number(parsed.expiresAt || 0);
+    if (expiresAt && Date.now() > expiresAt) {
+      window.localStorage.removeItem(key);
+      return null;
+    }
+    const now = Date.now();
+    const writtenAt = Number(parsed.writtenAt || 0);
+    const staleAt = staleAfterMs ? (writtenAt ? writtenAt + staleAfterMs : 0) : 0;
+    const isStale = staleAt > 0 ? now > staleAt : false;
+    parsed.lastAccessAt = now;
+    window.localStorage.setItem(key, JSON.stringify(parsed));
+    return {
+      value: parsed.value ?? null,
+      expiresAt,
+      isStale,
+      writtenAt: writtenAt || now,
+      lastAccessAt: now,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function safeReadCache(key, staleAfterMs = null) {
+  const meta = safeReadCacheMeta(key, staleAfterMs);
+  return meta ? meta.value : null;
+}
+
+function safeWriteCache(key, value, ttlMs) {
+  try {
+    const payload = {
+      writtenAt: Date.now(),
+      lastAccessAt: Date.now(),
+      expiresAt: Date.now() + ttlMs,
+      value,
+    };
+    window.localStorage.setItem(key, JSON.stringify(payload));
+    runCacheLruCleanup();
+  } catch {
+    // Ignore quota/serialization errors to keep app functional.
+  }
+}
+
+function runCacheLruCleanup() {
+  try {
+    const entries = [];
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (!key || !key.startsWith(CACHE_PREFIX)) continue;
+      if (key.endsWith(":migration:done")) continue;
+      try {
+        const raw = window.localStorage.getItem(key);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        const lastAccessAt = Number(parsed?.lastAccessAt || 0);
+        const writtenAt = Number(parsed?.writtenAt || 0);
+        entries.push({ key, ts: lastAccessAt || writtenAt || 0 });
+      } catch {
+        // ignore malformed cache row
       }
     }
-  }
-}`;
-
-const USER_QUERY = `
-query ($name: String!) {
-  User(name: $name) {
-    id
-    name
-    avatar { large medium }
-    bannerImage
-    statistics {
-      anime { count meanScore minutesWatched episodesWatched }
-      manga { count meanScore chaptersRead volumesRead }
+    if (entries.length <= CACHE_MAX_ENTRIES) return;
+    entries.sort((a, b) => a.ts - b.ts);
+    const toDelete = entries.length - CACHE_MAX_ENTRIES;
+    for (let i = 0; i < toDelete; i += 1) {
+      window.localStorage.removeItem(entries[i].key);
     }
+  } catch {
+    // ignore cleanup failures
   }
-}`;
+}
 
-const LIST_ACTIVITY_QUERY = `
-query ($userId: Int!, $type: ActivityType!, $page: Int!, $perPage: Int!) {
-  Page(page: $page, perPage: $perPage) {
-    pageInfo {
-      currentPage
-      hasNextPage
-    }
-    activities(userId: $userId, type: $type, sort: ID_DESC) {
-      ... on ListActivity {
-        id
-        status
-        progress
-        createdAt
-        media {
-          id
-          duration
-        }
+const normalizeName = (name) => String(name || "").trim().toLowerCase();
+const profileUserCacheKey = (name) => `${CACHE_PREFIX}:profile:user:${normalizeName(name)}`;
+const profileAnimeCacheKey = (name) => `${CACHE_PREFIX}:profile:anime:${normalizeName(name)}`;
+const profileMangaCacheKey = (name) => `${CACHE_PREFIX}:profile:manga:${normalizeName(name)}`;
+const legacyProfileCacheKey = (name) => `${LEGACY_CACHE_PREFIXES[0]}:profile:${normalizeName(name)}`;
+const activityCacheKey = (userId, type, year) => `${CACHE_PREFIX}:acts:${userId}:${type}:${year}`;
+
+function getActivityTtlMs(yearValue) {
+  const currentYear = new Date().getFullYear();
+  return yearValue === currentYear ? ACTIVITY_CURRENT_YEAR_TTL_MS : ACTIVITY_PAST_YEAR_TTL_MS;
+}
+
+function runCacheMigrationOnce() {
+  const marker = `${CACHE_PREFIX}:migration:done`;
+  try {
+    if (window.localStorage.getItem(marker) === "1") return;
+    for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
+      const key = window.localStorage.key(i);
+      if (!key) continue;
+      if (LEGACY_CACHE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+        window.localStorage.removeItem(key);
       }
     }
+    window.localStorage.setItem(marker, "1");
+  } catch {
+    // Keep app functional even if migration cannot run.
   }
-}`;
+}
 
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-async function fetchAL(query, variables, retries = 1) {
-  let lastErr = null;
-  for (let attempt = 0; attempt <= retries; attempt += 1) {
+async function fetchActivitiesWithRetry(userId, type, year, signal) {
+  const maxExtraRetries = 2;
+  let attempt = 0;
+  while (true) {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     try {
-      const res = await fetch(ANILIST_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, variables }),
-      });
-
-      if (!res.ok) {
-        const isRetryable = res.status === 429 || res.status >= 500;
-        if (isRetryable && attempt < retries) {
-          await sleep(350 * (attempt + 1));
-          continue;
-        }
-        throw new Error(res.status === 429 ? "Rate limit AniList atteint, réessaie dans quelques secondes." : `HTTP ${res.status}`);
-      }
-
-      const json = await res.json();
-      if (json.errors) throw new Error(json.errors.map(e => e.message).join(", "));
-      return json.data;
+      return await fetchListActivitiesForYear(userId, type, year, { signal });
     } catch (err) {
-      lastErr = err;
-      if (attempt < retries) await sleep(350 * (attempt + 1));
+      if (err?.name === "AbortError") throw err;
+      const msg = String(err?.message || "");
+      const retryable = msg.includes("Rate limit") || msg.includes("429");
+      if (!retryable || attempt >= maxExtraRetries) throw err;
+      attempt += 1;
+      await sleep(1500 * Math.pow(2, attempt), signal);
     }
   }
-  throw lastErr || new Error("Erreur réseau AniList");
-}
-
-const isInYear = (e, y) => e.updatedAt && new Date(e.updatedAt * 1000).getFullYear() === y;
-const isInMonth = (e, m) => {
-  if (!e.updatedAt) return false;
-  return new Date(e.updatedAt * 1000).getMonth() + 1 === m;
-};
-const completedInYear = (e, y) => e.completedAt?.year === y;
-const startedInYear = (e, y) => e.startedAt?.year === y;
-const completedInMonth = (e, m) => e.completedAt?.month === m;
-const startedInMonth = (e, m) => e.startedAt?.month === m;
-
-function fmtMin(min) {
-  if (!min || min <= 0) return "0h";
-  const d = Math.floor(min / 1440), h = Math.floor((min % 1440) / 60), m = min % 60;
-  if (d > 0) return `${d}j ${h}h ${m}m`;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
-}
-
-const MONTHS = ["Jan","Fév","Mar","Avr","Mai","Jun","Jul","Aoû","Sep","Oct","Nov","Déc"];
-const STATUS_LABELS = {
-  COMPLETED:"Terminé", CURRENT:"En cours", PAUSED:"En pause",
-  DROPPED:"Abandonné", PLANNING:"Planifié", REPEATING:"Rewatch"
-};
-const STATUS_COLORS = {
-  COMPLETED: C.green, CURRENT: C.accent, PAUSED: C.orange,
-  DROPPED: C.red, PLANNING: C.textDim, REPEATING: C.purple,
-};
-
-const getProgressNumber = (progressRaw) => {
-  if (progressRaw === null || progressRaw === undefined) return 0;
-  const nums = String(progressRaw).match(/\d+/g);
-  if (!nums || nums.length === 0) return 0;
-  return Math.max(...nums.map(n => Number(n) || 0));
-};
-
-const getStartEndTsForYear = (y) => {
-  const start = new Date(y, 0, 1, 0, 0, 0, 0).getTime() / 1000;
-  const end = new Date(y + 1, 0, 1, 0, 0, 0, 0).getTime() / 1000;
-  return { start, end };
-};
-
-async function fetchListActivitiesForYear(userId, type, year) {
-  const { start } = getStartEndTsForYear(year);
-  const perPage = 50;
-  let page = 1;
-  let hasNextPage = true;
-  const all = [];
-  while (hasNextPage) {
-    const data = await fetchAL(LIST_ACTIVITY_QUERY, { userId, type, page, perPage });
-    const block = data?.Page;
-    const items = block?.activities || [];
-    all.push(...items.filter(Boolean));
-    hasNextPage = Boolean(block?.pageInfo?.hasNextPage);
-    const oldestInPage = items.reduce((minTs, item) => Math.min(minTs, item?.createdAt || Number.MAX_SAFE_INTEGER), Number.MAX_SAFE_INTEGER);
-    if (oldestInPage < start) break;
-    page += 1;
-    // Safety cap + tiny delay to stay under AniList limits.
-    if (page > 12) break;
-    await sleep(120);
-  }
-  return all;
-}
-
-function computeYearlyDeltasFromActivities(activities, year) {
-  const { start, end } = getStartEndTsForYear(year);
-  const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  const lastByMedia = new Map();
-  let total = 0;
-
-  chronological.forEach((a) => {
-    const mediaId = a?.media?.id;
-    if (!mediaId) return;
-    const current = getProgressNumber(a.progress);
-    const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-    const delta = Math.max(0, current - prev);
-    const ts = a.createdAt || 0;
-    if (ts >= start && ts < end) total += delta;
-    lastByMedia.set(mediaId, current);
-  });
-
-  return total;
-}
-
-function computeYearlyAnimeActivityTotals(activities, year) {
-  const { start, end } = getStartEndTsForYear(year);
-  const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  const lastByMedia = new Map();
-  let episodes = 0;
-  let minutes = 0;
-
-  chronological.forEach((a) => {
-    const mediaId = a?.media?.id;
-    if (!mediaId) return;
-    const current = getProgressNumber(a.progress);
-    const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-    const delta = Math.max(0, current - prev);
-    const ts = a.createdAt || 0;
-    if (ts >= start && ts < end) {
-      episodes += delta;
-      minutes += delta * (a?.media?.duration || 24);
-    }
-    lastByMedia.set(mediaId, current);
-  });
-
-  return { episodes, minutes };
-}
-
-function isTsInPeriod(ts, year, month) {
-  if (!ts) return false;
-  const d = new Date(ts * 1000);
-  const inYear = d.getFullYear() === year;
-  if (!inYear) return false;
-  return month === 0 ? true : d.getMonth() + 1 === month;
-}
-
-function computePeriodDeltaFromActivities(activities, year, month) {
-  const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  const lastByMedia = new Map();
-  let total = 0;
-
-  chronological.forEach((a) => {
-    const mediaId = a?.media?.id;
-    if (!mediaId) return;
-    const current = getProgressNumber(a.progress);
-    const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-    const delta = Math.max(0, current - prev);
-    if (isTsInPeriod(a.createdAt || 0, year, month)) total += delta;
-    lastByMedia.set(mediaId, current);
-  });
-
-  return total;
-}
-
-function computePeriodAnimeActivityTotals(activities, year, month) {
-  const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  const lastByMedia = new Map();
-  let episodes = 0;
-  let minutes = 0;
-
-  chronological.forEach((a) => {
-    const mediaId = a?.media?.id;
-    if (!mediaId) return;
-    const current = getProgressNumber(a.progress);
-    const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-    const delta = Math.max(0, current - prev);
-    if (isTsInPeriod(a.createdAt || 0, year, month)) {
-      episodes += delta;
-      minutes += delta * (a?.media?.duration || 24);
-    }
-    lastByMedia.set(mediaId, current);
-  });
-
-  return { episodes, minutes };
-}
-
-function computeMonthlyDeltasFromActivities(activities, year) {
-  const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  const lastByMedia = new Map();
-  const monthly = {};
-
-  chronological.forEach((a) => {
-    const mediaId = a?.media?.id;
-    if (!mediaId || !a.createdAt) return;
-    const current = getProgressNumber(a.progress);
-    const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-    const delta = Math.max(0, current - prev);
-    const d = new Date(a.createdAt * 1000);
-    if (d.getFullYear() === year) {
-      const m = d.getMonth() + 1;
-      monthly[m] = (monthly[m] || 0) + delta;
-    }
-    lastByMedia.set(mediaId, current);
-  });
-
-  return monthly;
-}
-
-function StatCard({ label, value, sub, icon }) {
-  return (
-    <div className="stat-card">
-      <div style={{fontSize:11, color:C.textMuted, textTransform:"uppercase", letterSpacing:1.2, fontWeight:600}}>
-        {icon && <span style={{marginRight:6}}>{icon}</span>}{label}
-      </div>
-      <div style={{fontSize:28, fontWeight:700, color:C.text, lineHeight:1.2}}>{value}</div>
-      {sub && <div style={{fontSize:12, color:C.textDim, marginTop:2}}>{sub}</div>}
-    </div>
-  );
-}
-
-function ChartCard({ title, children, style }) {
-  return (
-    <div className="chart-card" style={style}>
-      <div style={{fontSize:13, fontWeight:600, color:C.textMuted, marginBottom:16, textTransform:"uppercase", letterSpacing:0.8}}>{title}</div>
-      {children}
-    </div>
-  );
-}
-
-function MediaCard({ entry, type }) {
-  const m = entry.media;
-  const title = m.title.english || m.title.romaji;
-  const prog = type === "ANIME"
-    ? `${entry.progress||0}/${m.episodes||"?"} ep`
-    : `${entry.progress||0}/${m.chapters||"?"} ch`;
-  return (
-    <div className="media-card">
-      <div style={{position:"relative", width:"100%", height:210, overflow:"hidden"}}>
-        <img src={m.coverImage?.large||m.coverImage?.medium} alt={title}
-          style={{width:"100%",height:"100%",objectFit:"cover"}} />
-        <div style={{
-          position:"absolute",top:8,left:8,
-          background:STATUS_COLORS[entry.status]||C.accent,
-          color:"#fff",fontSize:10,fontWeight:700,
-          padding:"3px 8px",borderRadius:4,
-          textTransform:"uppercase",letterSpacing:0.5
-        }}>{STATUS_LABELS[entry.status]||entry.status}</div>
-        {entry.score > 0 && (
-          <div style={{
-            position:"absolute",bottom:8,right:8,
-            background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",
-            color:C.yellow,fontSize:13,fontWeight:700,
-            padding:"3px 8px",borderRadius:4
-          }}>★ {entry.score}</div>
-        )}
-      </div>
-      <div style={{padding:"10px 10px 12px"}}>
-        <div style={{
-          fontSize:13,fontWeight:600,color:C.text,
-          overflow:"hidden",textOverflow:"ellipsis",
-          display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",
-          lineHeight:1.3,minHeight:34
-        }}>{title}</div>
-        <div style={{fontSize:11,color:C.textMuted,marginTop:6}}>{prog}</div>
-      </div>
-    </div>
-  );
-}
-
-function CTooltip({ active, payload, label }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div style={{background:C.cardBg, border:`1px solid ${C.border}`, borderRadius:8, padding:"10px 14px", fontSize:13}}>
-      <div style={{color:C.text,fontWeight:600,marginBottom:4}}>{label}</div>
-      {payload.map((p,i) => (
-        <div key={i} style={{color:p.color||C.accent}}>{p.name}: {p.value}</div>
-      ))}
-    </div>
-  );
 }
 
 function App() {
@@ -383,33 +200,308 @@ function App() {
   const [animeActivityCache, setAnimeActivityCache] = useState({});
   const [mangaActivityCache, setMangaActivityCache] = useState({});
   const [loadingActivities, setLoadingActivities] = useState(false);
+  const [activityLoadingMessage, setActivityLoadingMessage] = useState("Chargement des activites...");
+  const [displayActivityLoadingMessage, setDisplayActivityLoadingMessage] = useState("Chargement des activites...");
+  const [activityWarning, setActivityWarning] = useState(null);
+  const [resourceStatus, setResourceStatus] = useState({});
+  const [rateLimitState, setRateLimitState] = useState(() => getRateLimitState());
+  const [proxyCacheStats, setProxyCacheStats] = useState(() => getProxyCacheStats());
+  const [showDevPanel, setShowDevPanel] = useState(false);
+  const [debugMetricsView, setDebugMetricsView] = useState(null);
+  const profileInFlightRef = useRef(new Map());
+  const activityInFlightRef = useRef(new Map());
+  const profileAbortRef = useRef(null);
+  const profileAbortKeyRef = useRef(null);
+  const activityCooldownRef = useRef(new Map());
+  const activityRetryCountRef = useRef(new Map());
+  const activityYearsInFlightRef = useRef(new Set());
+  const activityMissLogRef = useRef(new Set());
+  const loadingMessageTransitionRef = useRef(null);
+  const metricsRef = useRef({
+    cacheHit: 0,
+    cacheMiss: 0,
+    cacheWrite: 0,
+    rateLimitErrors: 0,
+    profileFetchCount: 0,
+    profileFetchTotalMs: 0,
+  });
 
-  const fetchData = useCallback(async (name) => {
-    setLoading(true); setError(null); setLoaded(false);
+  const setResource = useCallback((key, status, error = null) => {
+    setResourceStatus((prev) => ({
+      ...prev,
+      [key]: {
+        status,
+        error,
+        at: Date.now(),
+      },
+    }));
+  }, []);
+
+  useEffect(() => {
+    runCacheMigrationOnce();
+  }, []);
+
+  useEffect(() => {
+    if (!IS_DEV_LOCAL) return;
+    const entries = Object.entries(resourceStatus);
+    if (entries.length === 0) return;
+    const last = entries[entries.length - 1];
+    if (!last) return;
+    const [key, meta] = last;
+    devLog("resource", key, meta.status, meta.error || "");
+  }, [resourceStatus]);
+
+  const metricInc = useCallback((field, amount = 1) => {
+    metricsRef.current[field] = (metricsRef.current[field] || 0) + amount;
+  }, []);
+
+  const metricProfileFetchDuration = useCallback((ms) => {
+    metricsRef.current.profileFetchCount += 1;
+    metricsRef.current.profileFetchTotalMs += ms;
+  }, []);
+
+  useEffect(() => {
+    if (!IS_DEV_LOCAL) return;
+    window.AniListStatDebug = {
+      getMetrics: () => {
+        const m = metricsRef.current;
+        const avgProfileFetchMs = m.profileFetchCount > 0
+          ? Math.round(m.profileFetchTotalMs / m.profileFetchCount)
+          : 0;
+        return { ...m, avgProfileFetchMs };
+      },
+      resetMetrics: () => {
+        metricsRef.current = {
+          cacheHit: 0,
+          cacheMiss: 0,
+          cacheWrite: 0,
+          rateLimitErrors: 0,
+          profileFetchCount: 0,
+          profileFetchTotalMs: 0,
+        };
+      },
+      getProxyCacheStats: () => getProxyCacheStats(),
+    };
+    return () => {
+      delete window.AniListStatDebug;
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeRateLimit((state) => setRateLimitState(state));
+    return () => unsubscribe();
+  }, []);
+  useEffect(() => {
+    const unsubscribe = subscribeProxyCache((state) => setProxyCacheStats(state));
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!loadingActivities) {
+      if (loadingMessageTransitionRef.current) clearTimeout(loadingMessageTransitionRef.current);
+      loadingMessageTransitionRef.current = null;
+      setDisplayActivityLoadingMessage(activityLoadingMessage);
+      return;
+    }
+    if (displayActivityLoadingMessage === activityLoadingMessage) return;
+    if (loadingMessageTransitionRef.current) clearTimeout(loadingMessageTransitionRef.current);
+    loadingMessageTransitionRef.current = setTimeout(() => {
+      setDisplayActivityLoadingMessage(activityLoadingMessage);
+      loadingMessageTransitionRef.current = null;
+    }, 200);
+  }, [activityLoadingMessage, displayActivityLoadingMessage, loadingActivities]);
+
+  useEffect(() => () => {
+    if (loadingMessageTransitionRef.current) clearTimeout(loadingMessageTransitionRef.current);
+  }, []);
+
+  const rateInfoLabel = useMemo(() => {
+    const blockedMs = rateLimitState?.blockedForMs || 0;
+    const etaMs = rateLimitState?.estimatedWaitMs || 0;
+    if (blockedMs > 0) {
+      const sec = Math.ceil(blockedMs / 1000);
+      return `attente estimee ~${sec}s (rate limit actif)`;
+    }
+    if (etaMs > 3000) {
+      const sec = Math.ceil(etaMs / 1000);
+      return `attente estimee ~${sec}s`;
+    }
+    return null;
+  }, [rateLimitState]);
+
+  const apiStatusBadge = useMemo(() => {
+    const blockedMs = rateLimitState?.blockedForMs || 0;
+    const queued = rateLimitState?.queued || 0;
+    const inFlight = rateLimitState?.inFlight || 0;
+    if (blockedMs > 0) {
+      return { label: `API en pause ${Math.ceil(blockedMs / 1000)}s`, color: C.orange };
+    }
+    if (queued > 0 || inFlight > 0) {
+      return { label: `API chargee (${queued + inFlight})`, color: C.accent };
+    }
+    return { label: "API OK", color: C.green };
+  }, [rateLimitState]);
+  const showApiBadge = IS_DEV_LOCAL || (rateLimitState?.blockedForMs || 0) > 0;
+
+  useEffect(() => {
+    if (!IS_DEV_LOCAL || !showDevPanel) return undefined;
+    const update = () => {
+      const getter = window.AniListStatDebug?.getMetrics;
+      if (typeof getter === "function") setDebugMetricsView(getter());
+    };
+    update();
+    const id = setInterval(update, 1200);
+    return () => clearInterval(id);
+  }, [showDevPanel]);
+
+  const fetchData = useCallback(async (name, options = {}) => {
+    const { forceNetwork = false, background = false } = options;
+    const normalized = normalizeName(name);
+    const profileKey = `profile:${normalized}`;
+    const activeProfileKey = profileAbortKeyRef.current;
+    const isUserSwitch = activeProfileKey && activeProfileKey !== profileKey;
+    if (isUserSwitch && !background) {
+      activityInFlightRef.current.clear();
+      activityCooldownRef.current.clear();
+      activityRetryCountRef.current.clear();
+      activityYearsInFlightRef.current.clear();
+      activityMissLogRef.current.clear();
+      setActivityWarning(null);
+      setLoadingActivities(false);
+    }
+    const cachedUserMeta = safeReadCacheMeta(profileUserCacheKey(normalized), PROFILE_SWR_STALE_MS);
+    const cachedAnimeMeta = safeReadCacheMeta(profileAnimeCacheKey(normalized), PROFILE_SWR_STALE_MS);
+    const cachedMangaMeta = safeReadCacheMeta(profileMangaCacheKey(normalized), PROFILE_SWR_STALE_MS);
+    const legacyProfile = safeReadCache(legacyProfileCacheKey(normalized), PROFILE_SWR_STALE_MS);
+    const isProfileStale = Boolean(
+      cachedUserMeta?.isStale || cachedAnimeMeta?.isStale || cachedMangaMeta?.isStale
+    );
+    const cachedProfile = (cachedUserMeta?.value && cachedAnimeMeta?.value && cachedMangaMeta?.value)
+      ? { user: cachedUserMeta.value, allAnime: cachedAnimeMeta.value, allManga: cachedMangaMeta.value }
+      : legacyProfile;
+
+    if (cachedProfile && !forceNetwork) {
+      devLog("profile hit", normalized);
+      metricInc("cacheHit");
+      setResource(profileKey, "success");
+      setError(null);
+      setLoaded(false);
+      setUser(cachedProfile.user || null);
+      setAllAnime(Array.isArray(cachedProfile.allAnime) ? cachedProfile.allAnime : []);
+      setAllManga(Array.isArray(cachedProfile.allManga) ? cachedProfile.allManga : []);
+      if (!background) {
+        setAnimeActivities([]);
+        setMangaActivities([]);
+        setAnimeActivityCache({});
+        setMangaActivityCache({});
+      }
+      setLoaded(true);
+      setLoading(false);
+      if (isProfileStale && !background) {
+        devLog("profile stale -> background refresh", normalized);
+        fetchData(name, { forceNetwork: true, background: true });
+      }
+      return;
+    }
+
+    devLog("profile miss", normalized);
+    metricInc("cacheMiss");
+    setResource(profileKey, "loading");
+    const existingReq = profileInFlightRef.current.get(profileKey);
+    if (existingReq) {
+      devLog("profile dedup", normalized);
+      try {
+        const { ud, ad, md } = await existingReq;
+        setUser(ud.User);
+        const aa = (ad.MediaListCollection?.lists||[]).flatMap(l => (l.entries||[]).map(e => ({...e, listName:l.name, listStatus:l.status})));
+        const am = (md.MediaListCollection?.lists||[]).flatMap(l => (l.entries||[]).map(e => ({...e, listName:l.name, listStatus:l.status})));
+        setAllAnime(aa);
+        setAllManga(am);
+        setAnimeActivities([]);
+        setMangaActivities([]);
+        setAnimeActivityCache({});
+        setMangaActivityCache({});
+        setLoaded(true);
+        setResource(profileKey, "success");
+      } catch (err) {
+        if (err?.name !== "AbortError") {
+          setError(err.message || "Erreur lors du chargement");
+          setResource(profileKey, "error", err.message || "Erreur profil");
+        }
+      }
+      return;
+    }
+    if (profileAbortRef.current && profileAbortKeyRef.current !== profileKey) profileAbortRef.current.abort();
+    const abortController = new AbortController();
+    profileAbortRef.current = abortController;
+    profileAbortKeyRef.current = profileKey;
+    if (!background) {
+      setLoading(true); setError(null); setLoaded(false);
+    } else {
+      setError(null);
+    }
+    const startedAt = performance.now();
     try {
-      const [ud, ad, md] = await Promise.all([
-        fetchAL(USER_QUERY, { name }),
-        fetchAL(MEDIA_LIST_QUERY, { userName: name, type: "ANIME" }),
-        fetchAL(MEDIA_LIST_QUERY, { userName: name, type: "MANGA" }),
-      ]);
+      const req = (async () => {
+        const ud = await fetchAL(USER_QUERY, { name }, { signal: abortController.signal });
+        await sleep(200, abortController.signal);
+        const ad = await fetchAL(
+          MEDIA_LIST_QUERY,
+          { userName: name, type: "ANIME" },
+          { signal: abortController.signal }
+        );
+        await sleep(200, abortController.signal);
+        const md = await fetchAL(
+          MEDIA_LIST_QUERY,
+          { userName: name, type: "MANGA" },
+          { signal: abortController.signal }
+        );
+        return { ud, ad, md };
+      })();
+      profileInFlightRef.current.set(profileKey, req);
+      const { ud, ad, md } = await req;
       setUser(ud.User);
       const aa = (ad.MediaListCollection?.lists||[]).flatMap(l => (l.entries||[]).map(e => ({...e, listName:l.name, listStatus:l.status})));
       const am = (md.MediaListCollection?.lists||[]).flatMap(l => (l.entries||[]).map(e => ({...e, listName:l.name, listStatus:l.status})));
       setAllAnime(aa);
       setAllManga(am);
-      setAnimeActivities([]);
-      setMangaActivities([]);
-      setAnimeActivityCache({});
-      setMangaActivityCache({});
+      if (!background) {
+        setAnimeActivities([]);
+        setMangaActivities([]);
+        setAnimeActivityCache({});
+        setMangaActivityCache({});
+      }
       setLoaded(true);
+      safeWriteCache(profileUserCacheKey(normalized), ud.User, PROFILE_USER_TTL_MS);
+      safeWriteCache(profileAnimeCacheKey(normalized), aa, PROFILE_LIST_TTL_MS);
+      safeWriteCache(profileMangaCacheKey(normalized), am, PROFILE_LIST_TTL_MS);
+      metricInc("cacheWrite", 3);
+      devLog("profile write", normalized);
+      setResource(profileKey, "success");
     } catch (err) {
-      setError(err.message || "Erreur lors du chargement");
+      if (err?.name === "AbortError") {
+        devLog("profile aborted", normalized);
+        return;
+      }
+      if (!background) {
+        setError(err.message || "Erreur lors du chargement");
+      }
+      setResource(profileKey, "error", err.message || "Erreur profil");
     } finally {
-      setLoading(false);
+      metricProfileFetchDuration(performance.now() - startedAt);
+      if (profileAbortRef.current === abortController) {
+        profileAbortRef.current = null;
+        profileAbortKeyRef.current = null;
+      }
+      profileInFlightRef.current.delete(profileKey);
+      if (!background) setLoading(false);
     }
-  }, []);
+  }, [metricInc, metricProfileFetchDuration, setResource]);
 
   useEffect(() => { fetchData("Kirikou"); }, []);
+  useEffect(() => () => {
+    if (profileAbortRef.current) profileAbortRef.current.abort();
+  }, []);
 
   const changeYear = (y) => setYear(y);
 
@@ -417,38 +509,311 @@ function App() {
     if (inputVal.trim()) fetchData(inputVal.trim());
   };
 
+  const retryYearNow = useCallback((targetYear) => {
+    if (!user?.id) return;
+    if (!targetYear || targetYear < 1970) return;
+    const aKey = `activity:${user.id}:ANIME_LIST:${targetYear}`;
+    const mKey = `activity:${user.id}:MANGA_LIST:${targetYear}`;
+    activityCooldownRef.current.delete(aKey);
+    activityCooldownRef.current.delete(mKey);
+    activityRetryCountRef.current.set(aKey, 0);
+    activityRetryCountRef.current.set(mKey, 0);
+    setActivityWarning(null);
+    setMangaActivityCache((prev) => {
+      if (!(targetYear in prev)) return prev;
+      const next = { ...prev };
+      delete next[targetYear];
+      return next;
+    });
+    setAnimeActivityCache((prev) => {
+      if (!(targetYear in prev)) return prev;
+      const next = { ...prev };
+      delete next[targetYear];
+      return next;
+    });
+  }, [user?.id]);
+
+  const handleRetryComparisonNow = useCallback(() => {
+    const compareYear = (month === 0 || month === 1) ? year - 1 : null;
+    if (!compareYear || compareYear < 1970) return;
+    retryYearNow(compareYear);
+  }, [month, retryYearNow, year]);
+
+  const prefetchYearActivities = useCallback(async (targetYear) => {
+    if (!user?.id || !targetYear || targetYear < 1970) return;
+    const aKey = `activity:${user.id}:ANIME_LIST:${targetYear}`;
+    const mKey = `activity:${user.id}:MANGA_LIST:${targetYear}`;
+    try {
+      const fetchOne = async (type) => {
+        const key = `activity:${user.id}:${type}:${targetYear}`;
+        let req = activityInFlightRef.current.get(key);
+        if (!req) {
+          setResource(key, "loading");
+          req = fetchActivitiesWithRetry(user.id, type, targetYear);
+          activityInFlightRef.current.set(key, req);
+        }
+        try {
+          return await req;
+        } finally {
+          activityInFlightRef.current.delete(key);
+        }
+      };
+      const aActs = await fetchOne("ANIME_LIST");
+      const mActs = await fetchOne("MANGA_LIST");
+      setAnimeActivityCache((prev) => ({ ...prev, [targetYear]: aActs }));
+      setMangaActivityCache((prev) => ({ ...prev, [targetYear]: mActs }));
+      safeWriteCache(activityCacheKey(user.id, "ANIME_LIST", targetYear), aActs, getActivityTtlMs(targetYear));
+      safeWriteCache(activityCacheKey(user.id, "MANGA_LIST", targetYear), mActs, getActivityTtlMs(targetYear));
+      setResource(aKey, "success");
+      setResource(mKey, "success");
+      metricInc("cacheWrite", 2);
+    } catch (err) {
+      if (err?.name === "AbortError") return;
+      const msg = err?.message || "Erreur activite";
+      setResource(aKey, "error", msg);
+      setResource(mKey, "error", msg);
+      if (String(msg).includes("Rate limit") || String(msg).includes("429")) metricInc("rateLimitErrors");
+    }
+  }, [metricInc, setResource, user?.id]);
+
   useEffect(() => {
     if (!user?.id || !year) return;
-    const cachedA = animeActivityCache[year];
-    const cachedM = mangaActivityCache[year];
-    if (cachedA && cachedM) {
-      setAnimeActivities(cachedA);
-      setMangaActivities(cachedM);
+
+    const yearsNeeded = new Set([year]);
+    if (month === 0 || month === 1) yearsNeeded.add(year - 1);
+    const scopeYears = [...yearsNeeded].filter((y) => y >= 1970);
+    const inFlightScopeYears = scopeYears.filter((y) => activityYearsInFlightRef.current.has(y));
+
+    const missing = [];
+    const staleYears = new Set();
+    let blockedByCooldown = 0;
+    [...yearsNeeded].forEach((y) => {
+      if (y < 1970) return;
+      const hasAnimeMem = Boolean(animeActivityCache[y]);
+      const hasMangaMem = Boolean(mangaActivityCache[y]);
+      const cachedAnimeMeta = hasAnimeMem ? null : safeReadCacheMeta(activityCacheKey(user.id, "ANIME_LIST", y), ACTIVITY_SWR_STALE_MS);
+      const cachedMangaMeta = hasMangaMem ? null : safeReadCacheMeta(activityCacheKey(user.id, "MANGA_LIST", y), ACTIVITY_SWR_STALE_MS);
+      const cachedAnime = cachedAnimeMeta?.value ?? null;
+      const cachedManga = cachedMangaMeta?.value ?? null;
+      if (!hasAnimeMem) {
+        if (cachedAnime) {
+          devLog("activity hit", `ANIME_LIST:${y}`);
+        } else {
+          const missKey = `ANIME_LIST:${y}`;
+          if (!activityMissLogRef.current.has(missKey)) {
+            devLog("activity miss", missKey);
+            activityMissLogRef.current.add(missKey);
+          }
+        }
+      }
+      if (!hasMangaMem) {
+        if (cachedManga) {
+          devLog("activity hit", `MANGA_LIST:${y}`);
+        } else {
+          const missKey = `MANGA_LIST:${y}`;
+          if (!activityMissLogRef.current.has(missKey)) {
+            devLog("activity miss", missKey);
+            activityMissLogRef.current.add(missKey);
+          }
+        }
+      }
+      if (!hasAnimeMem) metricInc(cachedAnime ? "cacheHit" : "cacheMiss");
+      if (!hasMangaMem) metricInc(cachedManga ? "cacheHit" : "cacheMiss");
+      if ((cachedAnimeMeta?.isStale || cachedMangaMeta?.isStale) && (cachedAnime || cachedManga)) {
+        staleYears.add(y);
+      }
+      if (hasAnimeMem || cachedAnime) setResource(`activity:${user.id}:ANIME_LIST:${y}`, "success");
+      if (hasMangaMem || cachedManga) setResource(`activity:${user.id}:MANGA_LIST:${y}`, "success");
+      if (!hasAnimeMem) {
+        if (cachedAnime) {
+          setAnimeActivityCache((prev) => (prev[y] ? prev : { ...prev, [y]: cachedAnime }));
+        }
+      }
+      if (!hasMangaMem) {
+        if (cachedManga) {
+          setMangaActivityCache((prev) => (prev[y] ? prev : { ...prev, [y]: cachedManga }));
+        }
+      }
+      const willHaveAnime = hasAnimeMem || Boolean(cachedAnime);
+      const willHaveManga = hasMangaMem || Boolean(cachedManga);
+      if (!willHaveAnime || !willHaveManga) {
+        if (activityYearsInFlightRef.current.has(y)) return;
+        const animeCoolKey = `activity:${user.id}:ANIME_LIST:${y}`;
+        const mangaCoolKey = `activity:${user.id}:MANGA_LIST:${y}`;
+        const now = Date.now();
+        const animeCooldownUntil = activityCooldownRef.current.get(animeCoolKey) || 0;
+        const mangaCooldownUntil = activityCooldownRef.current.get(mangaCoolKey) || 0;
+        if (animeCooldownUntil > now || mangaCooldownUntil > now) {
+          blockedByCooldown += 1;
+          return;
+        }
+        missing.push(y);
+      }
+    });
+
+    if (missing.length === 0) {
+      if (animeActivityCache[year] && mangaActivityCache[year]) {
+        setAnimeActivities(animeActivityCache[year]);
+        setMangaActivities(mangaActivityCache[year]);
+      }
+      if (inFlightScopeYears.length === 0) {
+        setLoadingActivities(false);
+      } else {
+        setLoadingActivities(true);
+        const inflightLabel = [...new Set(inFlightScopeYears)].sort((a, b) => b - a).join(", ");
+        setActivityLoadingMessage(`Chargement des activites ${inflightLabel}...`);
+      }
+      if (blockedByCooldown > 0) {
+        setActivityWarning("Certaines annees de comparaison sont temporairement en pause (rate limit). Reprise automatique apres cooldown.");
+      } else {
+        setActivityWarning(null);
+      }
+      if (staleYears.size > 0) {
+        const staleLabel = [...staleYears].sort((a, b) => b - a).join(", ");
+        setActivityWarning(`Actualisation en arriere-plan des activites ${staleLabel}...`);
+        const idle = window.requestIdleCallback
+          ? window.requestIdleCallback
+          : (cb) => setTimeout(cb, 1200);
+        idle(() => {
+          staleYears.forEach((y) => prefetchYearActivities(y));
+        });
+      }
+      return;
+    }
+
+    missing.sort((a, b) => {
+      if (a === year) return -1;
+      if (b === year) return 1;
+      return b - a;
+    });
+
+    const actionableMissing = missing.filter((y) => !activityYearsInFlightRef.current.has(y));
+    const yearsForMessage = actionableMissing.length > 0 ? actionableMissing : missing;
+    const compareYear = (month === 0 || month === 1) ? year - 1 : null;
+    const needsCurrent = missing.includes(year);
+    const needsCompareOnly =
+      !needsCurrent &&
+      compareYear !== null &&
+      yearsForMessage.length === 1 &&
+      yearsForMessage[0] === compareYear;
+    if (needsCompareOnly) {
+      setActivityLoadingMessage(`Chargement de l'annee de comparaison ${compareYear}...`);
+    } else {
+      const yearsLabel = [...new Set(yearsForMessage)].sort((a, b) => b - a).join(", ");
+      if (yearsLabel) {
+        setActivityLoadingMessage(`Chargement des activites ${yearsLabel}...`);
+      } else {
+        setActivityLoadingMessage("Chargement des activites...");
+      }
+    }
+
+    if (actionableMissing.length === 0) {
+      setLoadingActivities(inFlightScopeYears.length > 0 || missing.length > 0);
       return;
     }
 
     let cancelled = false;
+    const activityAbortController = new AbortController();
     setError(null);
+    setActivityWarning(null);
     setLoadingActivities(true);
     (async () => {
       try {
-        const aActs = await fetchListActivitiesForYear(user.id, "ANIME_LIST", year);
-        await sleep(250);
-        const mActs = await fetchListActivitiesForYear(user.id, "MANGA_LIST", year);
-        if (cancelled) return;
-        setAnimeActivityCache(prev => ({ ...prev, [year]: aActs }));
-        setMangaActivityCache(prev => ({ ...prev, [year]: mActs }));
-        setAnimeActivities(aActs);
-        setMangaActivities(mActs);
-      } catch (err) {
-        if (!cancelled) setError(err.message || "Erreur lors du chargement des activités");
+        for (const yf of actionableMissing) {
+          if (cancelled) return;
+          if (activityYearsInFlightRef.current.has(yf)) continue;
+          activityYearsInFlightRef.current.add(yf);
+          try {
+            const fetchActivity = async (type) => {
+              const key = `activity:${user.id}:${type}:${yf}`;
+              setResource(key, "loading");
+              let req = activityInFlightRef.current.get(key);
+              if (!req) {
+                req = fetchActivitiesWithRetry(user.id, type, yf, activityAbortController.signal);
+                activityInFlightRef.current.set(key, req);
+              } else {
+                devLog("activity dedup", `${type}:${yf}`);
+              }
+              try {
+                const data = await req;
+                setResource(key, "success");
+                return data;
+              } catch (err) {
+                if (err?.name === "AbortError") throw err;
+                setResource(key, "error", err.message || "Erreur activite");
+                throw err;
+              } finally {
+                activityInFlightRef.current.delete(key);
+              }
+            };
+
+            const aActs = await fetchActivity("ANIME_LIST");
+            await sleep(300, activityAbortController.signal);
+            const mActs = await fetchActivity("MANGA_LIST");
+            if (cancelled) return;
+            setAnimeActivityCache((prev) => ({ ...prev, [yf]: aActs }));
+            setMangaActivityCache((prev) => ({ ...prev, [yf]: mActs }));
+            safeWriteCache(activityCacheKey(user.id, "ANIME_LIST", yf), aActs, getActivityTtlMs(yf));
+            safeWriteCache(activityCacheKey(user.id, "MANGA_LIST", yf), mActs, getActivityTtlMs(yf));
+            metricInc("cacheWrite", 2);
+            devLog("activity write", `ANIME_LIST:${yf}`);
+            devLog("activity write", `MANGA_LIST:${yf}`);
+            activityMissLogRef.current.delete(`ANIME_LIST:${yf}`);
+            activityMissLogRef.current.delete(`MANGA_LIST:${yf}`);
+            activityRetryCountRef.current.delete(`activity:${user.id}:ANIME_LIST:${yf}`);
+            activityRetryCountRef.current.delete(`activity:${user.id}:MANGA_LIST:${yf}`);
+            activityCooldownRef.current.delete(`activity:${user.id}:ANIME_LIST:${yf}`);
+            activityCooldownRef.current.delete(`activity:${user.id}:MANGA_LIST:${yf}`);
+          } catch (err) {
+            if (err?.name === "AbortError") return;
+            if (!cancelled) {
+              const message = err.message || "Erreur lors du chargement des activites";
+              const isRateLimit = String(message).includes("Rate limit") || String(message).includes("429");
+              if (isRateLimit) metricInc("rateLimitErrors");
+              const animeFailKey = `activity:${user.id}:ANIME_LIST:${yf}`;
+              const mangaFailKey = `activity:${user.id}:MANGA_LIST:${yf}`;
+              if (isRateLimit) {
+                const prevAnimeCount = activityRetryCountRef.current.get(animeFailKey) || 0;
+                const prevMangaCount = activityRetryCountRef.current.get(mangaFailKey) || 0;
+                const nextCount = Math.max(prevAnimeCount, prevMangaCount) + 1;
+                activityRetryCountRef.current.set(animeFailKey, nextCount);
+                activityRetryCountRef.current.set(mangaFailKey, nextCount);
+                const cooldown = ACTIVITY_RATE_LIMIT_COOLDOWN_MS * nextCount;
+                activityCooldownRef.current.set(animeFailKey, Date.now() + cooldown);
+                activityCooldownRef.current.set(mangaFailKey, Date.now() + cooldown);
+              }
+              if (yf === year) {
+                setError(message);
+              } else {
+                setActivityWarning(`Comparaison ${yf} indisponible pour le moment (${message}).`);
+              }
+              const retryCount = activityRetryCountRef.current.get(animeFailKey) || 0;
+              if (isRateLimit && retryCount >= ACTIVITY_MAX_AUTO_RETRY) {
+                setActivityWarning(`Comparaison ${yf} en pause apres plusieurs rate limits. Reessaie en changeant de periode ou dans quelques minutes.`);
+              }
+            }
+            continue;
+          } finally {
+            activityYearsInFlightRef.current.delete(yf);
+          }
+        }
       } finally {
         if (!cancelled) setLoadingActivities(false);
       }
     })();
 
-    return () => { cancelled = true; };
-  }, [user?.id, year, animeActivityCache, mangaActivityCache]);
+    return () => {
+      cancelled = true;
+      activityAbortController.abort();
+    };
+  }, [user?.id, year, month, animeActivityCache, mangaActivityCache, metricInc, prefetchYearActivities, setResource]);
+
+  useEffect(() => {
+    if (animeActivityCache[year] && mangaActivityCache[year]) {
+      setAnimeActivities(animeActivityCache[year]);
+      setMangaActivities(mangaActivityCache[year]);
+    }
+  }, [year, animeActivityCache, mangaActivityCache]);
 
   const years = useMemo(() => {
     const nowYear = new Date().getFullYear();
@@ -458,7 +823,13 @@ function App() {
       if (e.startedAt?.year) ys.add(e.startedAt.year);
       if (e.completedAt?.year) ys.add(e.completedAt.year);
     });
-    return [...ys].sort((a, b) => b - a);
+    const arr = [...ys];
+    if (arr.length === 0) return [nowYear];
+    const minY = Math.min(...arr);
+    const maxY = Math.max(...arr);
+    const filled = new Set();
+    for (let y = minY; y <= maxY; y += 1) filled.add(y);
+    return [...filled].sort((a, b) => b - a);
   }, [allAnime, allManga]);
 
   useEffect(() => {
@@ -467,43 +838,79 @@ function App() {
     }
   }, [years, year]);
 
-  const isEntryInPeriod = useCallback((e, y, m) => {
-    const inYear =
-      isInYear(e, y) ||
-      completedInYear(e, y) ||
-      startedInYear(e, y);
-    if (!inYear) return false;
-    if (m === 0) return true;
-    return isInMonth(e, m) || completedInMonth(e, m) || startedInMonth(e, m);
+  useEffect(() => {
+    if (!user?.id || !loaded) return undefined;
+    const candidates = [year - 1, year + 1].filter((y) => years.includes(y) && y >= 1970);
+    if (candidates.length === 0) return undefined;
+    const idle = window.requestIdleCallback
+      ? window.requestIdleCallback
+      : (cb) => setTimeout(cb, 1800);
+    const cancelIdle = window.cancelIdleCallback
+      ? window.cancelIdleCallback
+      : (id) => clearTimeout(id);
+    const idleId = idle(() => {
+      candidates.forEach((y) => {
+        if (!animeActivityCache[y] || !mangaActivityCache[y]) prefetchYearActivities(y);
+      });
+    });
+    return () => cancelIdle(idleId);
+  }, [animeActivityCache, loaded, mangaActivityCache, prefetchYearActivities, user?.id, year, years]);
+
+  const mergedAnimeForTotals = useMemo(
+    () => mergeActivitiesForDelta(year, animeActivityCache),
+    [year, animeActivityCache]
+  );
+  const mergedMangaForTotals = useMemo(
+    () => mergeActivitiesForDelta(year, mangaActivityCache),
+    [year, mangaActivityCache]
+  );
+
+  const animeMediaIdsWithProgress = useMemo(
+    () => getMediaIdsWithProgressInPeriod(mergedAnimeForTotals, year, month),
+    [mergedAnimeForTotals, year, month]
+  );
+  const mangaMediaIdsWithProgress = useMemo(
+    () => getMediaIdsWithProgressInPeriod(mergedMangaForTotals, year, month),
+    [mergedMangaForTotals, year, month]
+  );
+
+  const isEntryInPeriod = useCallback((e, y, m, activeIds) => {
+    const mediaId = e?.media?.id;
+    const hasProgressInPeriod = Boolean(mediaId && activeIds?.has(mediaId));
+    const hasCompletedInPeriod = completedInYear(e, y) && (m === 0 || completedInMonth(e, y, m));
+    const hasStartedInPeriod = startedInYear(e, y) && (m === 0 || startedInMonth(e, y, m));
+    return hasProgressInPeriod || hasCompletedInPeriod || hasStartedInPeriod;
   }, []);
 
-  const animeEntries = useMemo(
-    () => allAnime.filter(e => isEntryInPeriod(e, year, month)),
-    [allAnime, isEntryInPeriod, year, month]
-  );
-  const mangaEntries = useMemo(
-    () => allManga.filter(e => isEntryInPeriod(e, year, month)),
-    [allManga, isEntryInPeriod, year, month]
-  );
+  const animeEntries = useMemo(() => {
+    const filtered = allAnime.filter((e) => isEntryInPeriod(e, year, month, animeMediaIdsWithProgress));
+    const out = dedupeEntriesByMedia(filtered);
+    return out.items;
+  }, [allAnime, animeMediaIdsWithProgress, isEntryInPeriod, year, month]);
+  const mangaEntries = useMemo(() => {
+    const filtered = allManga.filter((e) => isEntryInPeriod(e, year, month, mangaMediaIdsWithProgress));
+    const out = dedupeEntriesByMedia(filtered);
+    return out.items;
+  }, [allManga, mangaMediaIdsWithProgress, isEntryInPeriod, year, month]);
 
   // Computed
   const animeCompleted = useMemo(
-    () => animeEntries.filter(e => completedInYear(e, year) && (month === 0 || completedInMonth(e, month))),
+    () => animeEntries.filter(e => completedInYear(e, year) && (month === 0 || completedInMonth(e, year, month))),
     [animeEntries, year, month]
   );
   const mangaCompleted = useMemo(
-    () => mangaEntries.filter(e => completedInYear(e, year) && (month === 0 || completedInMonth(e, month))),
+    () => mangaEntries.filter(e => completedInYear(e, year) && (month === 0 || completedInMonth(e, year, month))),
     [mangaEntries, year, month]
   );
   const animeActivityTotals = useMemo(
-    () => computePeriodAnimeActivityTotals(animeActivities, year, month),
-    [animeActivities, year, month]
+    () => computePeriodAnimeActivityTotals(mergedAnimeForTotals, year, month),
+    [mergedAnimeForTotals, year, month]
   );
   const totalEp = animeActivityTotals.episodes;
   const totalMin = animeActivityTotals.minutes;
   const totalCh = useMemo(
-    () => computePeriodDeltaFromActivities(mangaActivities, year, month),
-    [mangaActivities, year, month]
+    () => computePeriodDeltaFromActivities(mergedMangaForTotals, year, month),
+    [mergedMangaForTotals, year, month]
   );
   const totalVol = useMemo(() => mangaEntries.reduce((s,e) => s + (e.progressVolumes||0), 0), [mangaEntries]);
   const scoredA = useMemo(() => animeEntries.filter(e => e.score > 0), [animeEntries]);
@@ -523,13 +930,59 @@ function App() {
     return Array.from({length:10},(_,i)=>({score:`${i+1}`,count:scoreDist[i+1]||0}));
   }, [scoredA, scoredM]);
 
-  const monthlyData = useMemo(() => {
-    const animeMonthly = computeMonthlyDeltasFromActivities(animeActivities, year);
-    const mangaMonthly = computeMonthlyDeltasFromActivities(mangaActivities, year);
-    return Array.from({length:12},(_,i)=>({
-      month:MONTHS[i], Anime:animeMonthly[i+1]||0, Manga:mangaMonthly[i+1]||0,
-    }));
-  }, [animeActivities, mangaActivities, year]);
+  const mangaChaptersChartData = useMemo(() => {
+    const { compareY, compareM } = getComparisonPeriodMeta(year, month);
+    const mergedCur = mergeActivitiesForDelta(year, mangaActivityCache);
+    const mergedComp = mergeActivitiesForDelta(compareY, mangaActivityCache);
+
+    if (month === 0) {
+      const curM = computeMonthlyDeltasFromActivities(mergedCur, year);
+      const prevM = computeMonthlyDeltasFromActivities(mergedComp, compareY);
+      return MONTHS.map((name, i) => ({
+        label: name,
+        current: curM[i + 1] || 0,
+        compare: prevM[i + 1] || 0,
+      }));
+    }
+    const curD = computeDailyDeltasInMonth(mergedCur, year, month);
+    const compD = computeDailyDeltasInMonth(mergedComp, compareY, compareM);
+    const dim = new Date(year, month, 0).getDate();
+    return Array.from({ length: dim }, (_, i) => {
+      const d = i + 1;
+      return {
+        label: String(d),
+        current: curD[d] || 0,
+        compare: compD[d] || 0,
+      };
+    });
+  }, [year, month, mangaActivityCache]);
+
+  const animeEpisodesChartData = useMemo(() => {
+    const { compareY, compareM } = getComparisonPeriodMeta(year, month);
+    const mergedCur = mergeActivitiesForDelta(year, animeActivityCache);
+    const mergedComp = mergeActivitiesForDelta(compareY, animeActivityCache);
+
+    if (month === 0) {
+      const curM = computeMonthlyDeltasFromActivities(mergedCur, year);
+      const prevM = computeMonthlyDeltasFromActivities(mergedComp, compareY);
+      return MONTHS.map((name, i) => ({
+        label: name,
+        current: curM[i + 1] || 0,
+        compare: prevM[i + 1] || 0,
+      }));
+    }
+    const curD = computeDailyDeltasInMonth(mergedCur, year, month);
+    const compD = computeDailyDeltasInMonth(mergedComp, compareY, compareM);
+    const dim = new Date(year, month, 0).getDate();
+    return Array.from({ length: dim }, (_, i) => {
+      const d = i + 1;
+      return {
+        label: String(d),
+        current: curD[d] || 0,
+        compare: compD[d] || 0,
+      };
+    });
+  }, [year, month, animeActivityCache]);
 
   const fmtData = useMemo(() => {
     const fmtCount = {};
@@ -557,6 +1010,21 @@ function App() {
     [mangaEntries]
   );
 
+  const topA = useMemo(
+    () => sortedA.filter((e) => e.status !== "PLANNING"),
+    [sortedA]
+  );
+  const topM = useMemo(
+    () => sortedM.filter((e) => e.status !== "PLANNING"),
+    [sortedM]
+  );
+
+  const activeDaysCount = useMemo(
+    () => countActiveCalendarDays(year, month, mergedAnimeForTotals, mergedMangaForTotals, animeEntries, mangaEntries),
+    [year, month, mergedAnimeForTotals, mergedMangaForTotals, animeEntries, mangaEntries]
+  );
+  const periodDayTotal = useMemo(() => getPeriodDayTotal(year, month), [year, month]);
+
   const tabs = [
     {key:"overview",label:"Vue d'ensemble"},
     {key:"anime",label:`Anime (${animeEntries.length})`},
@@ -565,6 +1033,27 @@ function App() {
   ];
 
   const periodLabel = month === 0 ? `${year}` : `${MONTHS[month - 1]} ${year}`;
+  const chartPeriodLegend = useMemo(() => getComparisonPeriodMeta(year, month), [year, month]);
+  const compareAvailability = useMemo(() => {
+    const compareY = chartPeriodLegend?.compareY;
+    const compareMissing = compareY && (!animeActivityCache[compareY] || !mangaActivityCache[compareY]);
+    return {
+      missing: Boolean(compareMissing),
+      label: compareY ? `Comparaison ${compareY} temporairement indisponible` : "Comparaison temporairement indisponible",
+    };
+  }, [animeActivityCache, chartPeriodLegend, mangaActivityCache]);
+  const retryableYears = useMemo(() => {
+    if (!user?.id) return [];
+    const prefix = `activity:${user.id}:`;
+    const yearsSet = new Set();
+    Object.entries(resourceStatus).forEach(([k, meta]) => {
+      if (!k.startsWith(prefix) || meta?.status !== "error") return;
+      const parts = k.split(":");
+      const y = Number(parts[parts.length - 1]);
+      if (!Number.isNaN(y) && y >= 1970) yearsSet.add(y);
+    });
+    return [...yearsSet].sort((a, b) => b - a);
+  }, [resourceStatus, user?.id]);
 
   return (
     <div style={{background:C.bg, minHeight:"100vh", color:C.text, fontFamily:"'Overpass',sans-serif"}}>
@@ -577,10 +1066,9 @@ function App() {
         padding:"32px 24px 24px", borderBottom:`1px solid ${C.border}`,
       }}>
         <div style={{maxWidth:1100,margin:"0 auto"}}>
-          {/* Search */}
-          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24,flexWrap:"wrap"}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18,flexWrap:"wrap"}}>
             <div style={{fontSize:24,fontWeight:900,color:C.accent,letterSpacing:-0.5,flexShrink:0}}>AL</div>
-            <div style={{display:"flex",flex:"1 1 300px",maxWidth:400}}>
+            <div style={{display:"flex",flex:"1 1 280px",maxWidth:440,minWidth:0}}>
               <input value={inputVal} onChange={e=>setInputVal(e.target.value)}
                 onKeyDown={e=>e.key==="Enter"&&handleSubmit()}
                 placeholder="Nom d'utilisateur AniList"
@@ -595,30 +1083,68 @@ function App() {
                 fontWeight:700,fontSize:14,fontFamily:"inherit",
               }}>Charger</button>
             </div>
-            {/* Year selector */}
-            <div style={{display:"flex",gap:6,marginLeft:"auto",flexWrap:"wrap",justifyContent:"flex-end"}}>
-              {years.map(y => (
-                <button key={y} className={`year-btn ${y===year?"active":""}`}
-                  onClick={()=>changeYear(y)}>{y}</button>
-              ))}
+            {showApiBadge && (
+              <div style={{
+                marginLeft: "auto",
+                background: "rgba(255,255,255,0.03)",
+                border: `1px solid ${C.border}`,
+                borderRadius: 999,
+                padding: "6px 10px",
+                fontSize: 12,
+                color: apiStatusBadge.color,
+                fontWeight: 700
+              }}>
+                {apiStatusBadge.label}
+              </div>
+            )}
+            {IS_DEV_LOCAL && (
+              <button
+                type="button"
+                onClick={() => setShowDevPanel((v) => !v)}
+                style={{
+                  background: "transparent",
+                  border: `1px solid ${C.border}`,
+                  color: C.textMuted,
+                  borderRadius: 8,
+                  padding: "6px 10px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer"
+                }}
+              >
+                {showDevPanel ? "Masquer debug" : "Afficher debug"}
+              </button>
+            )}
+          </div>
+
+          <div className="period-panel">
+            <div className="period-panel-title">Période d'analyse</div>
+            <div className="period-section">
+              <span className="period-label">Année</span>
+              <div className="period-pills period-pills--years">
+                {years.map(y => (
+                  <button key={y} type="button" className={`period-pill ${y===year?"active":""}`}
+                    onClick={()=>changeYear(y)}>{y}</button>
+                ))}
+              </div>
             </div>
-            {/* Month selector */}
-            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              <button className={`year-btn ${month===0?"active":""}`} onClick={() => setMonth(0)}>Toute l'année</button>
-              {MONTHS.map((m, idx) => (
-                <button key={m} className={`year-btn ${month===idx+1?"active":""}`} onClick={() => setMonth(idx+1)}>{m}</button>
-              ))}
+            <div className="period-divider" />
+            <div className="period-section">
+              <span className="period-label">Mois</span>
+              <div className="period-pills period-pills--months">
+                <button type="button" className={`period-pill period-pill--wide ${month===0?"active":""}`} onClick={() => setMonth(0)}>Toute l'année</button>
+                {MONTHS.map((m, idx) => (
+                  <button key={m} type="button" className={`period-pill ${month===idx+1?"active":""}`} onClick={() => setMonth(idx+1)}>{m}</button>
+                ))}
+              </div>
             </div>
           </div>
-          {/* User */}
+
           {user && (
-            <div className="fade-in" style={{display:"flex",alignItems:"center",gap:16}}>
+            <div className="fade-in" style={{display:"flex",alignItems:"center",gap:16,marginTop:4}}>
               <img src={user.avatar?.large||user.avatar?.medium} alt={user.name}
-                style={{width:64,height:64,borderRadius:12,border:`2px solid ${C.accent}`}} />
-              <div>
-                <div style={{fontSize:24,fontWeight:800}}>{user.name}</div>
-                <div style={{fontSize:13,color:C.textMuted,marginTop:2}}>Activité anime & manga — {periodLabel}</div>
-              </div>
+                style={{width:64,height:64,borderRadius:12,border:`2px solid ${C.accent}`,flexShrink:0}} />
+              <div style={{fontSize:24,fontWeight:800,lineHeight:1.2,display:"flex",alignItems:"center",minHeight:64}}>{user.name}</div>
             </div>
           )}
         </div>
@@ -640,8 +1166,100 @@ function App() {
         )}
 
         {loaded && !loading && loadingActivities && (
-          <div style={{marginTop:24,color:C.textMuted,fontSize:13}}>
-            Chargement des activités détaillées ({periodLabel})...
+          <div style={{marginTop:24,color:C.textMuted,fontSize:13,display:"inline-flex",alignItems:"center",gap:10}}>
+            <span>
+              {displayActivityLoadingMessage || activityLoadingMessage}
+              {rateInfoLabel ? ` (${rateInfoLabel})` : ""}
+            </span>
+            <span
+              aria-hidden="true"
+              style={{
+                width: 14,
+                height: 14,
+                border: `2px solid ${C.border}`,
+                borderTop: `2px solid ${C.accent}`,
+                borderRadius: "50%",
+                animation: "spin 0.8s linear infinite"
+              }}
+            />
+          </div>
+        )}
+
+        {loaded && !loading && activityWarning && !loadingActivities && (
+          <div style={{marginTop:12,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+            <div style={{color:C.orange,fontSize:12}}>
+              {activityWarning}
+            </div>
+            <button
+              type="button"
+              onClick={handleRetryComparisonNow}
+              style={{
+                background: "transparent",
+                color: C.accent,
+                border: `1px solid ${C.accent}`,
+                borderRadius: 8,
+                padding: "6px 10px",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
+              Reessayer la comparaison maintenant
+            </button>
+            {retryableYears.map((yy) => (
+              <button
+                key={`retry-year-${yy}`}
+                type="button"
+                onClick={() => retryYearNow(yy)}
+                style={{
+                  background: "transparent",
+                  color: C.text,
+                  border: `1px solid ${C.border}`,
+                  borderRadius: 8,
+                  padding: "6px 10px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: "pointer"
+                }}
+              >
+                Reessayer {yy}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {loaded && !loading && IS_DEV_LOCAL && showDevPanel && (
+          <div style={{marginTop:12,background:C.cardBg,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:12,color:C.textMuted,display:"flex",gap:16,flexWrap:"wrap"}}>
+            <span>cache hit: {debugMetricsView?.cacheHit ?? 0}</span>
+            <span>cache miss: {debugMetricsView?.cacheMiss ?? 0}</span>
+            <span>cache write: {debugMetricsView?.cacheWrite ?? 0}</span>
+            <span>rate-limit: {debugMetricsView?.rateLimitErrors ?? 0}</span>
+            <span>avg profile fetch: {debugMetricsView?.avgProfileFetchMs ?? 0}ms</span>
+            <span>proxy hit: {proxyCacheStats?.hit ?? 0}</span>
+            <span>proxy miss: {proxyCacheStats?.miss ?? 0}</span>
+            <span>proxy bypass: {proxyCacheStats?.bypass ?? 0}</span>
+            <button
+              type="button"
+              onClick={() => {
+                const reset = window.AniListStatDebug?.resetMetrics;
+                if (typeof reset === "function") reset();
+                const getter = window.AniListStatDebug?.getMetrics;
+                if (typeof getter === "function") setDebugMetricsView(getter());
+              }}
+              style={{
+                marginLeft: "auto",
+                background: "transparent",
+                color: C.accent,
+                border: `1px solid ${C.accent}`,
+                borderRadius: 6,
+                padding: "4px 8px",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
+              Reset metrics
+            </button>
           </div>
         )}
 
@@ -659,55 +1277,135 @@ function App() {
             {tab==="overview" && (
               <div style={{display:"flex",flexDirection:"column",gap:24}}>
                 <div className="fade-in" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(170px, 1fr))",gap:14}}>
-                  <StatCard icon="🎬" label="Anime" value={animeEntries.length} sub={`${animeCompleted.length} terminé(s)`} />
-                  <StatCard icon="📺" label="Épisodes" value={totalEp} sub={`≈ ${fmtMin(totalMin)}`} />
-                  <StatCard icon="⭐" label="Score anime" value={avgA} sub={`sur ${scoredA.length} notés`} />
-                  <StatCard icon="📖" label="Manga" value={mangaEntries.length} sub={`${mangaCompleted.length} terminé(s)`} />
-                  <StatCard icon="📄" label="Chapitres" value={totalCh} sub={`${totalVol} volumes`} />
-                  <StatCard icon="⭐" label="Score manga" value={avgM} sub={`sur ${scoredM.length} notés`} />
+                  <StatCard label="Épisodes" value={totalEp} sub={`≈ ${fmtMin(totalMin)}`} />
+                  <StatCard label="Score anime" value={avgA} sub={`sur ${scoredA.length} notés`} />
+                  <StatCard label="Chapitres" value={totalCh} sub={`${totalVol} volumes`} />
+                  <StatCard label="Score manga" value={avgM} sub={`sur ${scoredM.length} notés`} />
+                  <StatCard label="Jours actifs" value={`${activeDaysCount} / ${periodDayTotal}`} sub="jours uniques avec activité sur la période" />
                 </div>
 
-                <div className="fade-in fade-in-delay-1">
-                  <ChartCard title="Activité mensuelle">
-                    <ResponsiveContainer width="100%" height={220}>
-                      <AreaChart data={monthlyData}>
-                        <defs>
-                          <linearGradient id="gA" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={C.accent} stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor={C.accent} stopOpacity={0}/>
-                          </linearGradient>
-                          <linearGradient id="gM" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor={C.pink} stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor={C.pink} stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <XAxis dataKey="month" tick={{fill:C.textDim,fontSize:12}} axisLine={false} tickLine={false}/>
-                        <YAxis tick={{fill:C.textDim,fontSize:12}} axisLine={false} tickLine={false} allowDecimals={false}/>
-                        <Tooltip content={<CTooltip/>}/>
-                        <Area type="monotone" dataKey="Anime" stroke={C.accent} fill="url(#gA)" strokeWidth={2}/>
-                        <Area type="monotone" dataKey="Manga" stroke={C.pink} fill="url(#gM)" strokeWidth={2}/>
-                      </AreaChart>
+                <div className="fade-in fade-in-delay-1" style={{display:"flex",flexDirection:"column",gap:20}}>
+                  <ChartCard title="Chapitres lus">
+                    <PeriodCompareLegend
+                      legendCurrent={chartPeriodLegend.legendCurrent}
+                      legendCompare={chartPeriodLegend.legendCompare}
+                    />
+                    {compareAvailability.missing && (
+                      <div style={{ color: C.orange, fontSize: 12, marginBottom: 8 }}>
+                        {compareAvailability.label}
+                      </div>
+                    )}
+                    <ResponsiveContainer width="100%" height={240}>
+                      <LineChart data={mangaChaptersChartData} margin={{ top: 26, right: 10, left: 0, bottom: 4 }}>
+                        <XAxis dataKey="label" tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} interval={month === 0 ? 0 : "preserveStartEnd"} />
+                        <YAxis tick={{ fill: C.textDim, fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} width={36} />
+                        <Tooltip content={(props) => <CompareLineTooltip {...props} year={year} month={month} />} />
+                        <Line
+                          type="monotone"
+                          dataKey="current"
+                          stroke={C.accent}
+                          strokeWidth={2}
+                          dot={{
+                            r: 5,
+                            fill: "rgba(61, 180, 242, 0.72)",
+                            stroke: "rgba(11, 22, 34, 0.45)",
+                            strokeWidth: 1,
+                          }}
+                          activeDot={{ r: 6, fill: "rgba(61, 180, 242, 0.9)" }}
+                          isAnimationActive={false}
+                        >
+                          <LabelList
+                            dataKey="current"
+                            position="top"
+                            offset={8}
+                            fill="#edf1f5"
+                            fontSize={month === 0 ? 11 : 10}
+                            fontWeight={600}
+                            formatter={(v) => (v != null && Number(v) > 0 ? String(v) : "")}
+                          />
+                        </Line>
+                        <Line
+                          type="monotone"
+                          dataKey="compare"
+                          stroke="#4a5d6e"
+                          strokeWidth={2}
+                          dot={false}
+                          activeDot={{ r: 4, fill: "#5a6d7e" }}
+                          isAnimationActive={false}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </ChartCard>
+                  <ChartCard title="Épisodes vus">
+                    <PeriodCompareLegend
+                      legendCurrent={chartPeriodLegend.legendCurrent}
+                      legendCompare={chartPeriodLegend.legendCompare}
+                    />
+                    {compareAvailability.missing && (
+                      <div style={{ color: C.orange, fontSize: 12, marginBottom: 8 }}>
+                        {compareAvailability.label}
+                      </div>
+                    )}
+                    <ResponsiveContainer width="100%" height={240}>
+                      <LineChart data={animeEpisodesChartData} margin={{ top: 26, right: 10, left: 0, bottom: 4 }}>
+                        <XAxis dataKey="label" tick={{ fill: C.textDim, fontSize: 11 }} axisLine={false} tickLine={false} interval={month === 0 ? 0 : "preserveStartEnd"} />
+                        <YAxis tick={{ fill: C.textDim, fontSize: 12 }} axisLine={false} tickLine={false} allowDecimals={false} width={36} />
+                        <Tooltip content={(props) => <CompareLineTooltip {...props} year={year} month={month} />} />
+                        <Line
+                          type="monotone"
+                          dataKey="current"
+                          stroke={C.accent}
+                          strokeWidth={2}
+                          dot={{
+                            r: 5,
+                            fill: "rgba(61, 180, 242, 0.72)",
+                            stroke: "rgba(11, 22, 34, 0.45)",
+                            strokeWidth: 1,
+                          }}
+                          activeDot={{ r: 6, fill: "rgba(61, 180, 242, 0.9)" }}
+                          isAnimationActive={false}
+                        >
+                          <LabelList
+                            dataKey="current"
+                            position="top"
+                            offset={8}
+                            fill="#edf1f5"
+                            fontSize={month === 0 ? 11 : 10}
+                            fontWeight={600}
+                            formatter={(v) => (v != null && Number(v) > 0 ? String(v) : "")}
+                          />
+                        </Line>
+                        <Line
+                          type="monotone"
+                          dataKey="compare"
+                          stroke="#4a5d6e"
+                          strokeWidth={2}
+                          dot={false}
+                          activeDot={{ r: 4, fill: "#5a6d7e" }}
+                          isAnimationActive={false}
+                        />
+                      </LineChart>
                     </ResponsiveContainer>
                   </ChartCard>
                 </div>
 
-                {sortedA.length > 0 && (
+                {topA.length > 0 && (
                   <div className="fade-in fade-in-delay-2">
                     <div style={{fontSize:14,fontWeight:600,color:C.textMuted,textTransform:"uppercase",letterSpacing:0.8,marginBottom:14}}>
                       Top Anime {periodLabel}
                     </div>
                     <div style={{display:"flex",gap:14,overflowX:"auto",paddingBottom:8}}>
-                      {sortedA.slice(0,10).map(e => <MediaCard key={e.id} entry={e} type="ANIME"/>)}
+                      {topA.slice(0,10).map(e => <MediaCard key={e.id} entry={e} type="ANIME"/>)}
                     </div>
                   </div>
                 )}
-                {sortedM.length > 0 && (
+                {topM.length > 0 && (
                   <div className="fade-in fade-in-delay-3">
                     <div style={{fontSize:14,fontWeight:600,color:C.textMuted,textTransform:"uppercase",letterSpacing:0.8,marginBottom:14}}>
                       Top Manga {periodLabel}
                     </div>
                     <div style={{display:"flex",gap:14,overflowX:"auto",paddingBottom:8}}>
-                      {sortedM.slice(0,10).map(e => <MediaCard key={e.id} entry={e} type="MANGA"/>)}
+                      {topM.slice(0,10).map(e => <MediaCard key={e.id} entry={e} type="MANGA"/>)}
                     </div>
                   </div>
                 )}
@@ -718,10 +1416,10 @@ function App() {
             {tab==="anime" && (
               <div style={{display:"flex",flexDirection:"column",gap:20}}>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(170px, 1fr))",gap:14}}>
-                  <StatCard icon="🎬" label="Total anime" value={animeEntries.length}/>
-                  <StatCard icon="✅" label="Terminés" value={animeCompleted.length}/>
-                  <StatCard icon="📺" label="Épisodes" value={totalEp}/>
-                  <StatCard icon="⏱️" label="Temps" value={fmtMin(totalMin)}/>
+                  <StatCard label="Total anime" value={animeEntries.length}/>
+                  <StatCard label="Terminés" value={animeCompleted.length}/>
+                  <StatCard label="Épisodes" value={totalEp}/>
+                  <StatCard label="Temps" value={fmtMin(totalMin)}/>
                 </div>
                 <ChartCard title="Par statut">
                   <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
@@ -743,10 +1441,10 @@ function App() {
             {tab==="manga" && (
               <div style={{display:"flex",flexDirection:"column",gap:20}}>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit, minmax(170px, 1fr))",gap:14}}>
-                  <StatCard icon="📖" label="Total manga" value={mangaEntries.length}/>
-                  <StatCard icon="✅" label="Terminés" value={mangaCompleted.length}/>
-                  <StatCard icon="📄" label="Chapitres" value={totalCh}/>
-                  <StatCard icon="📚" label="Volumes" value={totalVol}/>
+                  <StatCard label="Total manga" value={mangaEntries.length}/>
+                  <StatCard label="Terminés" value={mangaCompleted.length}/>
+                  <StatCard label="Chapitres" value={totalCh}/>
+                  <StatCard label="Volumes" value={totalVol}/>
                 </div>
                 <ChartCard title="Par statut">
                   <div style={{display:"flex",flexWrap:"wrap",gap:12}}>

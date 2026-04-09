@@ -49,3 +49,117 @@ button:hover { opacity: 0.9; }
 }
 .year-btn:hover { border-color: #3db4f2; color: #edf1f5; }
 .year-btn.active { background: #3db4f2; border-color: #3db4f2; color: #fff; }
+
+/* Sélection période (année + mois regroupés) */
+.period-panel {
+  background: rgba(21, 31, 46, 0.65);
+  border: 1px solid #1f2d3d;
+  border-radius: 12px;
+  padding: 14px 16px 16px;
+  margin-bottom: 22px;
+  backdrop-filter: blur(6px);
+}
+.period-panel-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #516170;
+  margin-bottom: 12px;
+}
+.period-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.period-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8ba0b2;
+  flex-shrink: 0;
+}
+@media (min-width: 720px) {
+  .period-section {
+    flex-direction: row;
+    align-items: center;
+    gap: 14px;
+  }
+  .period-label {
+    width: 52px;
+    text-align: right;
+  }
+}
+.period-divider {
+  height: 1px;
+  background: #1f2d3d;
+  margin: 12px 0;
+  opacity: 0.85;
+}
+.period-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+.period-pills--years,
+.period-pills--months {
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: #1f2d3d transparent;
+}
+.period-pills--years::-webkit-scrollbar,
+.period-pills--months::-webkit-scrollbar {
+  height: 4px;
+}
+.period-pills--years::-webkit-scrollbar-thumb,
+.period-pills--months::-webkit-scrollbar-thumb {
+  background: #1f2d3d;
+  border-radius: 3px;
+}
+@media (min-width: 900px) {
+  .period-pills--years {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    padding-bottom: 0;
+  }
+}
+@media (min-width: 1100px) {
+  .period-pills--months {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    padding-bottom: 0;
+  }
+}
+.period-pill {
+  background: #0f1824;
+  border: 1px solid #1f2d3d;
+  color: #8ba0b2;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.period-pill:hover {
+  border-color: #3db4f2;
+  color: #edf1f5;
+}
+.period-pill.active {
+  background: #3db4f2;
+  border-color: #3db4f2;
+  color: #fff;
+}
+.period-pill--wide {
+  padding-left: 14px;
+  padding-right: 14px;
+}
