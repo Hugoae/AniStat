@@ -32,7 +32,7 @@ const {
   getProxyCacheStats,
   subscribeProxyCache,
   USER_QUERY,
-  MEDIA_LIST_QUERY
+  MEDIA_LIST_QUERY,
 } = window.AppApi;
 const { StatCard, ChartCard, MediaCard, CTooltip, PeriodCompareLegend, CompareLineTooltip } = window.AppUi;
 
@@ -48,6 +48,9 @@ const ACTIVITY_RATE_LIMIT_COOLDOWN_MS = 60 * 1000;
 const ACTIVITY_MAX_AUTO_RETRY = 3;
 const CACHE_MAX_ENTRIES = 120;
 const IS_DEV_LOCAL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+
+/** Évite un second fetch du profil par défaut (ex. remontage React StrictMode en dev). */
+let defaultProfileBootstrapDone = false;
 
 if (window.location.hostname === "localhost") {
   const target = new URL(window.location.href);
@@ -212,11 +215,20 @@ function App() {
   const activityInFlightRef = useRef(new Map());
   const profileAbortRef = useRef(null);
   const profileAbortKeyRef = useRef(null);
+  /** Réponses d’activités async plus anciennes qu’un changement de profil sont ignorées (évite mélange A/B). */
+  const latestUserIdRef = useRef(null);
+  /** Profil que l’utilisateur consulte (requêtes !background). Les refresh stale en arrière-plan ne doivent pas l’écraser. */
+  const activeProfileIntentRef = useRef(null);
   const activityCooldownRef = useRef(new Map());
   const activityRetryCountRef = useRef(new Map());
   const activityYearsInFlightRef = useRef(new Set());
   const activityMissLogRef = useRef(new Set());
   const loadingMessageTransitionRef = useRef(null);
+  const loadingActivitiesRef = useRef(false);
+  const activityYearsPendingCountRef = useRef(0);
+  const activityEtaPhaseRef = useRef("");
+  const activityEtaEndAtRef = useRef(0);
+  const activityEtaIntervalRef = useRef(null);
   const metricsRef = useRef({
     cacheHit: 0,
     cacheMiss: 0,
@@ -297,6 +309,10 @@ function App() {
   }, []);
 
   useEffect(() => {
+    loadingActivitiesRef.current = loadingActivities;
+  }, [loadingActivities]);
+
+  useEffect(() => {
     if (!loadingActivities) {
       if (loadingMessageTransitionRef.current) clearTimeout(loadingMessageTransitionRef.current);
       loadingMessageTransitionRef.current = null;
@@ -315,16 +331,97 @@ function App() {
     if (loadingMessageTransitionRef.current) clearTimeout(loadingMessageTransitionRef.current);
   }, []);
 
+  const activityYearsScope = useMemo(() => {
+    const s = new Set([year]);
+    if (month === 0 || month === 1) s.add(year - 1);
+    return [...s].filter((y) => y >= 1970);
+  }, [year, month]);
+
+  const activityYearsPendingCount = useMemo(() => {
+    if (!user?.id) return 0;
+    return activityYearsScope.filter((y) => !animeActivityCache[y] || !mangaActivityCache[y]).length;
+  }, [activityYearsScope, user?.id, animeActivityCache, mangaActivityCache]);
+
+  activityYearsPendingCountRef.current = activityYearsPendingCount;
+
+  const activityLoadDebug = useMemo(() => {
+    if (!user?.id) return null;
+    const years = activityYearsScope;
+    let yearsComplete = 0;
+    let animeRows = 0;
+    let mangaRows = 0;
+    for (const yy of years) {
+      const a = animeActivityCache[yy];
+      const m = mangaActivityCache[yy];
+      if (a && m) yearsComplete += 1;
+      if (Array.isArray(a)) animeRows += a.length;
+      if (Array.isArray(m)) mangaRows += m.length;
+    }
+    return {
+      yearsTotal: years.length,
+      yearsComplete,
+      yearsPending: years.length - yearsComplete,
+      animeRows,
+      mangaRows,
+    };
+  }, [user?.id, activityYearsScope, animeActivityCache, mangaActivityCache]);
+
+  /** Compte à rebours estimé stable par « phase » (message + user), évite les oscillations du scheduler. */
+  const [activityEtaSeconds, setActivityEtaSeconds] = useState(null);
+  useEffect(() => {
+    if (activityEtaIntervalRef.current) {
+      clearInterval(activityEtaIntervalRef.current);
+      activityEtaIntervalRef.current = null;
+    }
+    if (!loadingActivities) {
+      activityEtaPhaseRef.current = "";
+      activityEtaEndAtRef.current = 0;
+      setActivityEtaSeconds(null);
+      return;
+    }
+    const phaseKey = `${user?.id ?? "0"}|${activityLoadingMessage}`;
+    if (activityEtaPhaseRef.current !== phaseKey) {
+      activityEtaPhaseRef.current = phaseKey;
+      const rs = getRateLimitState();
+      const slotMs = rs.requestIntervalMs || 2200;
+      const pendingYears = Math.max(1, activityYearsPendingCountRef.current);
+      /** Marge large : ~12 requêtes planifiées / an (pagination) + marge + file actuelle */
+      const queueSlots = (rs.queued || 0) + (rs.inFlight || 0) * 2;
+      const budgetMs = Math.max(
+        10_000,
+        (rs.blockedForMs || 0) + pendingYears * 12 * slotMs + queueSlots * slotMs + 4 * slotMs
+      );
+      activityEtaEndAtRef.current = Date.now() + budgetMs;
+    }
+    const tick = () => {
+      if (!loadingActivitiesRef.current) return;
+      const end = activityEtaEndAtRef.current;
+      if (!end) return;
+      let msLeft = end - Date.now();
+      if (msLeft <= 0 && loadingActivitiesRef.current) {
+        const rs = getRateLimitState();
+        const slot = rs.requestIntervalMs || 2200;
+        const bump = Math.max(12_000, (rs.blockedForMs || 0) + 8 * slot);
+        activityEtaEndAtRef.current = Date.now() + bump;
+        msLeft = bump;
+      }
+      setActivityEtaSeconds(Math.max(0, Math.ceil(msLeft / 1000)));
+    };
+    tick();
+    activityEtaIntervalRef.current = setInterval(tick, 500);
+    return () => {
+      if (activityEtaIntervalRef.current) {
+        clearInterval(activityEtaIntervalRef.current);
+        activityEtaIntervalRef.current = null;
+      }
+    };
+  }, [loadingActivities, activityLoadingMessage, user?.id]);
+
   const rateInfoLabel = useMemo(() => {
     const blockedMs = rateLimitState?.blockedForMs || 0;
-    const etaMs = rateLimitState?.estimatedWaitMs || 0;
-    if (blockedMs > 0) {
+    if (blockedMs > 5000) {
       const sec = Math.ceil(blockedMs / 1000);
-      return `attente estimee ~${sec}s (rate limit actif)`;
-    }
-    if (etaMs > 3000) {
-      const sec = Math.ceil(etaMs / 1000);
-      return `attente estimee ~${sec}s`;
+      return `API en cooldown ~${sec}s`;
     }
     return null;
   }, [rateLimitState]);
@@ -358,6 +455,9 @@ function App() {
     const { forceNetwork = false, background = false } = options;
     const normalized = normalizeName(name);
     const profileKey = `profile:${normalized}`;
+    if (!background) {
+      activeProfileIntentRef.current = profileKey;
+    }
     const activeProfileKey = profileAbortKeyRef.current;
     const isUserSwitch = activeProfileKey && activeProfileKey !== profileKey;
     if (isUserSwitch && !background) {
@@ -386,6 +486,7 @@ function App() {
       setResource(profileKey, "success");
       setError(null);
       setLoaded(false);
+      latestUserIdRef.current = cachedProfile.user?.id ?? null;
       setUser(cachedProfile.user || null);
       setAllAnime(Array.isArray(cachedProfile.allAnime) ? cachedProfile.allAnime : []);
       setAllManga(Array.isArray(cachedProfile.allManga) ? cachedProfile.allManga : []);
@@ -413,6 +514,11 @@ function App() {
       devLog("profile dedup", normalized);
       try {
         const { ud, ad, md } = await existingReq;
+        if (background && activeProfileIntentRef.current !== profileKey) {
+          devLog("profile dedup background stale skip", normalized);
+          return;
+        }
+        latestUserIdRef.current = ud.User?.id ?? null;
         setUser(ud.User);
         const aa = (ad.MediaListCollection?.lists||[]).flatMap(l => (l.entries||[]).map(e => ({...e, listName:l.name, listStatus:l.status})));
         const am = (md.MediaListCollection?.lists||[]).flatMap(l => (l.entries||[]).map(e => ({...e, listName:l.name, listStatus:l.status})));
@@ -462,6 +568,11 @@ function App() {
       })();
       profileInFlightRef.current.set(profileKey, req);
       const { ud, ad, md } = await req;
+      if (background && activeProfileIntentRef.current !== profileKey) {
+        devLog("profile background stale skip", normalized);
+        return;
+      }
+      latestUserIdRef.current = ud.User?.id ?? null;
       setUser(ud.User);
       const aa = (ad.MediaListCollection?.lists||[]).flatMap(l => (l.entries||[]).map(e => ({...e, listName:l.name, listStatus:l.status})));
       const am = (md.MediaListCollection?.lists||[]).flatMap(l => (l.entries||[]).map(e => ({...e, listName:l.name, listStatus:l.status})));
@@ -501,7 +612,11 @@ function App() {
     }
   }, [metricInc, metricProfileFetchDuration, setResource, setInputVal]);
 
-  useEffect(() => { fetchData("Kirikou"); }, []);
+  useEffect(() => {
+    if (defaultProfileBootstrapDone) return;
+    defaultProfileBootstrapDone = true;
+    fetchData("Kirikou");
+  }, [fetchData]);
   useEffect(() => () => {
     if (profileAbortRef.current) profileAbortRef.current.abort();
   }, []);
@@ -542,17 +657,18 @@ function App() {
     retryYearNow(compareYear);
   }, [month, retryYearNow, year]);
 
-  const prefetchYearActivities = useCallback(async (targetYear) => {
-    if (!user?.id || !targetYear || targetYear < 1970) return;
-    const aKey = `activity:${user.id}:ANIME_LIST:${targetYear}`;
-    const mKey = `activity:${user.id}:MANGA_LIST:${targetYear}`;
+  const prefetchYearActivities = useCallback(async (targetYear, ownerId) => {
+    const uid = ownerId;
+    if (!uid || !targetYear || targetYear < 1970) return;
+    const aKey = `activity:${uid}:ANIME_LIST:${targetYear}`;
+    const mKey = `activity:${uid}:MANGA_LIST:${targetYear}`;
     try {
       const fetchOne = async (type) => {
-        const key = `activity:${user.id}:${type}:${targetYear}`;
+        const key = `activity:${uid}:${type}:${targetYear}`;
         let req = activityInFlightRef.current.get(key);
         if (!req) {
           setResource(key, "loading");
-          req = fetchActivitiesWithRetry(user.id, type, targetYear);
+          req = fetchActivitiesWithRetry(uid, type, targetYear);
           activityInFlightRef.current.set(key, req);
         }
         try {
@@ -563,28 +679,37 @@ function App() {
       };
       const aActs = await fetchOne("ANIME_LIST");
       const mActs = await fetchOne("MANGA_LIST");
+      if (latestUserIdRef.current !== uid) return;
       setAnimeActivityCache((prev) => ({ ...prev, [targetYear]: aActs }));
       setMangaActivityCache((prev) => ({ ...prev, [targetYear]: mActs }));
-      safeWriteCache(activityCacheKey(user.id, "ANIME_LIST", targetYear), aActs, getActivityTtlMs(targetYear));
-      safeWriteCache(activityCacheKey(user.id, "MANGA_LIST", targetYear), mActs, getActivityTtlMs(targetYear));
+      safeWriteCache(activityCacheKey(uid, "ANIME_LIST", targetYear), aActs, getActivityTtlMs(targetYear));
+      safeWriteCache(activityCacheKey(uid, "MANGA_LIST", targetYear), mActs, getActivityTtlMs(targetYear));
       setResource(aKey, "success");
       setResource(mKey, "success");
       metricInc("cacheWrite", 2);
     } catch (err) {
       if (err?.name === "AbortError") return;
+      if (latestUserIdRef.current !== uid) return;
       const msg = err?.message || "Erreur activite";
       setResource(aKey, "error", msg);
       setResource(mKey, "error", msg);
       if (String(msg).includes("Rate limit") || String(msg).includes("429")) metricInc("rateLimitErrors");
     }
-  }, [metricInc, setResource, user?.id]);
+  }, [metricInc, setResource]);
 
   useEffect(() => {
     if (!user?.id || !year) return;
+    const ownerId = user.id;
 
     const yearsNeeded = new Set([year]);
     if (month === 0 || month === 1) yearsNeeded.add(year - 1);
     const scopeYears = [...yearsNeeded].filter((y) => y >= 1970);
+    /** Retire les drapeaux « en cours » si le cache a déjà les 2 listes (évite loading bloqué après abort / course async). */
+    scopeYears.forEach((y) => {
+      if (animeActivityCache[y] && mangaActivityCache[y]) {
+        activityYearsInFlightRef.current.delete(y);
+      }
+    });
     const inFlightScopeYears = scopeYears.filter((y) => activityYearsInFlightRef.current.has(y));
 
     const missing = [];
@@ -594,8 +719,8 @@ function App() {
       if (y < 1970) return;
       const hasAnimeMem = Boolean(animeActivityCache[y]);
       const hasMangaMem = Boolean(mangaActivityCache[y]);
-      const cachedAnimeMeta = hasAnimeMem ? null : safeReadCacheMeta(activityCacheKey(user.id, "ANIME_LIST", y), ACTIVITY_SWR_STALE_MS);
-      const cachedMangaMeta = hasMangaMem ? null : safeReadCacheMeta(activityCacheKey(user.id, "MANGA_LIST", y), ACTIVITY_SWR_STALE_MS);
+      const cachedAnimeMeta = hasAnimeMem ? null : safeReadCacheMeta(activityCacheKey(ownerId, "ANIME_LIST", y), ACTIVITY_SWR_STALE_MS);
+      const cachedMangaMeta = hasMangaMem ? null : safeReadCacheMeta(activityCacheKey(ownerId, "MANGA_LIST", y), ACTIVITY_SWR_STALE_MS);
       const cachedAnime = cachedAnimeMeta?.value ?? null;
       const cachedManga = cachedMangaMeta?.value ?? null;
       if (!hasAnimeMem) {
@@ -625,24 +750,30 @@ function App() {
       if ((cachedAnimeMeta?.isStale || cachedMangaMeta?.isStale) && (cachedAnime || cachedManga)) {
         staleYears.add(y);
       }
-      if (hasAnimeMem || cachedAnime) setResource(`activity:${user.id}:ANIME_LIST:${y}`, "success");
-      if (hasMangaMem || cachedManga) setResource(`activity:${user.id}:MANGA_LIST:${y}`, "success");
+      if (hasAnimeMem || cachedAnime) setResource(`activity:${ownerId}:ANIME_LIST:${y}`, "success");
+      if (hasMangaMem || cachedManga) setResource(`activity:${ownerId}:MANGA_LIST:${y}`, "success");
       if (!hasAnimeMem) {
         if (cachedAnime) {
-          setAnimeActivityCache((prev) => (prev[y] ? prev : { ...prev, [y]: cachedAnime }));
+          setAnimeActivityCache((prev) => {
+            if (latestUserIdRef.current !== ownerId) return prev;
+            return prev[y] ? prev : { ...prev, [y]: cachedAnime };
+          });
         }
       }
       if (!hasMangaMem) {
         if (cachedManga) {
-          setMangaActivityCache((prev) => (prev[y] ? prev : { ...prev, [y]: cachedManga }));
+          setMangaActivityCache((prev) => {
+            if (latestUserIdRef.current !== ownerId) return prev;
+            return prev[y] ? prev : { ...prev, [y]: cachedManga };
+          });
         }
       }
       const willHaveAnime = hasAnimeMem || Boolean(cachedAnime);
       const willHaveManga = hasMangaMem || Boolean(cachedManga);
       if (!willHaveAnime || !willHaveManga) {
         if (activityYearsInFlightRef.current.has(y)) return;
-        const animeCoolKey = `activity:${user.id}:ANIME_LIST:${y}`;
-        const mangaCoolKey = `activity:${user.id}:MANGA_LIST:${y}`;
+        const animeCoolKey = `activity:${ownerId}:ANIME_LIST:${y}`;
+        const mangaCoolKey = `activity:${ownerId}:MANGA_LIST:${y}`;
         const now = Date.now();
         const animeCooldownUntil = activityCooldownRef.current.get(animeCoolKey) || 0;
         const mangaCooldownUntil = activityCooldownRef.current.get(mangaCoolKey) || 0;
@@ -655,7 +786,11 @@ function App() {
     });
 
     if (missing.length === 0) {
-      if (animeActivityCache[year] && mangaActivityCache[year]) {
+      if (
+        latestUserIdRef.current === ownerId &&
+        animeActivityCache[year] &&
+        mangaActivityCache[year]
+      ) {
         setAnimeActivities(animeActivityCache[year]);
         setMangaActivities(mangaActivityCache[year]);
       }
@@ -678,7 +813,7 @@ function App() {
           ? window.requestIdleCallback
           : (cb) => setTimeout(cb, 1200);
         idle(() => {
-          staleYears.forEach((y) => prefetchYearActivities(y));
+          staleYears.forEach((y) => prefetchYearActivities(y, ownerId));
         });
       }
       return;
@@ -728,21 +863,23 @@ function App() {
           activityYearsInFlightRef.current.add(yf);
           try {
             const fetchActivity = async (type) => {
-              const key = `activity:${user.id}:${type}:${yf}`;
+              const key = `activity:${ownerId}:${type}:${yf}`;
               setResource(key, "loading");
               let req = activityInFlightRef.current.get(key);
               if (!req) {
-                req = fetchActivitiesWithRetry(user.id, type, yf, activityAbortController.signal);
+                req = fetchActivitiesWithRetry(ownerId, type, yf, activityAbortController.signal);
                 activityInFlightRef.current.set(key, req);
               } else {
                 devLog("activity dedup", `${type}:${yf}`);
               }
               try {
                 const data = await req;
+                if (latestUserIdRef.current !== ownerId) throw new DOMException("Aborted", "AbortError");
                 setResource(key, "success");
                 return data;
               } catch (err) {
                 if (err?.name === "AbortError") throw err;
+                if (latestUserIdRef.current !== ownerId) throw new DOMException("Aborted", "AbortError");
                 setResource(key, "error", err.message || "Erreur activite");
                 throw err;
               } finally {
@@ -754,27 +891,28 @@ function App() {
             await sleep(300, activityAbortController.signal);
             const mActs = await fetchActivity("MANGA_LIST");
             if (cancelled) return;
+            if (latestUserIdRef.current !== ownerId) continue;
             setAnimeActivityCache((prev) => ({ ...prev, [yf]: aActs }));
             setMangaActivityCache((prev) => ({ ...prev, [yf]: mActs }));
-            safeWriteCache(activityCacheKey(user.id, "ANIME_LIST", yf), aActs, getActivityTtlMs(yf));
-            safeWriteCache(activityCacheKey(user.id, "MANGA_LIST", yf), mActs, getActivityTtlMs(yf));
+            safeWriteCache(activityCacheKey(ownerId, "ANIME_LIST", yf), aActs, getActivityTtlMs(yf));
+            safeWriteCache(activityCacheKey(ownerId, "MANGA_LIST", yf), mActs, getActivityTtlMs(yf));
             metricInc("cacheWrite", 2);
             devLog("activity write", `ANIME_LIST:${yf}`);
             devLog("activity write", `MANGA_LIST:${yf}`);
             activityMissLogRef.current.delete(`ANIME_LIST:${yf}`);
             activityMissLogRef.current.delete(`MANGA_LIST:${yf}`);
-            activityRetryCountRef.current.delete(`activity:${user.id}:ANIME_LIST:${yf}`);
-            activityRetryCountRef.current.delete(`activity:${user.id}:MANGA_LIST:${yf}`);
-            activityCooldownRef.current.delete(`activity:${user.id}:ANIME_LIST:${yf}`);
-            activityCooldownRef.current.delete(`activity:${user.id}:MANGA_LIST:${yf}`);
+            activityRetryCountRef.current.delete(`activity:${ownerId}:ANIME_LIST:${yf}`);
+            activityRetryCountRef.current.delete(`activity:${ownerId}:MANGA_LIST:${yf}`);
+            activityCooldownRef.current.delete(`activity:${ownerId}:ANIME_LIST:${yf}`);
+            activityCooldownRef.current.delete(`activity:${ownerId}:MANGA_LIST:${yf}`);
           } catch (err) {
             if (err?.name === "AbortError") return;
-            if (!cancelled) {
+            if (!cancelled && latestUserIdRef.current === ownerId) {
               const message = err.message || "Erreur lors du chargement des activites";
               const isRateLimit = String(message).includes("Rate limit") || String(message).includes("429");
               if (isRateLimit) metricInc("rateLimitErrors");
-              const animeFailKey = `activity:${user.id}:ANIME_LIST:${yf}`;
-              const mangaFailKey = `activity:${user.id}:MANGA_LIST:${yf}`;
+              const animeFailKey = `activity:${ownerId}:ANIME_LIST:${yf}`;
+              const mangaFailKey = `activity:${ownerId}:MANGA_LIST:${yf}`;
               if (isRateLimit) {
                 const prevAnimeCount = activityRetryCountRef.current.get(animeFailKey) || 0;
                 const prevMangaCount = activityRetryCountRef.current.get(mangaFailKey) || 0;
@@ -812,11 +950,13 @@ function App() {
   }, [user?.id, year, month, animeActivityCache, mangaActivityCache, metricInc, prefetchYearActivities, setResource]);
 
   useEffect(() => {
+    if (!user?.id) return;
+    if (latestUserIdRef.current !== user.id) return;
     if (animeActivityCache[year] && mangaActivityCache[year]) {
       setAnimeActivities(animeActivityCache[year]);
       setMangaActivities(mangaActivityCache[year]);
     }
-  }, [year, animeActivityCache, mangaActivityCache]);
+  }, [year, animeActivityCache, mangaActivityCache, user?.id]);
 
   const years = useMemo(() => {
     const nowYear = new Date().getFullYear();
@@ -843,6 +983,7 @@ function App() {
 
   useEffect(() => {
     if (!user?.id || !loaded) return undefined;
+    const ownerId = user.id;
     const candidates = [year - 1, year + 1].filter((y) => years.includes(y) && y >= 1970);
     if (candidates.length === 0) return undefined;
     const idle = window.requestIdleCallback
@@ -853,7 +994,7 @@ function App() {
       : (id) => clearTimeout(id);
     const idleId = idle(() => {
       candidates.forEach((y) => {
-        if (!animeActivityCache[y] || !mangaActivityCache[y]) prefetchYearActivities(y);
+        if (!animeActivityCache[y] || !mangaActivityCache[y]) prefetchYearActivities(y, ownerId);
       });
     });
     return () => cancelIdle(idleId);
@@ -1040,11 +1181,19 @@ function App() {
   const compareAvailability = useMemo(() => {
     const compareY = chartPeriodLegend?.compareY;
     const compareMissing = compareY && (!animeActivityCache[compareY] || !mangaActivityCache[compareY]);
+    const loadingComparison = Boolean(compareMissing && loadingActivities);
     return {
       missing: Boolean(compareMissing),
-      label: compareY ? `Comparaison ${compareY} temporairement indisponible` : "Comparaison temporairement indisponible",
+      compareY,
+      loadingComparison,
+      loadingLabel: compareY
+        ? `Chargement des données pour la courbe de comparaison (${compareY})…`
+        : "Chargement des données pour la courbe de comparaison…",
+      idleLabel: compareY
+        ? `Comparaison ${compareY} indisponible pour le moment`
+        : "Comparaison indisponible pour le moment",
     };
-  }, [animeActivityCache, chartPeriodLegend, mangaActivityCache]);
+  }, [animeActivityCache, chartPeriodLegend, loadingActivities, mangaActivityCache]);
   const retryableYears = useMemo(() => {
     if (!user?.id) return [];
     const prefix = `activity:${user.id}:`;
@@ -1222,7 +1371,12 @@ function App() {
           <div style={{marginTop:24,color:C.textMuted,fontSize:13,display:"inline-flex",alignItems:"center",gap:10}}>
             <span>
               {displayActivityLoadingMessage || activityLoadingMessage}
-              {rateInfoLabel ? ` (${rateInfoLabel})` : ""}
+              {activityEtaSeconds != null && activityEtaSeconds > 0
+                ? ` — temps restant estimé ~${activityEtaSeconds}s`
+                : activityEtaSeconds === 0
+                  ? " — finalisation…"
+                  : ""}
+              {rateInfoLabel ? ` · ${rateInfoLabel}` : ""}
             </span>
             <span
               aria-hidden="true"
@@ -1282,15 +1436,29 @@ function App() {
         )}
 
         {loaded && !loading && IS_DEV_LOCAL && showDevPanel && (
-          <div style={{marginTop:12,background:C.cardBg,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:12,color:C.textMuted,display:"flex",gap:16,flexWrap:"wrap"}}>
-            <span>cache hit: {debugMetricsView?.cacheHit ?? 0}</span>
-            <span>cache miss: {debugMetricsView?.cacheMiss ?? 0}</span>
-            <span>cache write: {debugMetricsView?.cacheWrite ?? 0}</span>
-            <span>rate-limit: {debugMetricsView?.rateLimitErrors ?? 0}</span>
-            <span>avg profile fetch: {debugMetricsView?.avgProfileFetchMs ?? 0}ms</span>
-            <span>proxy hit: {proxyCacheStats?.hit ?? 0}</span>
-            <span>proxy miss: {proxyCacheStats?.miss ?? 0}</span>
-            <span>proxy bypass: {proxyCacheStats?.bypass ?? 0}</span>
+          <div style={{marginTop:12,background:C.cardBg,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",fontSize:12,color:C.textMuted,display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{display:"flex",flexWrap:"wrap",gap:"10px 16px",alignItems:"baseline"}}>
+              <strong style={{color:C.text,width:"100%",fontSize:11,letterSpacing:"0.06em",textTransform:"uppercase"}}>Activités (période & graphiques)</strong>
+              {activityLoadDebug ? (
+                <>
+                  <span>Années ciblées : <span style={{color:C.text}}>{activityLoadDebug.yearsTotal}</span></span>
+                  <span>Chargées : <span style={{color:C.green}}>{activityLoadDebug.yearsComplete}</span></span>
+                  <span>Restantes : <span style={{color: activityLoadDebug.yearsPending ? C.orange : C.text}}>{activityLoadDebug.yearsPending}</span></span>
+                  <span>Entrées anime en cache : <span style={{color:C.text}}>{activityLoadDebug.animeRows.toLocaleString("fr-FR")}</span></span>
+                  <span>Entrées manga en cache : <span style={{color:C.text}}>{activityLoadDebug.mangaRows.toLocaleString("fr-FR")}</span></span>
+                  <span>File requêtes AniList : <span style={{color:C.text}}>{rateLimitState?.queued ?? 0}</span> en attente, <span style={{color:C.text}}>{rateLimitState?.inFlight ?? 0}</span> en cours</span>
+                </>
+              ) : (
+                <span>—</span>
+              )}
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:"10px 16px",fontSize:11,opacity:0.92}}>
+              <strong style={{color:C.textDim,width:"100%",fontSize:11,letterSpacing:"0.06em",textTransform:"uppercase"}}>Cache profil & proxy (détail)</strong>
+              <span>profil hit/miss/write : {debugMetricsView?.cacheHit ?? 0} / {debugMetricsView?.cacheMiss ?? 0} / {debugMetricsView?.cacheWrite ?? 0}</span>
+              <span>rate-limit : {debugMetricsView?.rateLimitErrors ?? 0}</span>
+              <span>profil fetch moy. : {debugMetricsView?.avgProfileFetchMs ?? 0} ms</span>
+              <span>proxy hit/miss/bypass : {proxyCacheStats?.hit ?? 0} / {proxyCacheStats?.miss ?? 0} / {proxyCacheStats?.bypass ?? 0}</span>
+            </div>
             <button
               type="button"
               onClick={() => {
@@ -1300,7 +1468,7 @@ function App() {
                 if (typeof getter === "function") setDebugMetricsView(getter());
               }}
               style={{
-                marginLeft: "auto",
+                alignSelf: "flex-end",
                 background: "transparent",
                 color: C.accent,
                 border: `1px solid ${C.accent}`,
@@ -1344,8 +1512,17 @@ function App() {
                       legendCompare={chartPeriodLegend.legendCompare}
                     />
                     {compareAvailability.missing && (
-                      <div style={{ color: C.orange, fontSize: 12, marginBottom: 8 }}>
-                        {compareAvailability.label}
+                      <div
+                        className={compareAvailability.loadingComparison ? "compare-chart-loading-hint" : ""}
+                        style={{
+                          color: compareAvailability.loadingComparison ? C.textMuted : C.orange,
+                          fontSize: 12,
+                          marginBottom: 8
+                        }}
+                      >
+                        {compareAvailability.loadingComparison
+                          ? compareAvailability.loadingLabel
+                          : compareAvailability.idleLabel}
                       </div>
                     )}
                     <ResponsiveContainer width="100%" height={240}>
@@ -1395,8 +1572,17 @@ function App() {
                       legendCompare={chartPeriodLegend.legendCompare}
                     />
                     {compareAvailability.missing && (
-                      <div style={{ color: C.orange, fontSize: 12, marginBottom: 8 }}>
-                        {compareAvailability.label}
+                      <div
+                        className={compareAvailability.loadingComparison ? "compare-chart-loading-hint" : ""}
+                        style={{
+                          color: compareAvailability.loadingComparison ? C.textMuted : C.orange,
+                          fontSize: 12,
+                          marginBottom: 8
+                        }}
+                      >
+                        {compareAvailability.loadingComparison
+                          ? compareAvailability.loadingLabel
+                          : compareAvailability.idleLabel}
                       </div>
                     )}
                     <ResponsiveContainer width="100%" height={240}>
