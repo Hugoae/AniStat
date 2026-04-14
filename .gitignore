@@ -5,6 +5,9 @@ Thumbs.db
 # Node dependencies
 node_modules/
 
+# Vite
+dist/
+
 # Environment files
 .env
 .env.*

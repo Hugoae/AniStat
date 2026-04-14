@@ -1,9 +1,8 @@
-(() => {
-  const ANILIST_URL = "/api/anilist";
+const ANILIST_URL = "/api/anilist";
   const AL_MAX_RETRIES = 2;
   const REQUEST_INTERVAL_MS = 2200; // ~27 req/min, leaves safety margin under 30/min degraded limit.
 
-  const MEDIA_LIST_QUERY = `
+  export const MEDIA_LIST_QUERY = `
 query ($userName: String!, $type: MediaType!) {
   MediaListCollection(userName: $userName, type: $type) {
     lists {
@@ -38,7 +37,7 @@ query ($userName: String!, $type: MediaType!) {
   }
 }`;
 
-  const USER_QUERY = `
+  export const USER_QUERY = `
 query ($name: String!) {
   User(name: $name) {
     id
@@ -53,7 +52,7 @@ query ($name: String!) {
 }`;
 
   /** Requête légère pour avatars du menu raccourcis (évite de retélécharger stats + listes). */
-  const USER_AVATAR_QUERY = `
+  export const USER_AVATAR_QUERY = `
 query ($name: String!) {
   User(name: $name) {
     name
@@ -61,7 +60,7 @@ query ($name: String!) {
   }
 }`;
 
-  const LIST_ACTIVITY_QUERY = `
+  export const LIST_ACTIVITY_QUERY = `
 query ($userId: Int!, $type: ActivityType!, $page: Int!, $perPage: Int!) {
   Page(page: $page, perPage: $perPage) {
     pageInfo {
@@ -77,13 +76,16 @@ query ($userId: Int!, $type: ActivityType!, $page: Int!, $perPage: Int!) {
         media {
           id
           duration
+          format
+          episodes
+          chapters
         }
       }
     }
   }
 }`;
 
-  const sleep = (ms, signal) => new Promise((resolve, reject) => {
+  export const sleep = (ms, signal) => new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(new DOMException("Aborted", "AbortError"));
       return;
@@ -117,7 +119,7 @@ query ($userId: Int!, $type: ActivityType!, $page: Int!, $perPage: Int!) {
     listeners: new Set(),
   };
 
-  function getRateLimitState() {
+  export function getRateLimitState() {
     const now = Date.now();
     const blockedForMs = Math.max(0, scheduler.blockedUntil - now);
     const queueDelayMs = scheduler.queue.length * REQUEST_INTERVAL_MS;
@@ -145,13 +147,13 @@ query ($userId: Int!, $type: ActivityType!, $page: Int!, $perPage: Int!) {
     });
   }
 
-  function subscribeRateLimit(listener) {
+  export function subscribeRateLimit(listener) {
     scheduler.listeners.add(listener);
     listener(getRateLimitState());
     return () => scheduler.listeners.delete(listener);
   }
 
-  function getProxyCacheStats() {
+  export function getProxyCacheStats() {
     return {
       hit: proxyCache.hit,
       miss: proxyCache.miss,
@@ -172,7 +174,7 @@ query ($userId: Int!, $type: ActivityType!, $page: Int!, $perPage: Int!) {
     });
   }
 
-  function subscribeProxyCache(listener) {
+  export function subscribeProxyCache(listener) {
     proxyCache.listeners.add(listener);
     listener(getProxyCacheStats());
     return () => proxyCache.listeners.delete(listener);
@@ -287,7 +289,7 @@ query ($userId: Int!, $type: ActivityType!, $page: Int!, $perPage: Int!) {
     return ms;
   }
 
-  async function fetchAL(query, variables, options = {}) {
+  export async function fetchAL(query, variables, options = {}) {
     const { maxRetries = AL_MAX_RETRIES, signal } = options;
     let lastNetworkErr = null;
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
@@ -351,7 +353,7 @@ query ($userId: Int!, $type: ActivityType!, $page: Int!, $perPage: Int!) {
     return { start, end };
   };
 
-  async function fetchListActivitiesForYear(userId, type, year, options = {}) {
+  export async function fetchListActivitiesForYear(userId, type, year, options = {}) {
     const { signal, pageMaxRetries = 2 } = options;
     const { start } = getStartEndTsForYear(year);
     const perPage = 50;
@@ -380,17 +382,3 @@ query ($userId: Int!, $type: ActivityType!, $page: Int!, $perPage: Int!) {
     }
     return all;
   }
-
-  window.AppApi = {
-    sleep,
-    fetchAL,
-    fetchListActivitiesForYear,
-    getRateLimitState,
-    subscribeRateLimit,
-    getProxyCacheStats,
-    subscribeProxyCache,
-    USER_QUERY,
-    USER_AVATAR_QUERY,
-    MEDIA_LIST_QUERY,
-  };
-})();

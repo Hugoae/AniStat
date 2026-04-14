@@ -1,5 +1,5 @@
-(() => {
-  const { MONTHS } = window.AppConfig;
+import { MONTHS } from '../config/constants';
+
   const NOW_UNIX = () => Math.floor(Date.now() / 1000);
 
   const isInYear = (e, y) => e.updatedAt && new Date(e.updatedAt * 1000).getFullYear() === y;
@@ -17,8 +17,10 @@
     const d = Math.floor(min / 1440);
     const h = Math.floor((min % 1440) / 60);
     const m = min % 60;
-    if (d > 0) return `${d}j ${h}h ${m}m`;
-    if (h > 0) return `${h}h ${m}m`;
+    /** Espaces insécables : évite « 5j 10h » / « 27m » sur deux lignes dans les cartes stats. */
+    const nb = "\u00A0";
+    if (d > 0) return `${d}j${nb}${h}h${nb}${m}m`;
+    if (h > 0) return `${h}h${nb}${m}m`;
     return `${m}m`;
   }
 
@@ -33,6 +35,41 @@
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
   };
+
+  /** Statut liste AniList sur une ListActivity (ex. COMPLETED). */
+  function isCompletedListActivityStatus(statusRaw) {
+    return String(statusRaw || "").toUpperCase() === "COMPLETED";
+  }
+
+  /**
+   * Cible de progression quand l’activité est « completed » mais sans nombre exploitable dans `progress`
+   * (cas fréquent : film / one-shot marqué terminé en une fois).
+   */
+  function inferCompletedCap(a, kind) {
+    const media = a?.media || {};
+    const fmt = String(media.format || "").toUpperCase();
+    if (kind === "anime") {
+      const ep = toFiniteNumber(media.episodes, 0);
+      if (ep > 0) return ep;
+      if (["MOVIE", "SPECIAL", "OVA", "ONA", "MUSIC", "TV_SHORT"].includes(fmt)) return 1;
+      return null;
+    }
+    const ch = toFiniteNumber(media.chapters, 0);
+    if (ch > 0) return ch;
+    return null;
+  }
+
+  /**
+   * Progression « courante » après l’activité, pour en déduire un delta cohérent avec le précédent état.
+   */
+  function activityEffectiveProgress(a, prev, kind) {
+    const parsed = getProgressNumber(a?.progress);
+    if (parsed > 0) return parsed;
+    if (!isCompletedListActivityStatus(a?.status)) return 0;
+    const cap = inferCompletedCap(a, kind);
+    if (cap != null) return Math.max(prev, cap);
+    return prev > 0 ? prev + 1 : 1;
+  }
 
   /**
    * Ramène la note liste sur une échelle 0–10 (décimales possibles), quel que soit le barème AniList
@@ -115,11 +152,15 @@
         ...a,
         id: toFiniteNumber(a?.id, 0),
         createdAt,
-        progress: toFiniteNumber(a?.progress, 0),
+        status: a?.status != null ? String(a.status) : "",
+        progress: getProgressNumber(a?.progress),
         media: {
           ...(a?.media || {}),
           id: mediaId,
           duration: toFiniteNumber(a?.media?.duration, 0),
+          episodes: toFiniteNumber(a?.media?.episodes, 0),
+          chapters: toFiniteNumber(a?.media?.chapters, 0),
+          format: a?.media?.format != null ? String(a.media.format) : "",
         },
       });
     });
@@ -220,7 +261,7 @@
     return new Date(year, month, 0).getDate();
   }
 
-  function computePeriodDeltaFromActivities(activities, year, month) {
+  function computePeriodDeltaFromActivities(activities, year, month, kind = "anime") {
     const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     const lastByMedia = new Map();
     let total = 0;
@@ -228,8 +269,8 @@
     chronological.forEach((a) => {
       const mediaId = a?.media?.id;
       if (!mediaId) return;
-      const current = getProgressNumber(a.progress);
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
+      const current = activityEffectiveProgress(a, prev, kind);
       const delta = Math.max(0, current - prev);
       if (isTsInPeriod(a.createdAt || 0, year, month)) total += delta;
       lastByMedia.set(mediaId, current);
@@ -247,8 +288,8 @@
     chronological.forEach((a) => {
       const mediaId = a?.media?.id;
       if (!mediaId) return;
-      const current = getProgressNumber(a.progress);
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
+      const current = activityEffectiveProgress(a, prev, "anime");
       const delta = Math.max(0, current - prev);
       if (isTsInPeriod(a.createdAt || 0, year, month)) {
         episodes += delta;
@@ -260,7 +301,7 @@
     return { episodes, minutes };
   }
 
-  function computeMonthlyDeltasFromActivities(activities, year) {
+  function computeMonthlyDeltasFromActivities(activities, year, kind = "anime") {
     const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     const lastByMedia = new Map();
     const monthly = {};
@@ -268,8 +309,8 @@
     chronological.forEach((a) => {
       const mediaId = a?.media?.id;
       if (!mediaId || !a.createdAt) return;
-      const current = getProgressNumber(a.progress);
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
+      const current = activityEffectiveProgress(a, prev, kind);
       const delta = Math.max(0, current - prev);
       const d = new Date(a.createdAt * 1000);
       if (d.getFullYear() === year) {
@@ -282,7 +323,7 @@
     return monthly;
   }
 
-  function computeDailyDeltasInMonth(activities, year, month) {
+  function computeDailyDeltasInMonth(activities, year, month, kind = "anime") {
     const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     const lastByMedia = new Map();
     const daily = {};
@@ -291,8 +332,8 @@
       const mediaId = a?.media?.id;
       if (!mediaId || !a.createdAt) return;
       const d = new Date(a.createdAt * 1000);
-      const current = getProgressNumber(a.progress);
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
+      const current = activityEffectiveProgress(a, prev, kind);
       const delta = Math.max(0, current - prev);
       lastByMedia.set(mediaId, current);
       if (d.getFullYear() === year && d.getMonth() + 1 === month) {
@@ -304,7 +345,7 @@
     return daily;
   }
 
-  function getMediaIdsWithProgressInPeriod(activities, year, month) {
+  function getMediaIdsWithProgressInPeriod(activities, year, month, kind = "anime") {
     const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     const lastByMedia = new Map();
     const mediaIds = new Set();
@@ -312,8 +353,8 @@
     chronological.forEach((a) => {
       const mediaId = a?.media?.id;
       if (!mediaId) return;
-      const current = getProgressNumber(a.progress);
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
+      const current = activityEffectiveProgress(a, prev, kind);
       const delta = Math.max(0, current - prev);
       if (delta > 0 && isTsInPeriod(a.createdAt || 0, year, month)) {
         mediaIds.add(mediaId);
@@ -363,28 +404,26 @@
     out.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     return out;
   }
-
-  window.AppStats = {
-    normalizeListScoreToPoint10,
-    isInYear,
-    isInMonth,
-    completedInYear,
-    startedInYear,
-    completedInMonth,
-    startedInMonth,
-    fmtMin,
-    countActiveCalendarDays,
-    getPeriodDayTotal,
-    computePeriodDeltaFromActivities,
-    computePeriodAnimeActivityTotals,
-    computeMonthlyDeltasFromActivities,
-    computeDailyDeltasInMonth,
-    getMediaIdsWithProgressInPeriod,
-    normalizeEntry,
-    normalizeEntries,
-    normalizeActivitiesWithDiagnostics,
-    dedupeEntriesByMedia,
-    getComparisonPeriodMeta,
-    mergeActivitiesForDelta,
-  };
-})();
+export {
+  normalizeListScoreToPoint10,
+  isInYear,
+  isInMonth,
+  completedInYear,
+  startedInYear,
+  completedInMonth,
+  startedInMonth,
+  fmtMin,
+  countActiveCalendarDays,
+  getPeriodDayTotal,
+  computePeriodDeltaFromActivities,
+  computePeriodAnimeActivityTotals,
+  computeMonthlyDeltasFromActivities,
+  computeDailyDeltasInMonth,
+  getMediaIdsWithProgressInPeriod,
+  normalizeEntry,
+  normalizeEntries,
+  normalizeActivitiesWithDiagnostics,
+  dedupeEntriesByMedia,
+  getComparisonPeriodMeta,
+  mergeActivitiesForDelta,
+};

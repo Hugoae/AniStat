@@ -1,3 +1,7 @@
+/**
+ * Serveur statique + proxy POST /api/anilist → AniList (Node sans Vite).
+ * Pour le développement de l’UI : préférer `npm run dev` (Vite, proxy intégré).
+ */
 const http = require("http");
 const https = require("https");
 const fs = require("fs");
