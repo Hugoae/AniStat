@@ -22,6 +22,8 @@ query ($userName: String!, $type: MediaType!) {
           title { romaji english }
           coverImage { large medium color }
           countryOfOrigin
+          seasonYear
+          startDate { year month day }
           episodes
           chapters
           volumes
@@ -31,6 +33,12 @@ query ($userName: String!, $type: MediaType!) {
           averageScore
           status
           siteUrl
+          studios {
+            edges {
+              isMain
+              node { id name }
+            }
+          }
         }
       }
     }

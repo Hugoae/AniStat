@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useMemo, type RefObject } from "react";
 import {
   BarChart,
   Bar,
@@ -15,7 +15,7 @@ import {
   CartesianGrid,
   LabelList,
 } from "recharts";
-import { C, STATUS_LABELS, STATUS_COLORS } from "../config/constants";
+import { C, PIE_COLORS, STATUS_LABELS, STATUS_COLORS } from "../config/constants";
 import {
   StatCard,
   ChartCard,
@@ -28,6 +28,7 @@ import {
 import { ANIME_GENRE_RADAR_TOP_N } from "../app/listConstants";
 import { animeHalfScoreBarColor } from "../lib/animeScoreUtils";
 import { RechartsWhenVisible } from "../components/RechartsWhenVisible";
+import { AnimePieDistributionCard } from "../components/AnimePieDistributionCard";
 import type { AniListEntry } from "../types/domain";
 
 export type AnimeTabProps = {
@@ -50,6 +51,10 @@ export type AnimeTabProps = {
   animeMediaGridRef: RefObject<HTMLDivElement | null>;
   animeScoreHalfDistributionRows: { bucket: number; label: string; count: number }[];
   animeGenrePeriodData: { name: string; count: number }[];
+  animeDurationByFormatData: { name: string; minutes: number }[];
+  animeTopStudios: { name: string; count: number }[];
+  animeTopProducers: { name: string; count: number }[];
+  animeReleaseYearHistogram: { yearLabel: string; count: number }[];
 };
 
 export function AnimeTab({
@@ -72,7 +77,37 @@ export function AnimeTab({
   animeMediaGridRef,
   animeScoreHalfDistributionRows,
   animeGenrePeriodData,
+  animeDurationByFormatData,
+  animeTopStudios,
+  animeTopProducers,
+  animeReleaseYearHistogram,
 }: AnimeTabProps) {
+  const formatPieSlices = useMemo(
+    () =>
+      fmtData.map((row, i) => ({
+        key: String(row.name),
+        label: mediaFormatShortLabel(row.name) || String(row.name),
+        value: row.value,
+        fill: PIE_COLORS[i % PIE_COLORS.length],
+      })),
+    [fmtData]
+  );
+
+  const countryPieSlices = useMemo(
+    () =>
+      animeCountryEntriesOrdered.map(([code, c], i) => {
+        const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code);
+        const label = meta ? meta.label : "Inconnu";
+        return {
+          key: code,
+          label,
+          value: c,
+          fill: PIE_COLORS[i % PIE_COLORS.length],
+        };
+      }),
+    [animeCountryEntriesOrdered]
+  );
+
   return (
     <div className="list-tab-page">
       <div id="anime-synthese" className="overview-stats-cluster list-tab-anchor">
@@ -318,6 +353,120 @@ export function AnimeTab({
               </div>
             )}
           </ChartCard>
+        </div>
+
+        <div className="list-tab-anime-charts list-tab-anime-charts--two">
+          <ChartCard
+            title="Durée visionnée par format"
+            titleHint="Minutes = épisodes regardés dans la période × durée d’un épisode (24 min si AniList ne fournit pas la durée)."
+            screenReaderSummary="Temps de visionnement agrégé par format, à partir des activités de la période."
+          >
+            {animeDurationByFormatData.length > 0 ? (
+              <RechartsWhenVisible height={300} className="list-tab-anime-recharts-mount">
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={animeDurationByFormatData} margin={{ top: 12, right: 8, left: 4, bottom: 44 }}>
+                    <CartesianGrid strokeDasharray="3 6" horizontal vertical={false} stroke="rgba(139, 160, 178, 0.12)" />
+                    <XAxis
+                      dataKey="name"
+                      tickFormatter={(v) => mediaFormatShortLabel(String(v)) || String(v)}
+                      angle={-28}
+                      textAnchor="end"
+                      interval={0}
+                      height={54}
+                      tick={{ fill: C.textMuted, fontSize: 10 }}
+                    />
+                    <YAxis tick={{ fill: C.textMuted, fontSize: 10 }} width={36} />
+                    <Tooltip
+                      content={<CTooltip />}
+                      formatter={(v: number) => [fmtMin(Number(v)), "Temps"]}
+                      labelFormatter={(v) => mediaFormatShortLabel(String(v)) || String(v)}
+                    />
+                    <Bar dataKey="minutes" name="Minutes" fill={C.accent} radius={[6, 6, 0, 0]} maxBarSize={56} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </RechartsWhenVisible>
+            ) : (
+              <div className="list-tab-anime-charts__empty">
+                Pas assez d’activité sur la période pour estimer la durée par format.
+              </div>
+            )}
+          </ChartCard>
+
+          <ChartCard
+            title="Année de sortie"
+            screenReaderSummary="Nombre d’anime de la période par année de sortie (seasonYear ou date de début)."
+          >
+            {animeReleaseYearHistogram.length > 0 ? (
+              <RechartsWhenVisible height={300} className="list-tab-anime-recharts-mount">
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={animeReleaseYearHistogram} margin={{ top: 12, right: 8, left: 4, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 6" horizontal vertical={false} stroke="rgba(139, 160, 178, 0.12)" />
+                    <XAxis
+                      dataKey="yearLabel"
+                      interval="preserveStartEnd"
+                      minTickGap={20}
+                      tick={{ fill: C.textMuted, fontSize: 10 }}
+                    />
+                    <YAxis tick={{ fill: C.textMuted, fontSize: 10 }} width={32} />
+                    <Tooltip content={<CTooltip />} formatter={(v: number) => [String(v), "Titres"]} />
+                    <Bar dataKey="count" name="Anime" fill={C.purple} radius={[6, 6, 0, 0]} maxBarSize={40} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </RechartsWhenVisible>
+            ) : (
+              <div className="list-tab-anime-charts__empty">Aucune année de sortie renseignée sur ces titres.</div>
+            )}
+          </ChartCard>
+        </div>
+
+        <div className="list-tab-anime-charts list-tab-anime-charts--two">
+          <ChartCard title="Studios (principaux)" screenReaderSummary="Studios marqués comme principaux sur AniList.">
+            {animeTopStudios.length > 0 ? (
+              <div className="list-tab-distro-row">
+                {animeTopStudios.map((s) => (
+                  <div key={s.name} className="list-tab-status-pill">
+                    <span className="list-tab-status-pill__count" style={{ color: C.accent }}>
+                      {s.count}
+                    </span>
+                    <span className="list-tab-status-pill__label">{s.name}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="list-tab-anime-charts__empty">Aucun studio principal listé par l’API pour cette sélection.</div>
+            )}
+          </ChartCard>
+          <ChartCard title="Autres studios / producteurs" screenReaderSummary="Studios non principaux (souvent co-productions).">
+            {animeTopProducers.length > 0 ? (
+              <div className="list-tab-distro-row">
+                {animeTopProducers.map((p) => (
+                  <div key={p.name} className="list-tab-status-pill">
+                    <span className="list-tab-status-pill__count" style={{ color: C.yellow }}>
+                      {p.count}
+                    </span>
+                    <span className="list-tab-status-pill__label">{p.name}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="list-tab-anime-charts__empty">Aucun producteur secondaire détecté.</div>
+            )}
+          </ChartCard>
+        </div>
+      </div>
+
+      <div id="anime-camemberts" className="list-tab-anime-pie-bottom list-tab-anchor">
+        <div className="list-tab-pie-pair">
+          <AnimePieDistributionCard
+            title="Répartition par format"
+            screenReaderSummary="Camembert des formats (effectifs de titres sur la période)."
+            slices={formatPieSlices}
+          />
+          <AnimePieDistributionCard
+            title="Pays d’origine"
+            screenReaderSummary="Camembert des pays d’origine des anime sur la période."
+            slices={countryPieSlices}
+          />
         </div>
       </div>
     </div>

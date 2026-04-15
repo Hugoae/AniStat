@@ -7,20 +7,34 @@ export type AniListUser = {
 
 export type AniListMedia = {
   id: number;
+  title?: { romaji?: string | null; english?: string | null };
+  coverImage?: { large?: string | null; medium?: string | null; color?: string | null };
   format?: string | null;
+  duration?: number | null;
+  episodes?: number | null;
+  siteUrl?: string | null;
   averageScore?: number | null;
   genres?: string[];
   countryOfOrigin?: string | null;
+  seasonYear?: number | null;
+  startDate?: { year?: number | null; month?: number | null; day?: number | null };
+  studios?: {
+    edges?: Array<{
+      isMain?: boolean | null;
+      node?: { id?: number | null; name?: string | null } | null;
+    }>;
+  };
 };
 
 export type AniListEntry = {
   id: number;
   status?: string;
   score?: number;
+  progress?: number;
   progressVolumes?: number;
   updatedAt?: number;
-  startedAt?: { year?: number | null };
-  completedAt?: { year?: number | null };
+  startedAt?: { year?: number | null; month?: number | null; day?: number | null };
+  completedAt?: { year?: number | null; month?: number | null; day?: number | null };
   media?: AniListMedia;
   listName?: string;
   listStatus?: string;

@@ -1,4 +1,4 @@
-const crypto = require("crypto");
+import crypto from "node:crypto";
 
 const ANILIST_GRAPHQL_URL = "https://graphql.anilist.co";
 const CACHE_PREFIX = "anilist-proxy:v2";
@@ -152,7 +152,7 @@ async function setCachedResponse(key, ttlSeconds, payloadObj) {
   memorySet(key, ttlSeconds, payloadObj);
 }
 
-module.exports = async (req, res) => {
+export default async function handler(req, res) {
   proxyMetrics.req += 1;
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -229,4 +229,4 @@ module.exports = async (req, res) => {
       errors: [{ message: e.message || "Proxy error" }],
     });
   }
-};
+}

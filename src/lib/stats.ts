@@ -301,6 +301,31 @@ import { MONTHS } from '../config/constants';
     return { episodes, minutes };
   }
 
+  /** Minutes visionnées sur la période, agrégées par format (activités anime). */
+  function computePeriodWatchMinutesByFormat(activities, year, month) {
+    const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const lastByMedia = new Map();
+    const byFormat = {};
+
+    chronological.forEach((a) => {
+      const mediaId = a?.media?.id;
+      if (!mediaId) return;
+      const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
+      const current = activityEffectiveProgress(a, prev, "anime");
+      const delta = Math.max(0, current - prev);
+      if (isTsInPeriod(a.createdAt || 0, year, month)) {
+        const fmt = a?.media?.format || "OTHER";
+        const mins = delta * (a?.media?.duration || 24);
+        byFormat[fmt] = (byFormat[fmt] || 0) + mins;
+      }
+      lastByMedia.set(mediaId, current);
+    });
+
+    return Object.entries(byFormat)
+      .map(([name, minutes]) => ({ name, minutes: Number(minutes) || 0 }))
+      .sort((x, y) => y.minutes - x.minutes);
+  }
+
   function computeMonthlyDeltasFromActivities(activities, year, kind = "anime") {
     const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     const lastByMedia = new Map();
@@ -417,6 +442,7 @@ export {
   getPeriodDayTotal,
   computePeriodDeltaFromActivities,
   computePeriodAnimeActivityTotals,
+  computePeriodWatchMinutesByFormat,
   computeMonthlyDeltasFromActivities,
   computeDailyDeltasInMonth,
   getMediaIdsWithProgressInPeriod,
