@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { C, STATUS_COLORS, STATUS_LABELS } from "../../config/constants";
 import {
   anilistMediaUrl,
@@ -24,10 +25,34 @@ type MediaCardEntry = {
   };
 };
 
-export function MediaCard({ entry, type }: { entry: MediaCardEntry; type: string }) {
+export function MediaCard({
+  entry,
+  type,
+  deferCover = false,
+}: {
+  entry: MediaCardEntry;
+  type: string;
+  /** N’affiche la jaquette qu’à l’approche du viewport (grilles longues). */
+  deferCover?: boolean;
+}) {
   const m = entry.media;
   if (!m) return null;
   const title = m.title?.english || m.title?.romaji || "";
+  const coverWrapRef = useRef<HTMLDivElement | null>(null);
+  const [coverVisible, setCoverVisible] = useState(!deferCover);
+  useEffect(() => {
+    if (!deferCover || coverVisible) return;
+    const el = coverWrapRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (ents) => {
+        if (ents.some((e) => e.isIntersecting)) setCoverVisible(true);
+      },
+      { root: null, rootMargin: "140px 0px", threshold: 0.01 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [deferCover, coverVisible]);
   const originMeta = mediaCountryOriginMeta(m?.countryOfOrigin);
   const listUrl = anilistMediaUrl(m, type);
   const progressCur = entry.progress || 0;
@@ -49,14 +74,30 @@ export function MediaCard({ entry, type }: { entry: MediaCardEntry; type: string
 
   const cardInner = (
     <div className="media-card">
-      <div style={{ position: "relative", width: "100%", height: 210, overflow: "hidden" }}>
-        <img
-          src={m.coverImage?.large || m.coverImage?.medium || undefined}
-          alt={title}
-          loading="lazy"
-          decoding="async"
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-        />
+      <div
+        ref={coverWrapRef}
+        style={{ position: "relative", width: "100%", height: 210, overflow: "hidden" }}
+      >
+        {coverVisible ? (
+          <img
+            src={m.coverImage?.large || m.coverImage?.medium || undefined}
+            alt={title}
+            loading="lazy"
+            decoding="async"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : (
+          <div
+            className="media-card-cover-placeholder"
+            aria-hidden
+            style={{
+              width: "100%",
+              height: "100%",
+              background:
+                "linear-gradient(140deg, rgba(30, 44, 62, 0.55) 0%, rgba(15, 22, 34, 0.85) 100%)",
+            }}
+          />
+        )}
         <div
           style={{
             position: "absolute",

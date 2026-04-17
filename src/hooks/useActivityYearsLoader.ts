@@ -188,10 +188,14 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     let blockedByCooldown = 0;
     [...yearsNeeded].forEach((y) => {
       if (y < 1970) return;
+      const currentYear = new Date().getFullYear();
+      // Current-year activities can change frequently during active reading/watching sessions.
+      // Keep cache-as-fast-path, but force near-immediate background revalidation.
+      const staleMs = y === currentYear ? 1 : ACTIVITY_SWR_STALE_MS;
       const hasAnimeMem = Boolean(animeActivityCache[y]?.length);
       const hasMangaMem = Boolean(mangaActivityCache[y]?.length);
-      const cachedAnimeMeta = hasAnimeMem ? null : safeReadCacheMeta(activityCacheKey(ownerId, "ANIME_LIST", y), ACTIVITY_SWR_STALE_MS);
-      const cachedMangaMeta = hasMangaMem ? null : safeReadCacheMeta(activityCacheKey(ownerId, "MANGA_LIST", y), ACTIVITY_SWR_STALE_MS);
+      const cachedAnimeMeta = hasAnimeMem ? null : safeReadCacheMeta(activityCacheKey(ownerId, "ANIME_LIST", y), staleMs);
+      const cachedMangaMeta = hasMangaMem ? null : safeReadCacheMeta(activityCacheKey(ownerId, "MANGA_LIST", y), staleMs);
       const cachedAnime = cachedAnimeMeta?.value ?? null;
       const cachedManga = cachedMangaMeta?.value ?? null;
       if (!hasAnimeMem) {

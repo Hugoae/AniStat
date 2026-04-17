@@ -34,6 +34,8 @@ export type ProfileViewMainProps = {
   C: typeof C;
   loaded: boolean;
   loading: boolean;
+  /** Spinner principal : chargement profil, activités année, ou zone morte (ex. Strict Mode). */
+  primaryProfileLoader: boolean;
   awaitingPrimaryYearActivities: boolean;
   loadingActivities: boolean;
   error: string | null;
@@ -62,6 +64,7 @@ export function ProfileViewMain({
   C,
   loaded,
   loading,
+  primaryProfileLoader,
   awaitingPrimaryYearActivities,
   loadingActivities,
   error,
@@ -87,7 +90,7 @@ export function ProfileViewMain({
 }: ProfileViewMainProps) {
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 24px 60px" }}>
-      {(loading || awaitingPrimaryYearActivities) && (
+      {primaryProfileLoader && (
         <div
           style={{
             display: "flex",

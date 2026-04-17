@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   C,
   MONTHS,
@@ -16,6 +16,7 @@ import {
   computePeriodDeltaFromActivities,
   computePeriodAnimeActivityTotals,
   computePeriodWatchMinutesByFormat,
+  computePeriodWatchMinutesByCountry,
   computeMonthlyDeltasFromActivities,
   computeDailyDeltasInMonth,
   getMediaIdsWithProgressInPeriod,
@@ -28,13 +29,9 @@ import {
   getProxyCacheStats,
   subscribeProxyCache,
 } from './api/anilistClient';
-import {
-  LIST_TAB_ANIME_CARD_WIDTH,
-  LIST_TAB_ANIME_GRID_GAP,
-  LIST_TAB_ANIME_VISIBLE_ROWS,
-} from "./app/listConstants";
 import { buildAnimeHalfScoreDistributionFullRange } from "./lib/animeScoreUtils";
 import { compareEntriesByUserScoreThenAverage } from "./lib/compareEntries";
+import { anilistMediaUrl } from "./components/appUi/mediaDisplayHelpers";
 import { HomePage } from "./pages/HomePage";
 import { OverviewTab } from "./pages/OverviewTab";
 import { AnimeTab } from "./pages/AnimeTab";
@@ -76,9 +73,6 @@ function App() {
   const [showDevPanel, setShowDevPanel] = useState(false);
   const [debugMetricsView, setDebugMetricsView] = useState(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
-  const [animeListExpanded, setAnimeListExpanded] = useState(false);
-  const [animeListGridWidth, setAnimeListGridWidth] = useState(0);
-  const animeMediaGridRef = useRef(null);
   const profileInFlightRef = useRef(new Map<string, Promise<unknown>>());
   const activityInFlightRef = useRef(new Map<string, Promise<unknown>>());
   const profileAbortRef = useRef<AbortController | null>(null);
@@ -561,42 +555,170 @@ function App() {
     () => computePeriodWatchMinutesByFormat(mergedAnimeForTabTotals, year, month),
     [mergedAnimeForTabTotals, year, month]
   );
+  const animeDurationByCountryData = useMemo(
+    () => computePeriodWatchMinutesByCountry(mergedAnimeForTabTotals, year, month),
+    [mergedAnimeForTabTotals, year, month]
+  );
 
   const animeTopStudios = useMemo(() => {
-    const counts = new Map<string, number>();
+    function animationStudioNameToId(
+      edges:
+        | Array<{
+            isMain?: boolean | null;
+            node?: {
+              id?: number | null;
+              name?: string | null;
+              isAnimationStudio?: boolean | null;
+            } | null;
+          }>
+        | undefined
+    ): Map<string, number> {
+      const main = new Map<string, number>();
+      const other = new Map<string, number>();
+      for (const edge of edges || []) {
+        const node = edge?.node;
+        if (!node || node.isAnimationStudio !== true) continue;
+        const name = String(node.name || "").trim();
+        if (!name) continue;
+        const id = Number(node.id);
+        if (!Number.isFinite(id)) continue;
+        const bucket = edge?.isMain === true ? main : other;
+        if (!bucket.has(name)) bucket.set(name, id);
+      }
+      /*
+       * AniList met parfois des producteurs dans `studios` avec isAnimationStudio true.
+       * Le studio d’animation réel a en général isMain sur l’edge ; les autres entrées
+       * (ex. Studio Pierrot vs PIERROT FILMS) sont exclues dès qu’au moins un main existe.
+       */
+      return new Map(main.size > 0 ? main : other);
+    }
+    const progressRangeDelta = (raw: unknown) => {
+      const txt = String(raw ?? "").trim();
+      const m = txt.match(/(\d+)\s*-\s*(\d+)/);
+      if (!m) return null;
+      const a = Number(m[1]);
+      const b = Number(m[2]);
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+      return Math.max(0, Math.abs(b - a) + 1);
+    };
+    const progressNumber = (raw: unknown) => {
+      const nums = String(raw ?? "").match(/\d+/g);
+      if (!nums || nums.length === 0) return 0;
+      return Math.max(...nums.map((n) => Number(n) || 0));
+    };
+    const rows = new Map<
+      string,
+      {
+        anilistStudioId: number | null;
+        count: number;
+        scoreSum: number;
+        scoreCount: number;
+        minutesWatched: number;
+        medias: Map<
+          number,
+          {
+            id: number;
+            title: string;
+            coverImageUrl: string | null;
+            anilistUrl: string | null;
+            userScore: number;
+            averageScore: number;
+          }
+        >;
+      }
+    >();
     for (const entry of animeTabEntries) {
       const edges = entry.media?.studios?.edges || [];
-      const names = new Set<string>();
-      for (const edge of edges) {
-        if (!edge?.isMain) continue;
-        const name = String(edge?.node?.name || "").trim();
-        if (name) names.add(name);
+      const mediaId = Number(entry.media?.id || 0);
+      if (!mediaId) continue;
+      const coverImageUrl =
+        String(entry.media?.coverImage?.large || entry.media?.coverImage?.medium || "").trim() || null;
+      const mediaTitle =
+        String(entry.media?.title?.romaji || entry.media?.title?.english || "").trim() || "Titre inconnu";
+      const userScore = Number(entry.score || 0);
+      const averageScore = Number(entry.media?.averageScore || 0);
+      const nameToId = animationStudioNameToId(edges);
+      const anilistUrl = anilistMediaUrl({ siteUrl: entry.media?.siteUrl, id: mediaId }, "ANIME");
+      for (const name of nameToId.keys()) {
+        const sid = nameToId.get(name)!;
+        const prev = rows.get(name) || {
+          anilistStudioId: null,
+          count: 0,
+          scoreSum: 0,
+          scoreCount: 0,
+          minutesWatched: 0,
+          medias: new Map(),
+        };
+        if (prev.anilistStudioId == null) prev.anilistStudioId = sid;
+        prev.count += 1;
+        if (userScore > 0) {
+          prev.scoreSum += userScore;
+          prev.scoreCount += 1;
+        }
+        if (!prev.medias.has(mediaId)) {
+          prev.medias.set(mediaId, {
+            id: mediaId,
+            title: mediaTitle,
+            coverImageUrl,
+            anilistUrl,
+            userScore: Number.isFinite(userScore) ? userScore : 0,
+            averageScore: Number.isFinite(averageScore) ? averageScore : 0,
+          });
+        }
+        rows.set(name, prev);
       }
-      for (const name of names) counts.set(name, (counts.get(name) || 0) + 1);
     }
-    return [...counts.entries()]
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-  }, [animeTabEntries]);
-
-  const animeTopProducers = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const entry of animeTabEntries) {
-      const edges = entry.media?.studios?.edges || [];
-      const names = new Set<string>();
-      for (const edge of edges) {
-        if (edge?.isMain) continue;
-        const name = String(edge?.node?.name || "").trim();
-        if (name) names.add(name);
+    const chronological = [...mergedAnimeForTabTotals].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const lastByMedia = new Map<number, number>();
+    for (const a of chronological) {
+      const mediaId = Number(a?.media?.id || 0);
+      if (!mediaId) continue;
+      const prev = lastByMedia.has(mediaId) ? (lastByMedia.get(mediaId) || 0) : 0;
+      const parsed = progressNumber(a?.progress);
+      let current = parsed;
+      if (!current) {
+        const status = String(a?.status || "").toUpperCase();
+        if (status === "COMPLETED") {
+          const cap = Number(a?.media?.episodes || 0);
+          current = cap > 0 ? Math.max(prev, cap) : prev > 0 ? prev + 1 : 1;
+        }
       }
-      for (const name of names) counts.set(name, (counts.get(name) || 0) + 1);
+      const explicitDelta = progressRangeDelta(a?.progress);
+      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
+      const mins = delta * (Number(a?.media?.duration || 24) || 24);
+      const studioEdges = a?.media?.studios?.edges || [];
+      const nameToIdM = animationStudioNameToId(studioEdges);
+      for (const name of nameToIdM.keys()) {
+        const row = rows.get(name);
+        if (row) row.minutesWatched += mins;
+      }
+      lastByMedia.set(mediaId, current);
     }
-    return [...counts.entries()]
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-  }, [animeTabEntries]);
+    return [...rows.entries()]
+      .map(([name, row]) => {
+        const mediasSorted = [...row.medias.values()]
+          .sort((a, b) => {
+            if (b.userScore !== a.userScore) return b.userScore - a.userScore;
+            if (b.averageScore !== a.averageScore) return b.averageScore - a.averageScore;
+            return a.title.localeCompare(b.title);
+          });
+        return {
+          name,
+          anilistStudioId: row.anilistStudioId,
+          count: row.count,
+          meanUserScore: row.scoreCount > 0 ? row.scoreSum / row.scoreCount : 0,
+          minutesWatched: Math.max(0, Math.round(row.minutesWatched)),
+          topMedia: mediasSorted.slice(0, 2),
+          carouselMedia: mediasSorted.slice(0, 16),
+        };
+      })
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        if (b.meanUserScore !== a.meanUserScore) return b.meanUserScore - a.meanUserScore;
+        if (b.minutesWatched !== a.minutesWatched) return b.minutesWatched - a.minutesWatched;
+        return a.name.localeCompare(b.name);
+      });
+  }, [animeTabEntries, mergedAnimeForTabTotals]);
 
   const animeReleaseYearHistogram = useMemo(() => {
     const bins = new Map<number, number>();
@@ -609,6 +731,36 @@ function App() {
     return [...bins.entries()]
       .sort((a, b) => a[0] - b[0])
       .map(([yearLabel, count]) => ({ yearLabel: String(yearLabel), count }));
+  }, [animeTabEntries]);
+
+  const animeSeasonHistogram = useMemo(() => {
+    const labels: Record<string, string> = {
+      WINTER: "Hiver",
+      SPRING: "Printemps",
+      SUMMER: "Été",
+      FALL: "Automne",
+    };
+    const order = ["WINTER", "SPRING", "SUMMER", "FALL"] as const;
+    const counts: Record<string, number> = {
+      WINTER: 0,
+      SPRING: 0,
+      SUMMER: 0,
+      FALL: 0,
+      UNKNOWN: 0,
+    };
+    for (const e of animeTabEntries) {
+      const s = String(e.media?.season || "").toUpperCase();
+      if (s === "WINTER" || s === "SPRING" || s === "SUMMER" || s === "FALL") counts[s]++;
+      else counts.UNKNOWN++;
+    }
+    const out: { key: string; name: string; count: number }[] = [];
+    for (const k of order) {
+      if (counts[k] > 0) out.push({ key: k, name: labels[k], count: counts[k] });
+    }
+    if (counts.UNKNOWN > 0) {
+      out.push({ key: "UNKNOWN", name: "Non renseigné", count: counts.UNKNOWN });
+    }
+    return out;
   }, [animeTabEntries]);
 
   const mangaChaptersChartData = useMemo(() => {
@@ -719,44 +871,6 @@ function App() {
     [mangaTabEntries]
   );
 
-  const animeListGridColumns = useMemo(() => {
-    const w = animeListGridWidth;
-    if (!Number.isFinite(w) || w <= 0) return 1;
-    return Math.max(
-      1,
-      Math.floor((w + LIST_TAB_ANIME_GRID_GAP) / (LIST_TAB_ANIME_CARD_WIDTH + LIST_TAB_ANIME_GRID_GAP))
-    );
-  }, [animeListGridWidth]);
-
-  const animeListCollapsedMax = animeListGridColumns * LIST_TAB_ANIME_VISIBLE_ROWS;
-  const animeListNeedsMoreLess = sortedATab.length > animeListCollapsedMax;
-  const animeListToShow = useMemo(() => {
-    if (!animeListNeedsMoreLess || animeListExpanded) return sortedATab;
-    return sortedATab.slice(0, animeListCollapsedMax);
-  }, [sortedATab, animeListNeedsMoreLess, animeListExpanded, animeListCollapsedMax]);
-
-  useLayoutEffect(() => {
-    if (tab !== "anime" || !loaded) return undefined;
-    const el = animeMediaGridRef.current;
-    if (!el) return undefined;
-    const apply = () => {
-      const w = el.clientWidth;
-      if (typeof w === "number" && Number.isFinite(w)) setAnimeListGridWidth(w);
-    };
-    apply();
-    const ro = new ResizeObserver((entries) => {
-      const cr = entries[0]?.contentRect;
-      const w = cr?.width;
-      if (typeof w === "number" && Number.isFinite(w)) setAnimeListGridWidth(w);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [tab, loaded, sortedATab.length]);
-
-  useEffect(() => {
-    setAnimeListExpanded(false);
-  }, [year, month, tab, appUser?.id]);
-
   const topA = sortedATab;
   const topM = sortedMTab;
 
@@ -862,6 +976,15 @@ function App() {
 
   const isLandingHome = useMemo(() => parseRouteFromHash().type === "home", [hashTick]);
 
+  /** Évite l’écran vide (gris) en dev : Strict Mode peut couper un fetch sans erreur, laissant loading=false avant le 2e essai. */
+  const primaryProfileLoader = useMemo(
+    () =>
+      loading ||
+      awaitingPrimaryYearActivities ||
+      (!isLandingHome && !loaded && error == null),
+    [loading, awaitingPrimaryYearActivities, isLandingHome, loaded, error]
+  );
+
   return (
     <div style={{background:C.bg, minHeight:"100vh", color:C.text, fontFamily:"'Overpass',sans-serif"}}>
 
@@ -911,6 +1034,7 @@ function App() {
         C={C}
         loaded={loaded}
         loading={loading}
+        primaryProfileLoader={primaryProfileLoader}
         awaitingPrimaryYearActivities={awaitingPrimaryYearActivities}
         loadingActivities={loadingActivities}
         error={error != null ? String(error) : null}
@@ -972,17 +1096,15 @@ function App() {
                 animeStatusEntriesOrdered={animeStatusEntriesOrdered}
                 animeCountryEntriesOrdered={animeCountryEntriesOrdered}
                 fmtData={fmtData}
-                animeListToShow={animeListToShow}
-                animeListNeedsMoreLess={animeListNeedsMoreLess}
-                animeListExpanded={animeListExpanded}
-                setAnimeListExpanded={setAnimeListExpanded}
-                animeMediaGridRef={animeMediaGridRef}
+                animeTabEntries={animeTabEntries}
                 animeScoreHalfDistributionRows={animeScoreHalfDistributionRows}
                 animeGenrePeriodData={animeGenrePeriodData}
                 animeDurationByFormatData={animeDurationByFormatData}
+                animeDurationByCountryData={animeDurationByCountryData}
                 animeTopStudios={animeTopStudios}
-                animeTopProducers={animeTopProducers}
                 animeReleaseYearHistogram={animeReleaseYearHistogram}
+                animeSeasonHistogram={animeSeasonHistogram}
+                animeListLayoutActive={tab === "anime" && loaded}
               />
             )}
 

@@ -1,4 +1,5 @@
 import { fetchListActivitiesForYear, sleep } from "../api/anilistClient";
+import type { ActivityCacheByYear } from "../types/domain";
 
 export const CACHE_PREFIX = "aniliststat:v3";
 /** Dernier pseudo recherché avec succès — préremplit la barre au chargement suivant (sans fetch automatique). */
@@ -116,8 +117,8 @@ export function filterQuickProfileSuggestions(inputRaw, list) {
   return rows.slice(0, 12);
 }
 export const profileUserCacheKey = (name) => `${CACHE_PREFIX}:profile:user:${normalizeName(name)}`;
-/* Suffixe : invalider les listes mises en cache avant l’ajout de media.countryOfOrigin. */
-export const profileAnimeCacheKey = (name) => `${CACHE_PREFIX}:profile:anime:${normalizeName(name)}:cov3`;
+/* Suffixe : invalider les listes anime (ex. studios isAnimationStudio). */
+export const profileAnimeCacheKey = (name) => `${CACHE_PREFIX}:profile:anime:${normalizeName(name)}:cov5`;
 export const profileMangaCacheKey = (name) => `${CACHE_PREFIX}:profile:manga:${normalizeName(name)}:cov3`;
 export const QUICKPICK_AVATAR_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const quickPickAvatarCacheKey = (name) => `${CACHE_PREFIX}:quickpick:avatar:${normalizeName(name)}`;
@@ -133,7 +134,42 @@ export function readQuickPickAvatarStored(userName) {
   return typeof raw === "string" && /^https?:\/\//.test(raw) ? raw : null;
 }
 export const legacyProfileCacheKey = (name) => `${LEGACY_CACHE_PREFIXES[0]}:profile:${normalizeName(name)}`;
-export const activityCacheKey = (userId, type, year) => `${CACHE_PREFIX}:acts:${userId}:${type}:${year}`;
+/* Suffixe : invalider le cache activités (studios isAnimationStudio, etc.). */
+export const activityCacheKey = (userId, type, year) => `${CACHE_PREFIX}:acts:${userId}:${type}:${year}:cov4`;
+
+/**
+ * Recharge en mémoire les activités déjà stockées en localStorage pour cet utilisateur.
+ * Clés : `aniliststat:v3:acts:{userId}:ANIME_LIST|MANGA_LIST:{year}:cov4`
+ */
+export function readActivityCachesForUserFromLocalStorage(userId: number): {
+  anime: ActivityCacheByYear;
+  manga: ActivityCacheByYear;
+} {
+  const anime: ActivityCacheByYear = {};
+  const manga: ActivityCacheByYear = {};
+  if (!userId || userId < 1) return { anime, manga };
+  const prefix = `${CACHE_PREFIX}:acts:${userId}:`;
+  try {
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (!key || !key.startsWith(prefix) || !key.endsWith(":cov4")) continue;
+      const parts = key.split(":");
+      if (parts.length < 7) continue;
+      const uid = Number(parts[3]);
+      if (uid !== userId) continue;
+      const type = parts[4];
+      const year = Number(parts[5]);
+      if (!Number.isFinite(year) || year < 1970) continue;
+      const rows = safeReadCache(key, null);
+      if (!Array.isArray(rows)) continue;
+      if (type === "ANIME_LIST") anime[year] = rows;
+      else if (type === "MANGA_LIST") manga[year] = rows;
+    }
+  } catch {
+    return { anime: {}, manga: {} };
+  }
+  return { anime, manga };
+}
 
 export function getActivityTtlMs(yearValue) {
   const currentYear = new Date().getFullYear();

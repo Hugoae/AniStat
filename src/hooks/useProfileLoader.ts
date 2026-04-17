@@ -21,6 +21,7 @@ import {
   legacyProfileCacheKey,
   rememberLastProfileSearch,
   readLastProfileSearchInput,
+  readActivityCachesForUserFromLocalStorage,
 } from "../lib/profileLocalCache";
 import {
   parseRouteFromHash,
@@ -56,6 +57,20 @@ export type ProfileLoaderCrossSetters = {
   setResourceStatus: Dispatch<SetStateAction<Record<string, unknown>>>;
   setResource: (key: string, status: string, error?: string | null) => void;
 };
+
+function hydrateActivityCachesFromLocalStorage(
+  userId: number | null | undefined,
+  cross: Pick<ProfileLoaderCrossSetters, "setAnimeActivityCache" | "setMangaActivityCache">
+) {
+  if (userId != null && userId > 0) {
+    const { anime, manga } = readActivityCachesForUserFromLocalStorage(userId);
+    cross.setAnimeActivityCache(anime);
+    cross.setMangaActivityCache(manga);
+  } else {
+    cross.setAnimeActivityCache({});
+    cross.setMangaActivityCache({});
+  }
+}
 
 /**
  * Chargement du profil AniList (user + listes), routing par hash, reset accueil.
@@ -212,8 +227,7 @@ export function useProfileLoader(
         if (!background) {
           setAnimeActivities([]);
           setMangaActivities([]);
-          cross.setAnimeActivityCache({});
-          cross.setMangaActivityCache({});
+          hydrateActivityCachesFromLocalStorage(cp.user?.id, cross);
         }
         setLoaded(true);
         setLoading(false);
@@ -259,8 +273,7 @@ export function useProfileLoader(
           if (!background) {
             setAnimeActivities([]);
             setMangaActivities([]);
-            cross.setAnimeActivityCache({});
-            cross.setMangaActivityCache({});
+            hydrateActivityCachesFromLocalStorage(ud.User?.id, cross);
           }
           setLoaded(true);
           cross.setResource(profileKey, "success");
@@ -333,8 +346,7 @@ export function useProfileLoader(
         if (!background) {
           setAnimeActivities([]);
           setMangaActivities([]);
-          cross.setAnimeActivityCache({});
-          cross.setMangaActivityCache({});
+          hydrateActivityCachesFromLocalStorage((ud.User as AniListUser | undefined)?.id, cross);
         }
         setLoaded(true);
         if (!background) {

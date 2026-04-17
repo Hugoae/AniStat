@@ -22,6 +22,7 @@ query ($userName: String!, $type: MediaType!) {
           title { romaji english }
           coverImage { large medium color }
           countryOfOrigin
+          season
           seasonYear
           startDate { year month day }
           episodes
@@ -36,7 +37,7 @@ query ($userName: String!, $type: MediaType!) {
           studios {
             edges {
               isMain
-              node { id name }
+              node { id name isAnimationStudio }
             }
           }
         }
@@ -83,10 +84,20 @@ query ($userId: Int!, $type: ActivityType!, $page: Int!, $perPage: Int!) {
         createdAt
         media {
           id
+          title { romaji english }
+          coverImage { large medium }
           duration
           format
+          countryOfOrigin
           episodes
           chapters
+          averageScore
+          studios {
+            edges {
+              isMain
+              node { id name isAnimationStudio }
+            }
+          }
         }
       }
     }
@@ -215,7 +226,14 @@ query ($userId: Int!, $type: ActivityType!, $page: Int!, $perPage: Int!) {
 
     if (limit !== null) scheduler.rateLimit = limit;
     if (remaining !== null) scheduler.rateRemaining = remaining;
-    if (resetUnix !== null) scheduler.rateResetAt = resetUnix * 1000;
+    if (resetUnix !== null) {
+      // Proxy providers may emit reset in seconds or milliseconds.
+      // Normalize to epoch ms and drop absurd future values.
+      const resetCandidateMs = resetUnix > 1_000_000_000_000 ? resetUnix : resetUnix * 1000;
+      const maxReasonableFutureMs = now + 365 * 24 * 60 * 60 * 1000;
+      scheduler.rateResetAt =
+        resetCandidateMs > 0 && resetCandidateMs <= maxReasonableFutureMs ? resetCandidateMs : null;
+    }
 
     const retryAfterUntil = retryAfter !== null ? now + retryAfter * 1000 : 0;
     const resetUntil = scheduler.rateResetAt || 0;

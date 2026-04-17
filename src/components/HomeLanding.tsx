@@ -81,7 +81,14 @@ export function HomeLanding({
                   window.setTimeout(() => setHeaderSearchFocused(false), 120);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && inputVal.trim()) handleSubmit();
+                  if (e.key === "Enter" && inputVal.trim()) {
+                    if (showHeaderQuickPicks && headerQuickPickMatches.length > 0) {
+                      e.preventDefault();
+                      pickQuickProfile(headerQuickPickMatches[0].userName);
+                      return;
+                    }
+                    handleSubmit();
+                  }
                   if (e.key === "Escape") setHeaderSearchFocused(false);
                 }}
                 placeholder="Rechercher un pseudo AniList…"

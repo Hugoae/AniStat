@@ -16,12 +16,18 @@ export type AniListMedia = {
   averageScore?: number | null;
   genres?: string[];
   countryOfOrigin?: string | null;
+  /** Saison de diffusion (AniList) : WINTER, SPRING, SUMMER, FALL */
+  season?: string | null;
   seasonYear?: number | null;
   startDate?: { year?: number | null; month?: number | null; day?: number | null };
   studios?: {
     edges?: Array<{
       isMain?: boolean | null;
-      node?: { id?: number | null; name?: string | null } | null;
+      node?: {
+        id?: number | null;
+        name?: string | null;
+        isAnimationStudio?: boolean | null;
+      } | null;
     }>;
   };
 };

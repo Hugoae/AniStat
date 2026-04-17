@@ -30,6 +30,16 @@ import { MONTHS } from '../config/constants';
     if (!nums || nums.length === 0) return 0;
     return Math.max(...nums.map((n) => Number(n) || 0));
   };
+  const getProgressRangeDelta = (progressRaw) => {
+    const raw = String(progressRaw ?? "").trim();
+    if (!raw) return null;
+    const m = raw.match(/(\d+)\s*-\s*(\d+)/);
+    if (!m) return null;
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+    return Math.max(0, Math.abs(b - a) + 1);
+  };
 
   const toFiniteNumber = (v, fallback = 0) => {
     const n = Number(v);
@@ -161,6 +171,7 @@ import { MONTHS } from '../config/constants';
           episodes: toFiniteNumber(a?.media?.episodes, 0),
           chapters: toFiniteNumber(a?.media?.chapters, 0),
           format: a?.media?.format != null ? String(a.media.format) : "",
+          countryOfOrigin: a?.media?.countryOfOrigin != null ? String(a.media.countryOfOrigin) : "",
         },
       });
     });
@@ -271,7 +282,8 @@ import { MONTHS } from '../config/constants';
       if (!mediaId) return;
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
       const current = activityEffectiveProgress(a, prev, kind);
-      const delta = Math.max(0, current - prev);
+      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
       if (isTsInPeriod(a.createdAt || 0, year, month)) total += delta;
       lastByMedia.set(mediaId, current);
     });
@@ -290,7 +302,8 @@ import { MONTHS } from '../config/constants';
       if (!mediaId) return;
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
       const current = activityEffectiveProgress(a, prev, "anime");
-      const delta = Math.max(0, current - prev);
+      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
       if (isTsInPeriod(a.createdAt || 0, year, month)) {
         episodes += delta;
         minutes += delta * (a?.media?.duration || 24);
@@ -312,7 +325,8 @@ import { MONTHS } from '../config/constants';
       if (!mediaId) return;
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
       const current = activityEffectiveProgress(a, prev, "anime");
-      const delta = Math.max(0, current - prev);
+      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
       if (isTsInPeriod(a.createdAt || 0, year, month)) {
         const fmt = a?.media?.format || "OTHER";
         const mins = delta * (a?.media?.duration || 24);
@@ -326,6 +340,33 @@ import { MONTHS } from '../config/constants';
       .sort((x, y) => y.minutes - x.minutes);
   }
 
+/** Minutes visionnées sur la période, agrégées par pays d'origine (activités anime). */
+function computePeriodWatchMinutesByCountry(activities, year, month) {
+  const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const lastByMedia = new Map();
+  const byCountry = {};
+
+  chronological.forEach((a) => {
+    const mediaId = a?.media?.id;
+    if (!mediaId) return;
+    const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
+    const current = activityEffectiveProgress(a, prev, "anime");
+    const explicitDelta = getProgressRangeDelta(a?.progress);
+    const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
+    if (isTsInPeriod(a.createdAt || 0, year, month)) {
+      const raw = String(a?.media?.countryOfOrigin || "").trim();
+      const code = /^[A-Za-z]{2}$/.test(raw) ? raw.toUpperCase() : "__UNKNOWN__";
+      const mins = delta * (a?.media?.duration || 24);
+      byCountry[code] = (byCountry[code] || 0) + mins;
+    }
+    lastByMedia.set(mediaId, current);
+  });
+
+  return Object.entries(byCountry)
+    .map(([code, minutes]) => ({ code, minutes: Number(minutes) || 0 }))
+    .sort((x, y) => y.minutes - x.minutes);
+}
+
   function computeMonthlyDeltasFromActivities(activities, year, kind = "anime") {
     const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     const lastByMedia = new Map();
@@ -336,7 +377,8 @@ import { MONTHS } from '../config/constants';
       if (!mediaId || !a.createdAt) return;
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
       const current = activityEffectiveProgress(a, prev, kind);
-      const delta = Math.max(0, current - prev);
+      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
       const d = new Date(a.createdAt * 1000);
       if (d.getFullYear() === year) {
         const m = d.getMonth() + 1;
@@ -359,7 +401,8 @@ import { MONTHS } from '../config/constants';
       const d = new Date(a.createdAt * 1000);
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
       const current = activityEffectiveProgress(a, prev, kind);
-      const delta = Math.max(0, current - prev);
+      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
       lastByMedia.set(mediaId, current);
       if (d.getFullYear() === year && d.getMonth() + 1 === month) {
         const day = d.getDate();
@@ -380,7 +423,8 @@ import { MONTHS } from '../config/constants';
       if (!mediaId) return;
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
       const current = activityEffectiveProgress(a, prev, kind);
-      const delta = Math.max(0, current - prev);
+      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
       if (delta > 0 && isTsInPeriod(a.createdAt || 0, year, month)) {
         mediaIds.add(mediaId);
       }
@@ -443,6 +487,7 @@ export {
   computePeriodDeltaFromActivities,
   computePeriodAnimeActivityTotals,
   computePeriodWatchMinutesByFormat,
+  computePeriodWatchMinutesByCountry,
   computeMonthlyDeltasFromActivities,
   computeDailyDeltasInMonth,
   getMediaIdsWithProgressInPeriod,
