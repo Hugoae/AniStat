@@ -15,10 +15,22 @@ import {
   getPeriodDayTotal,
   computePeriodDeltaFromActivities,
   computePeriodAnimeActivityTotals,
-  computePeriodWatchMinutesByFormat,
-  computePeriodWatchMinutesByCountry,
+  computePeriodWatchEpisodesByFormat,
+  computePeriodWatchEpisodesByCountry,
+  computePeriodReadChaptersByFormat,
+  computePeriodReadChaptersByCountry,
+  computePeriodTopTags,
+  computePeriodBiggestSession,
+  computePeriodLongestStreak,
+  findPeriodLongestCompleted,
+  findPeriodHighestScore,
+  findPeriodLowestScore,
+  findPeriodFirstStarted,
+  findPeriodLastStarted,
+  findPeriodFastestCompleted,
   computeMonthlyDeltasFromActivities,
   computeDailyDeltasInMonth,
+  computeDailyDeltasInYear,
   getMediaIdsWithProgressInPeriod,
   getComparisonPeriodMeta,
   mergeActivitiesForDelta,
@@ -54,7 +66,7 @@ import { useOverviewTopScrollFades } from "./hooks/useOverviewTopScrollFades";
 import { ProfileAppHeader } from "./components/ProfileAppHeader";
 import { ProfileViewMain } from "./components/ProfileViewMain";
 import { BackToTopButton } from "./components/BackToTopButton";
-import type { ActivityCacheByYear, AniListUser } from "./types/domain";
+import type { ActivityCacheByYear, AniListEntry, AniListUser } from "./types/domain";
 
 function App() {
   const [headerSearchFocused, setHeaderSearchFocused] = useState(false);
@@ -479,14 +491,6 @@ function App() {
     [mergedMangaForTabTotals, year, month]
   );
 
-  // Computed
-  const mangaCompleted = useMemo(
-    () =>
-      mangaTabEntries.filter(
-        (e) => completedInYear(e, year) && (month === 0 || completedInMonth(e, year, month))
-      ),
-    [mangaTabEntries, year, month]
-  );
   const animeActivityTotals = useMemo(
     () => computePeriodAnimeActivityTotals(mergedAnimeForTotals, year, month),
     [mergedAnimeForTotals, year, month]
@@ -504,6 +508,7 @@ function App() {
   const scoredA = useMemo(() => animeEntries.filter(e => e.score > 0), [animeEntries]);
   const scoredM = useMemo(() => mangaEntries.filter(e => e.score > 0), [mangaEntries]);
   const scoredATab = useMemo(() => animeTabEntries.filter((e) => e.score > 0), [animeTabEntries]);
+  const scoredMTab = useMemo(() => mangaTabEntries.filter((e) => e.score > 0), [mangaTabEntries]);
   const avgA = scoredA.length ? (scoredA.reduce((s,e)=>s+e.score,0)/scoredA.length).toFixed(1) : "—";
   const avgATab = scoredATab.length
     ? (scoredATab.reduce((s, e) => s + e.score, 0) / scoredATab.length).toFixed(1)
@@ -511,8 +516,9 @@ function App() {
   const avgM = scoredM.length ? (scoredM.reduce((s,e)=>s+e.score,0)/scoredM.length).toFixed(1) : "—";
 
   /**
-   * Écart-type (σ) des écarts note perso − moyenne AniList du média (échelle /10).
-   * Préfixe + ou − selon la moyenne des écarts : tendance à noter au-dessus ou en dessous du site.
+   * Dispersion (σ) des écarts note perso − moyenne AniList du média (échelle /10).
+   * Mesure pure de l'amplitude typique d'un écart, indépendante du sens. La direction
+   * moyenne (sur-notation / sous-notation) est lisible dans le scatter « Ta note vs AniList ».
    */
   const animeVsCommunityScoreStdDev = useMemo(() => {
     const deltas = [];
@@ -527,10 +533,26 @@ function App() {
     if (n < 2) return "—";
     const meanDelta = deltas.reduce((s, d) => s + d, 0) / n;
     const variance = deltas.reduce((s, d) => s + (d - meanDelta) ** 2, 0) / (n - 1);
-    const sigma = Math.sqrt(variance);
-    const sign = meanDelta >= 0 ? "+" : "\u2212";
-    return `${sign}${sigma.toFixed(2)}`;
+    return Math.sqrt(variance).toFixed(2);
   }, [animeTabEntries]);
+
+  /**
+   * Top tags AniList sur la période (anime).
+   *
+   * Approche choisie : on compte le nombre d'œuvres de la période portant chaque tag,
+   * en filtrant par défaut les spoilers (media + génériques) et les tags adultes.
+   * On garde aussi le `meanRank` pour départager les égalités et calibrer l'intensité visuelle.
+   */
+  const animeTopTagsData = useMemo(
+    () => computePeriodTopTags(animeTabEntries),
+    [animeTabEntries]
+  );
+
+  /** Top tags AniList sur la période (manga). Mêmes filtres par défaut que côté anime. */
+  const mangaTopTagsData = useMemo(
+    () => computePeriodTopTags(mangaTabEntries),
+    [mangaTabEntries]
+  );
 
   /** Genres (onglet Anime) : entrées anime de la période uniquement. */
   const animeGenrePeriodData = useMemo(() => {
@@ -551,13 +573,112 @@ function App() {
     return buildAnimeHalfScoreDistributionFullRange(scoredATab);
   }, [scoredATab]);
 
-  const animeDurationByFormatData = useMemo(
-    () => computePeriodWatchMinutesByFormat(mergedAnimeForTabTotals, year, month),
+  const animeEpisodesByFormatData = useMemo(
+    () => computePeriodWatchEpisodesByFormat(mergedAnimeForTabTotals, year, month),
     [mergedAnimeForTabTotals, year, month]
   );
-  const animeDurationByCountryData = useMemo(
-    () => computePeriodWatchMinutesByCountry(mergedAnimeForTabTotals, year, month),
+  const animeEpisodesByCountryData = useMemo(
+    () => computePeriodWatchEpisodesByCountry(mergedAnimeForTabTotals, year, month),
     [mergedAnimeForTabTotals, year, month]
+  );
+
+  /** Genres (onglet Manga) : entrées manga de la période uniquement. */
+  const mangaGenrePeriodData = useMemo(() => {
+    const genreCount: Record<string, number> = {};
+    mangaTabEntries.forEach((e) =>
+      (e.media?.genres || []).forEach((g) => {
+        genreCount[g] = (genreCount[g] || 0) + 1;
+      })
+    );
+    return Object.entries(genreCount)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({ name, count }));
+  }, [mangaTabEntries]);
+
+  /** Répartition des scores manga : tranches 1 à 10 par pas de 0,5 (effectifs, y compris 0). */
+  const mangaScoreHalfDistributionRows = useMemo(() => {
+    if (scoredMTab.length === 0) return [];
+    return buildAnimeHalfScoreDistributionFullRange(scoredMTab);
+  }, [scoredMTab]);
+
+  const mangaChaptersByFormatData = useMemo(
+    () => computePeriodReadChaptersByFormat(mergedMangaForTabTotals, year, month),
+    [mergedMangaForTabTotals, year, month]
+  );
+  const mangaChaptersByCountryData = useMemo(
+    () => computePeriodReadChaptersByCountry(mergedMangaForTabTotals, year, month),
+    [mergedMangaForTabTotals, year, month]
+  );
+
+  const mangaReleaseYearHistogram = useMemo(() => {
+    const bins = new Map<number, number>();
+    for (const entry of mangaTabEntries) {
+      const rawYear = entry.media?.startDate?.year;
+      const y = Number(rawYear);
+      if (!Number.isFinite(y) || y < 1900) continue;
+      bins.set(y, (bins.get(y) || 0) + 1);
+    }
+    return [...bins.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([yearLabel, count]) => ({ yearLabel: String(yearLabel), count }));
+  }, [mangaTabEntries]);
+
+  const buildRecordMediaRef = useCallback((entry: AniListEntry | undefined | null) => {
+    if (!entry?.media?.id) return null;
+    const media = entry.media;
+    const title = String(media.title?.english || media.title?.romaji || "Sans titre");
+    return {
+      id: media.id,
+      title,
+      coverImageUrl: media.coverImage?.large || media.coverImage?.medium || null,
+      coverColor: media.coverImage?.color || null,
+      anilistUrl: media.siteUrl || null,
+    };
+  }, []);
+
+  const buildPeriodRecordsBundle = useCallback(
+    (entries: AniListEntry[], activities: typeof mergedAnimeForTabTotals, kind: "anime" | "manga") => {
+      const biggest = computePeriodBiggestSession(activities, year, month, kind);
+      const streak = computePeriodLongestStreak(activities, year, month);
+      const longest = findPeriodLongestCompleted(entries, year, month, kind);
+      const high = findPeriodHighestScore(entries);
+      const low = findPeriodLowestScore(entries);
+      const first = findPeriodFirstStarted(entries, year, month);
+      const last = findPeriodLastStarted(entries, year, month);
+      const fast = findPeriodFastestCompleted(entries, year, month);
+      const wrap = <T extends { entry: AniListEntry }>(r: T | null) => {
+        if (!r) return null;
+        const m = buildRecordMediaRef(r.entry);
+        return m ? { ...r, media: m } : null;
+      };
+      const longestM = wrap(longest);
+      const highM = wrap(high);
+      const lowM = wrap(low);
+      const firstM = wrap(first);
+      const lastM = wrap(last);
+      const fastM = wrap(fast);
+      return {
+        biggestSession: biggest,
+        longestStreak: streak,
+        longestCompleted: longestM ? { media: longestM.media, count: longestM.count } : null,
+        highestScore: highM ? { media: highM.media, score: highM.score } : null,
+        lowestScore: lowM ? { media: lowM.media, score: lowM.score } : null,
+        firstStarted: firstM ? { media: firstM.media, dateLabel: firstM.dateLabel } : null,
+        lastStarted: lastM ? { media: lastM.media, dateLabel: lastM.dateLabel } : null,
+        fastestCompleted: fastM ? { media: fastM.media, days: fastM.days } : null,
+      };
+    },
+    [year, month, buildRecordMediaRef]
+  );
+
+  const animeRecordsData = useMemo(
+    () => buildPeriodRecordsBundle(animeTabEntries, mergedAnimeForTabTotals, "anime"),
+    [animeTabEntries, mergedAnimeForTabTotals, buildPeriodRecordsBundle]
+  );
+
+  const mangaRecordsData = useMemo(
+    () => buildPeriodRecordsBundle(mangaTabEntries, mergedMangaForTabTotals, "manga"),
+    [mangaTabEntries, mergedMangaForTabTotals, buildPeriodRecordsBundle]
   );
 
   const animeTopStudios = useMemo(() => {
@@ -720,6 +841,265 @@ function App() {
       });
   }, [animeTabEntries, mergedAnimeForTabTotals]);
 
+  /**
+   * Top auteurs (manga) — pendant naturel du module « Studios » côté anime.
+   *
+   * On agrège par identifiant AniList du staff (plus stable que le nom, qui peut
+   * varier selon la romanisation). Pour chaque auteur on conserve :
+   * - `count` : nombre de manga uniques sur la période où il/elle est crédité·e ;
+   * - `meanUserScore` : moyenne des notes utilisateur sur ces manga ;
+   * - `chaptersRead` : somme des deltas de chapitres lus sur la période (équivalent
+   *   du `minutesWatched` côté studios) ;
+   * - `primaryRoleLabel` : libellé FR du rôle dominant (Mangaka, Scénariste,
+   *   Illustrateur, Créateur original) ;
+   * - `carouselMedia` : top 16 manga associés (triés note user puis communautaire).
+   *
+   * Les rôles non-créatifs (translator, editor, letterer, assistant, design…) sont
+   * filtrés en amont pour ne pas polluer le classement avec des contributeurs
+   * secondaires.
+   */
+  const mangaTopAuthors = useMemo(() => {
+    /**
+     * Classifie un rôle libre AniList en libellé FR. Renvoie `null` si le rôle
+     * n'est pas considéré comme créatif (et doit être ignoré).
+     */
+    const classifyAuthorRole = (raw: string | null | undefined): string | null => {
+      const role = String(raw || "").trim().toLowerCase();
+      if (!role) return null;
+      /* Exclusions : rôles techniques / d'édition. */
+      if (
+        role.includes("translator") ||
+        role.includes("translation") ||
+        role.includes("editor") ||
+        role.includes("letterer") ||
+        role.includes("lettering") ||
+        role.includes("assistant") ||
+        role.includes("design") ||
+        role.includes("publisher") ||
+        role.includes("publication")
+      ) {
+        return null;
+      }
+      const hasStory = role.includes("story") || role.includes("script") || role.includes("writer");
+      const hasArt = role.includes("art") || role.includes("illustration") || role.includes("illustrator");
+      if (hasStory && hasArt) return "Mangaka";
+      if (role.includes("original creator") || role.includes("original story") || role.includes("creator")) {
+        return "Créateur original";
+      }
+      if (hasStory) return "Scénariste";
+      if (hasArt) return "Illustrateur";
+      /* Autres rôles créatifs non reconnus : on les ignore pour limiter le bruit. */
+      return null;
+    };
+
+    /** Priorité d'un libellé de rôle pour départager le rôle dominant d'un auteur. */
+    const ROLE_PRIORITY: Record<string, number> = {
+      Mangaka: 4,
+      Scénariste: 3,
+      Illustrateur: 2,
+      "Créateur original": 1,
+    };
+
+    const progressRangeDelta = (raw: unknown): number | null => {
+      const txt = String(raw ?? "").trim();
+      const m = txt.match(/(\d+)\s*-\s*(\d+)/);
+      if (!m) return null;
+      const a = Number(m[1]);
+      const b = Number(m[2]);
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+      return Math.max(0, Math.abs(b - a) + 1);
+    };
+    const progressNumber = (raw: unknown): number => {
+      const nums = String(raw ?? "").match(/\d+/g);
+      if (!nums || nums.length === 0) return 0;
+      return Math.max(...nums.map((n) => Number(n) || 0));
+    };
+
+    type MediaRef = {
+      id: number;
+      title: string;
+      coverImageUrl: string | null;
+      anilistUrl: string | null;
+      userScore: number;
+      averageScore: number;
+    };
+    type AuthorRow = {
+      id: number;
+      name: string;
+      imageUrl: string | null;
+      siteUrl: string | null;
+      count: number;
+      scoreSum: number;
+      scoreCount: number;
+      chaptersRead: number;
+      /** Histogramme des libellés de rôle observés pour cet auteur (toutes œuvres). */
+      roleLabelCounts: Map<string, number>;
+      medias: Map<number, MediaRef>;
+    };
+
+    const rows = new Map<number, AuthorRow>();
+
+    for (const entry of mangaTabEntries) {
+      const edges = entry.media?.staff?.edges || [];
+      const mediaId = Number(entry.media?.id || 0);
+      if (!mediaId) continue;
+      const coverImageUrl =
+        String(entry.media?.coverImage?.large || entry.media?.coverImage?.medium || "").trim() || null;
+      const mediaTitle =
+        String(entry.media?.title?.romaji || entry.media?.title?.english || "").trim() || "Titre inconnu";
+      const userScore = Number(entry.score || 0);
+      const averageScore = Number(entry.media?.averageScore || 0);
+      const anilistUrl = anilistMediaUrl({ siteUrl: entry.media?.siteUrl, id: mediaId }, "MANGA");
+
+      /*
+       * Un même auteur peut apparaître plusieurs fois sur une œuvre (ex. crédité
+       * en « Story » ET « Art »). On déduplique par auteur tout en conservant le
+       * rôle « le plus fort » trouvé pour cette œuvre (Story+Art → Mangaka).
+       */
+      const roleByAuthorOnThisMedia = new Map<number, { name: string; imageUrl: string | null; siteUrl: string | null; roleLabel: string }>();
+      for (const edge of edges) {
+        const node = edge?.node;
+        const id = Number(node?.id);
+        if (!Number.isFinite(id) || id <= 0) continue;
+        const roleLabel = classifyAuthorRole(edge?.role);
+        if (!roleLabel) continue;
+        const name = String(
+          node?.name?.userPreferred || node?.name?.full || node?.name?.native || ""
+        ).trim();
+        if (!name) continue;
+        const imageUrl =
+          String(node?.image?.large || node?.image?.medium || "").trim() || null;
+        const siteUrl = String(node?.siteUrl || "").trim() || null;
+        const prev = roleByAuthorOnThisMedia.get(id);
+        if (!prev || (ROLE_PRIORITY[roleLabel] || 0) > (ROLE_PRIORITY[prev.roleLabel] || 0)) {
+          roleByAuthorOnThisMedia.set(id, { name, imageUrl, siteUrl, roleLabel });
+        }
+      }
+
+      for (const [authorId, info] of roleByAuthorOnThisMedia.entries()) {
+        const prev =
+          rows.get(authorId) ||
+          ({
+            id: authorId,
+            name: info.name,
+            imageUrl: info.imageUrl,
+            siteUrl: info.siteUrl,
+            count: 0,
+            scoreSum: 0,
+            scoreCount: 0,
+            chaptersRead: 0,
+            roleLabelCounts: new Map<string, number>(),
+            medias: new Map<number, MediaRef>(),
+          } as AuthorRow);
+        /* On garde le 1er nom/image/url rencontrés (stables tant que l'auteur reste). */
+        if (!prev.imageUrl && info.imageUrl) prev.imageUrl = info.imageUrl;
+        if (!prev.siteUrl && info.siteUrl) prev.siteUrl = info.siteUrl;
+        prev.count += 1;
+        if (userScore > 0) {
+          prev.scoreSum += userScore;
+          prev.scoreCount += 1;
+        }
+        prev.roleLabelCounts.set(
+          info.roleLabel,
+          (prev.roleLabelCounts.get(info.roleLabel) || 0) + 1
+        );
+        if (!prev.medias.has(mediaId)) {
+          prev.medias.set(mediaId, {
+            id: mediaId,
+            title: mediaTitle,
+            coverImageUrl,
+            anilistUrl,
+            userScore: Number.isFinite(userScore) ? userScore : 0,
+            averageScore: Number.isFinite(averageScore) ? averageScore : 0,
+          });
+        }
+        rows.set(authorId, prev);
+      }
+    }
+
+    /*
+     * Calcul des chapitres lus par auteur sur la période : on parcourt les
+     * activités triées chronologiquement, on en déduit le delta par media, puis
+     * on l'attribue à tous les auteurs créditeurs de ce media. Les activités
+     * `LIST_ACTIVITY_QUERY` n'embarquent pas le staff, donc on récupère le
+     * mapping media→auteurs depuis `rows.medias`.
+     */
+    const authorsByMediaId = new Map<number, number[]>();
+    for (const [authorId, row] of rows.entries()) {
+      for (const mediaId of row.medias.keys()) {
+        const list = authorsByMediaId.get(mediaId);
+        if (list) list.push(authorId);
+        else authorsByMediaId.set(mediaId, [authorId]);
+      }
+    }
+    const chronological = [...mergedMangaForTabTotals].sort(
+      (a, b) => (a.createdAt || 0) - (b.createdAt || 0)
+    );
+    const lastByMedia = new Map<number, number>();
+    for (const a of chronological) {
+      const mediaId = Number(a?.media?.id || 0);
+      if (!mediaId) continue;
+      const prev = lastByMedia.get(mediaId) || 0;
+      const parsed = progressNumber(a?.progress);
+      let current = parsed;
+      if (!current) {
+        const status = String(a?.status || "").toUpperCase();
+        if (status === "COMPLETED") {
+          const cap = Number(a?.media?.chapters || 0);
+          current = cap > 0 ? Math.max(prev, cap) : prev > 0 ? prev + 1 : 1;
+        }
+      }
+      const explicitDelta = progressRangeDelta(a?.progress);
+      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
+      const authorIds = authorsByMediaId.get(mediaId);
+      if (authorIds) {
+        for (const aid of authorIds) {
+          const row = rows.get(aid);
+          if (row) row.chaptersRead += delta;
+        }
+      }
+      lastByMedia.set(mediaId, current);
+    }
+
+    return [...rows.values()]
+      .map((row) => {
+        const mediasSorted = [...row.medias.values()].sort((a, b) => {
+          if (b.userScore !== a.userScore) return b.userScore - a.userScore;
+          if (b.averageScore !== a.averageScore) return b.averageScore - a.averageScore;
+          return a.title.localeCompare(b.title);
+        });
+        /* Rôle dominant : on prend le libellé le plus fréquent, départage par priorité. */
+        let primaryRoleLabel = "";
+        let bestCount = -1;
+        let bestPriority = -1;
+        for (const [label, c] of row.roleLabelCounts.entries()) {
+          const pr = ROLE_PRIORITY[label] || 0;
+          if (c > bestCount || (c === bestCount && pr > bestPriority)) {
+            primaryRoleLabel = label;
+            bestCount = c;
+            bestPriority = pr;
+          }
+        }
+        return {
+          id: row.id,
+          name: row.name,
+          imageUrl: row.imageUrl,
+          siteUrl: row.siteUrl,
+          primaryRoleLabel,
+          count: row.count,
+          meanUserScore: row.scoreCount > 0 ? row.scoreSum / row.scoreCount : 0,
+          chaptersRead: Math.max(0, Math.round(row.chaptersRead)),
+          carouselMedia: mediasSorted.slice(0, 16),
+        };
+      })
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        if (b.meanUserScore !== a.meanUserScore) return b.meanUserScore - a.meanUserScore;
+        if (b.chaptersRead !== a.chaptersRead) return b.chaptersRead - a.chaptersRead;
+        return a.name.localeCompare(b.name);
+      });
+  }, [mangaTabEntries, mergedMangaForTabTotals]);
+
   const animeReleaseYearHistogram = useMemo(() => {
     const bins = new Map<number, number>();
     for (const entry of animeTabEntries) {
@@ -861,6 +1241,56 @@ function App() {
     });
     return counts;
   }, [mangaTabEntries]);
+  const mangaStatusEntriesOrdered = useMemo(() => {
+    const order = ["COMPLETED", "CURRENT", "PAUSED", "DROPPED", "REPEATING"];
+    return Object.entries(statusCntM).sort(
+      (a, b) => order.indexOf(a[0]) - order.indexOf(b[0])
+    );
+  }, [statusCntM]);
+
+  const mangaCountryEntriesOrdered = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const e of mangaTabEntries) {
+      const raw = e.media?.countryOfOrigin;
+      const code =
+        raw != null && String(raw).trim() !== "" && /^[A-Za-z]{2}$/.test(String(raw).trim())
+          ? String(raw).trim().toUpperCase()
+          : "__UNKNOWN__";
+      counts[code] = (counts[code] || 0) + 1;
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  }, [mangaTabEntries]);
+
+  const mangaFmtData = useMemo(() => {
+    const fmtCount: Record<string, number> = {};
+    mangaTabEntries.forEach((e) => {
+      const f = e.media?.format || "OTHER";
+      fmtCount[f] = (fmtCount[f] || 0) + 1;
+    });
+    return Object.entries(fmtCount)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value }));
+  }, [mangaTabEntries]);
+
+  /**
+   * Dispersion (σ) des écarts note perso − moyenne AniList du média, côté manga.
+   * Même logique que `animeVsCommunityScoreStdDev` : valeur pure de σ, sans signe.
+   */
+  const mangaVsCommunityScoreStdDev = useMemo(() => {
+    const deltas: number[] = [];
+    for (const e of mangaTabEntries) {
+      if (e.score <= 0) continue;
+      const raw = Number(e.media?.averageScore);
+      if (!Number.isFinite(raw) || raw <= 0) continue;
+      const meanSiteOn10 = raw / 10;
+      deltas.push(e.score - meanSiteOn10);
+    }
+    const n = deltas.length;
+    if (n < 2) return "—";
+    const meanDelta = deltas.reduce((s, d) => s + d, 0) / n;
+    const variance = deltas.reduce((s, d) => s + (d - meanDelta) ** 2, 0) / (n - 1);
+    return Math.sqrt(variance).toFixed(2);
+  }, [mangaTabEntries]);
 
   const sortedATab = useMemo(
     () => [...animeTabEntries].sort(compareEntriesByUserScoreThenAverage),
@@ -897,12 +1327,39 @@ function App() {
     () => countActiveCalendarDays(year, month, mergedAnimeForTotals, mergedMangaForTotals, animeEntries, mangaEntries),
     [year, month, mergedAnimeForTotals, mergedMangaForTotals, animeEntries, mangaEntries]
   );
+
+  /**
+   * Heatmap : déltas quotidiens sur l'année courante (clé `YYYY-MM-DD` → valeur).
+   *
+   * On expose 3 vues :
+   * - anime seul (épisodes / jour)
+   * - manga seul (chapitres / jour)
+   * - combinée pour la vue d'ensemble : somme des deux (« actions / jour »).
+   */
+  const animeDailyTotalsForYear = useMemo(
+    () => computeDailyDeltasInYear(mergedAnimeForTotals, year, "anime"),
+    [mergedAnimeForTotals, year]
+  );
+  const mangaDailyTotalsForYear = useMemo(
+    () => computeDailyDeltasInYear(mergedMangaForTotals, year, "manga"),
+    [mergedMangaForTotals, year]
+  );
+  const overviewDailyTotalsForYear = useMemo(() => {
+    const merged: Record<string, number> = {};
+    for (const [iso, v] of Object.entries(animeDailyTotalsForYear)) {
+      merged[iso] = (merged[iso] || 0) + (Number(v) || 0);
+    }
+    for (const [iso, v] of Object.entries(mangaDailyTotalsForYear)) {
+      merged[iso] = (merged[iso] || 0) + (Number(v) || 0);
+    }
+    return merged;
+  }, [animeDailyTotalsForYear, mangaDailyTotalsForYear]);
   const periodDayTotal = useMemo(() => getPeriodDayTotal(year, month), [year, month]);
 
   const tabs = [
     {key:"overview",label:"Vue d'ensemble"},
-    {key:"anime",label:`Anime (${animeTabEntries.length})`},
     {key:"manga",label:`Manga (${mangaTabEntries.length})`},
+    {key:"anime",label:`Anime (${animeTabEntries.length})`},
   ];
 
   const chartPeriodLegend = useMemo(() => getComparisonPeriodMeta(year, month), [year, month]);
@@ -1079,6 +1536,9 @@ function App() {
                 overviewAnimeTopFades={overviewAnimeTopFades}
                 overviewMangaTopScrollRef={overviewMangaTopScrollRef}
                 overviewAnimeTopScrollRef={overviewAnimeTopScrollRef}
+                overviewDailyTotalsForYear={overviewDailyTotalsForYear}
+                animeDailyTotalsForYear={animeDailyTotalsForYear}
+                mangaDailyTotalsForYear={mangaDailyTotalsForYear}
               />
             )}
 
@@ -1099,23 +1559,42 @@ function App() {
                 animeTabEntries={animeTabEntries}
                 animeScoreHalfDistributionRows={animeScoreHalfDistributionRows}
                 animeGenrePeriodData={animeGenrePeriodData}
-                animeDurationByFormatData={animeDurationByFormatData}
-                animeDurationByCountryData={animeDurationByCountryData}
+                animeTopTagsData={animeTopTagsData}
+                animeEpisodesByFormatData={animeEpisodesByFormatData}
+                animeEpisodesByCountryData={animeEpisodesByCountryData}
                 animeTopStudios={animeTopStudios}
                 animeReleaseYearHistogram={animeReleaseYearHistogram}
                 animeSeasonHistogram={animeSeasonHistogram}
+                animeRecords={animeRecordsData}
+                animeDailyTotalsForYear={animeDailyTotalsForYear}
                 animeListLayoutActive={tab === "anime" && loaded}
               />
             )}
 
             {tab === "manga" && (
               <MangaTab
+                year={year}
+                month={month}
+                setMonth={setMonth}
                 mangaEntriesLength={mangaTabEntries.length}
-                mangaCompletedLength={mangaCompleted.length}
                 totalCh={totalChMangaTab}
                 totalVol={totalVol}
-                statusCntM={statusCntM}
-                sortedM={sortedMTab}
+                avgM={avgM}
+                mangaVsCommunityScoreStdDev={mangaVsCommunityScoreStdDev}
+                mangaStatusEntriesOrdered={mangaStatusEntriesOrdered}
+                mangaCountryEntriesOrdered={mangaCountryEntriesOrdered}
+                mangaFmtData={mangaFmtData}
+                mangaTabEntries={mangaTabEntries}
+                mangaScoreHalfDistributionRows={mangaScoreHalfDistributionRows}
+                mangaGenrePeriodData={mangaGenrePeriodData}
+                mangaTopTagsData={mangaTopTagsData}
+                mangaChaptersByFormatData={mangaChaptersByFormatData}
+                mangaChaptersByCountryData={mangaChaptersByCountryData}
+                mangaReleaseYearHistogram={mangaReleaseYearHistogram}
+                mangaTopAuthors={mangaTopAuthors}
+                mangaRecords={mangaRecordsData}
+                mangaDailyTotalsForYear={mangaDailyTotalsForYear}
+                mangaListLayoutActive={tab === "manga" && loaded}
               />
             )}
 

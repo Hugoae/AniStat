@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import {
   BarChart,
   Bar,
@@ -30,6 +30,11 @@ import {
   mediaFormatShortLabel,
 } from "../components/AppUi";
 import { StatLabelHint } from "../components/appUi/StatPrimitives";
+import { RecordCard } from "../components/appUi/RecordCard";
+import { RecordsCarouselSection } from "../components/appUi/RecordsCarouselSection";
+import { CollapsibleChartBlock } from "../components/appUi/CollapsibleChartBlock";
+import { ChartCollapseToggle } from "../components/appUi/ChartCollapseToggle";
+import { useCollapsedChart } from "../hooks/useCollapsedChart";
 import {
   ANIME_GENRE_RADAR_TOP_N,
   LIST_TAB_ANIME_CARD_WIDTH,
@@ -45,8 +50,11 @@ import {
 } from "../lib/animeGridQuery";
 import { RechartsWhenVisible } from "../components/RechartsWhenVisible";
 import { AnimePieDistributionCard } from "../components/AnimePieDistributionCard";
+import { ScoreScatterCard } from "../components/ScoreScatterCard";
+import { TopTagsCard, type TopTagsRow } from "../components/TopTagsCard";
+import { ActivityHeatmap, type DailyTotalsByIso } from "../components/ActivityHeatmap";
 import { resolveLocalStudioLogoUrl } from "../lib/studioLogos";
-import type { AniListEntry } from "../types/domain";
+import type { AniListEntry, PeriodRecordsBundle } from "../types/domain";
 
 export type AnimeTabProps = {
   year: number;
@@ -64,8 +72,9 @@ export type AnimeTabProps = {
   animeTabEntries: AniListEntry[];
   animeScoreHalfDistributionRows: { bucket: number; label: string; count: number }[];
   animeGenrePeriodData: { name: string; count: number }[];
-  animeDurationByFormatData: { name: string; minutes: number }[];
-  animeDurationByCountryData: { code: string; minutes: number }[];
+  animeTopTagsData: TopTagsRow[];
+  animeEpisodesByFormatData: { name: string; episodes: number }[];
+  animeEpisodesByCountryData: { code: string; episodes: number }[];
   animeTopStudios: {
     name: string;
     anilistStudioId: number | null;
@@ -77,6 +86,9 @@ export type AnimeTabProps = {
   }[];
   animeReleaseYearHistogram: { yearLabel: string; count: number }[];
   animeSeasonHistogram: { key: string; name: string; count: number }[];
+  animeRecords: PeriodRecordsBundle;
+  /** Activité quotidienne anime de l'année courante (clé YYYY-MM-DD → épisodes). */
+  animeDailyTotalsForYear: DailyTotalsByIso;
   /** Évite de mesurer la grille quand l’onglet est masqué (largeur 0). */
   animeListLayoutActive: boolean;
 };
@@ -97,13 +109,17 @@ export function AnimeTab({
   animeTabEntries,
   animeScoreHalfDistributionRows,
   animeGenrePeriodData,
-  animeDurationByFormatData,
-  animeDurationByCountryData,
+  animeTopTagsData,
+  animeEpisodesByFormatData,
+  animeEpisodesByCountryData,
   animeTopStudios,
   animeReleaseYearHistogram,
   animeSeasonHistogram,
+  animeRecords,
+  animeDailyTotalsForYear,
   animeListLayoutActive,
 }: AnimeTabProps) {
+  const animeStudiosCollapse = useCollapsedChart("anime.studios");
   const [studiosExpanded, setStudiosExpanded] = useState(false);
   const [studioLogoByName, setStudioLogoByName] = useState<Record<string, string>>({});
   const [animeListExpanded, setAnimeListExpanded] = useState(false);
@@ -178,39 +194,54 @@ export function AnimeTab({
     setAnimeFilterScoredOnly(false);
     setAnimeFilterCompletedOnly(false);
   }, [year, month]);
-  const formatMinutesByName = useMemo(
+  const formatEpisodesByName = useMemo(
     () =>
       new Map(
-        animeDurationByFormatData.map((row) => [String(row.name), Number(row.minutes) || 0] as const)
+        animeEpisodesByFormatData.map((row) => [String(row.name), Number(row.episodes) || 0] as const)
       ),
-    [animeDurationByFormatData]
+    [animeEpisodesByFormatData]
   );
-  const countryMinutesByCode = useMemo(
+  const countryEpisodesByCode = useMemo(
     () =>
       new Map(
-        animeDurationByCountryData.map((row) => [String(row.code), Number(row.minutes) || 0] as const)
+        animeEpisodesByCountryData.map((row) => [String(row.code), Number(row.episodes) || 0] as const)
       ),
-    [animeDurationByCountryData]
+    [animeEpisodesByCountryData]
   );
-  const formatMinutesHm = (minutesRaw: number) => {
-    const minutes = Math.max(0, Math.round(Number(minutesRaw) || 0));
-    const hours = Math.floor(minutes / 60);
-    const remain = minutes % 60;
-    return `${hours}h ${remain}min`;
+  const formatEpisodesLabel = (episodesRaw: number) => {
+    const ep = Math.max(0, Math.round(Number(episodesRaw) || 0));
+    return `${ep} épisode${ep > 1 ? "s" : ""} vu${ep > 1 ? "s" : ""}`;
   };
-  const formatPieSlices = useMemo(
+  const formatTitlesLabel = (titlesRaw: number) => {
+    const n = Math.max(0, Math.round(Number(titlesRaw) || 0));
+    return `${n} titre${n > 1 ? "s" : ""}`;
+  };
+
+  const formatPieSlicesByTitles = useMemo(
     () =>
       fmtData.map((row, i) => ({
         key: String(row.name),
         label: mediaFormatShortLabel(row.name) || String(row.name),
         value: row.value,
         fill: PIE_COLORS[i % PIE_COLORS.length],
-        extraInfo: formatMinutesHm(formatMinutesByName.get(String(row.name)) || 0),
+        extraInfo: formatEpisodesLabel(formatEpisodesByName.get(String(row.name)) || 0),
       })),
-    [fmtData, formatMinutesByName]
+    [fmtData, formatEpisodesByName]
   );
+  const formatPieSlicesByEpisodes = useMemo(() => {
+    const titlesByName = new Map(fmtData.map((row) => [String(row.name), Number(row.value) || 0] as const));
+    return animeEpisodesByFormatData
+      .filter((row) => Number(row.episodes) > 0)
+      .map((row, i) => ({
+        key: String(row.name),
+        label: mediaFormatShortLabel(row.name) || String(row.name),
+        value: Number(row.episodes) || 0,
+        fill: PIE_COLORS[i % PIE_COLORS.length],
+        extraInfo: formatTitlesLabel(titlesByName.get(String(row.name)) || 0),
+      }));
+  }, [animeEpisodesByFormatData, fmtData]);
 
-  const countryPieSlices = useMemo(
+  const countryPieSlicesByTitles = useMemo(
     () =>
       animeCountryEntriesOrdered.map(([code, c], i) => {
         const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code);
@@ -221,11 +252,31 @@ export function AnimeTab({
           value: c,
           fill: PIE_COLORS[i % PIE_COLORS.length],
           flagCode: meta?.code,
-          extraInfo: formatMinutesHm(countryMinutesByCode.get(code) || 0),
+          extraInfo: formatEpisodesLabel(countryEpisodesByCode.get(code) || 0),
         };
       }),
-    [animeCountryEntriesOrdered, countryMinutesByCode]
+    [animeCountryEntriesOrdered, countryEpisodesByCode]
   );
+  const countryPieSlicesByEpisodes = useMemo(() => {
+    const titlesByCode = new Map(
+      animeCountryEntriesOrdered.map(([code, c]) => [String(code), Number(c) || 0] as const)
+    );
+    return animeEpisodesByCountryData
+      .filter((row) => Number(row.episodes) > 0)
+      .map((row, i) => {
+        const code = String(row.code);
+        const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code);
+        const label = meta ? meta.label : "Inconnu";
+        return {
+          key: code,
+          label,
+          value: Number(row.episodes) || 0,
+          fill: PIE_COLORS[i % PIE_COLORS.length],
+          flagCode: meta?.code,
+          extraInfo: formatTitlesLabel(titlesByCode.get(code) || 0),
+        };
+      });
+  }, [animeEpisodesByCountryData, animeCountryEntriesOrdered]);
   const animeScoreHalfDistributionVisibleRows = useMemo(() => {
     if (animeScoreHalfDistributionRows.length === 0) return [];
     const nonZeroIndices = animeScoreHalfDistributionRows
@@ -285,14 +336,32 @@ export function AnimeTab({
           <StatCard label="Temps" value={fmtMin(totalMin)} icon="clock" />
           <StatCard label="Score moyen" value={avgA} icon="star" />
           <StatCard
-            label="Écart-type"
+            label="Dispersion (σ)"
             value={animeVsCommunityScoreStdDev}
             icon="divide"
-            labelHint="Dispersion de vos écarts (votre note − moyenne AniList). Le + ou − indique si vous tendez à noter en moyenne au-dessus ou en dessous de la moyenne du site."
+            labelHint="Écart-type (σ) de vos écarts (votre note − moyenne AniList) sur la période, en points sur 10. C'est l'amplitude typique d'un écart, sans considérer son sens : 0 = vos notes collent à la moyenne du site, plus la valeur monte plus vos notes sont tranchées (au-dessus comme au-dessous). Pour savoir si vous sur- ou sous-notez en moyenne, regardez le graphique « Ta note vs note AniList » plus bas."
           />
         </div>
         <hr className="overview-stats-divider" />
       </div>
+
+      <AnimeRecordsSection records={animeRecords} />
+
+      <section
+        id="anime-heatmap"
+        className="fade-in list-tab-anchor"
+        aria-labelledby="anime-heatmap-title"
+      >
+        <ActivityHeatmap
+          year={year}
+          title={`Calendrier d'activité anime ${year}`}
+          dailyTotals={animeDailyTotalsForYear}
+          unitSingular="épisode"
+          unitPlural="épisodes"
+          collapseId="anime.heatmap"
+          titleHint="Chaque cellule représente une journée de l'année. La couleur indique le nombre d'épisodes vus ce jour-là (toutes activités anime AniList confondues, période ignorée). Survole une cellule pour voir le total exact."
+        />
+      </section>
 
       <section
         id="anime-repartition"
@@ -531,11 +600,14 @@ export function AnimeTab({
       >
       <div id="anime-graphiques" className="list-tab-anime-charts-section list-tab-anchor">
         <div className="list-tab-anime-charts list-tab-anime-charts--two">
-        <div className="list-tab-anime-chart-block">
-        <div className="chart-card__title-row chart-card__title-row--with-hint list-tab-anime-chart-block__title-row">
-          <h2 className="chart-card__title">Répartition des scores</h2>
-          <StatLabelHint text="Chaque note est ramenée au demi-point le plus proche avant d’être comptée (ex. 7,2 → 7 ; 7,8 → 8 ; 8,25 → 8,5)" />
-        </div>
+        <CollapsibleChartBlock
+          id="anime.scores"
+          title="Répartition des scores"
+          withHint
+          titleAside={
+            <StatLabelHint text="Chaque note est ramenée au demi-point le plus proche avant d’être comptée (ex. 7,2 → 7 ; 7,8 → 8 ; 8,25 → 8,5)" />
+          }
+        >
         <ChartCard
           noTitle
           className="list-tab-anime-chart--scores"
@@ -588,12 +660,9 @@ export function AnimeTab({
             </div>
           )}
         </ChartCard>
-        </div>
+        </CollapsibleChartBlock>
 
-          <div className="list-tab-anime-chart-block">
-          <div className="chart-card__title-row list-tab-anime-chart-block__title-row">
-            <h2 className="chart-card__title">Genres</h2>
-          </div>
+          <CollapsibleChartBlock id="anime.genres" title="Genres">
           <ChartCard
             noTitle
             screenReaderSummary="Radar des dix genres les plus fréquents sur les anime de la période."
@@ -624,14 +693,29 @@ export function AnimeTab({
               </div>
             )}
           </ChartCard>
-          </div>
+          </CollapsibleChartBlock>
+        </div>
+
+        <div className="list-tab-anime-charts">
+          <ScoreScatterCard
+            entries={animeTabEntries}
+            kind="anime"
+            emptyExtra={viewFullYearCta}
+            collapseId="anime.scatter"
+          />
+        </div>
+
+        <div className="list-tab-anime-charts">
+          <TopTagsCard
+            tags={animeTopTagsData}
+            kind="anime"
+            emptyExtra={viewFullYearCta}
+            collapseId="anime.topTags"
+          />
         </div>
 
         <div className="list-tab-anime-charts list-tab-anime-charts--two">
-          <div className="list-tab-anime-chart-block">
-          <div className="chart-card__title-row list-tab-anime-chart-block__title-row">
-            <h2 className="chart-card__title">Année de sortie</h2>
-          </div>
+          <CollapsibleChartBlock id="anime.releaseYear" title="Année de sortie">
           <ChartCard
             noTitle
             screenReaderSummary="Nombre d’anime de la période par année de sortie (seasonYear ou date de début)."
@@ -710,12 +794,9 @@ export function AnimeTab({
               </div>
             )}
           </ChartCard>
-          </div>
+          </CollapsibleChartBlock>
 
-          <div className="list-tab-anime-chart-block">
-            <div className="chart-card__title-row list-tab-anime-chart-block__title-row">
-              <h2 className="chart-card__title">Saison de diffusion</h2>
-            </div>
+          <CollapsibleChartBlock id="anime.season" title="Saison de diffusion">
             <ChartCard
               noTitle
               screenReaderSummary="Répartition des anime de la période par saison de diffusion AniList (hiver, printemps, été, automne)."
@@ -773,7 +854,7 @@ export function AnimeTab({
                 </div>
               )}
             </ChartCard>
-          </div>
+          </CollapsibleChartBlock>
         </div>
 
       </div>
@@ -782,17 +863,57 @@ export function AnimeTab({
         <div className="list-tab-pie-pair">
           <AnimePieDistributionCard
             title="Répartition par format"
-            screenReaderSummary="Camembert des formats (effectifs de titres sur la période)."
-            slices={formatPieSlices}
+            screenReaderSummary="Camembert des formats sur la période."
             emptyExtra={viewFullYearCta}
-            footnote="Le pourcentage représente la part de titres, la durée est une information complémentaire."
+            defaultModeKey="titles"
+            collapseId="anime.format"
+            modes={[
+              {
+                key: "titles",
+                label: "Titres",
+                unitSingular: "titre",
+                unitPlural: "titres",
+                slices: formatPieSlicesByTitles,
+                footnote:
+                  "Le pourcentage représente la part de titres, le nombre d’épisodes vus est une information complémentaire.",
+              },
+              {
+                key: "episodes",
+                label: "Épisodes",
+                unitSingular: "épisode vu",
+                unitPlural: "épisodes vus",
+                slices: formatPieSlicesByEpisodes,
+                footnote:
+                  "Le pourcentage représente la part d’épisodes vus, le nombre de titres est une information complémentaire.",
+              },
+            ]}
           />
           <AnimePieDistributionCard
             title="Pays d’origine"
             screenReaderSummary="Camembert des pays d’origine des anime sur la période."
-            slices={countryPieSlices}
             emptyExtra={viewFullYearCta}
-            footnote="Le pourcentage représente la part de titres, la durée est une information complémentaire."
+            defaultModeKey="titles"
+            collapseId="anime.country"
+            modes={[
+              {
+                key: "titles",
+                label: "Titres",
+                unitSingular: "titre",
+                unitPlural: "titres",
+                slices: countryPieSlicesByTitles,
+                footnote:
+                  "Le pourcentage représente la part de titres, le nombre d’épisodes vus est une information complémentaire.",
+              },
+              {
+                key: "episodes",
+                label: "Épisodes",
+                unitSingular: "épisode vu",
+                unitPlural: "épisodes vus",
+                slices: countryPieSlicesByEpisodes,
+                footnote:
+                  "Le pourcentage représente la part d’épisodes vus, le nombre de titres est une information complémentaire.",
+              },
+            ]}
           />
         </div>
       </div>
@@ -802,13 +923,21 @@ export function AnimeTab({
         id="anime-studios"
         className="list-tab-studios-section list-tab-anchor"
         aria-labelledby="anime-studios-title"
-        aria-describedby={animeTopStudios.length > 0 ? "anime-studios-summary" : undefined}
+        aria-describedby={animeTopStudios.length > 0 && !animeStudiosCollapse.collapsed ? "anime-studios-summary" : undefined}
       >
-        <div className="list-tab-anime-chart-block__title-row list-tab-studios-section__title-row">
+        <div className="chart-card__title-row list-tab-anime-chart-block__title-row list-tab-studios-section__title-row">
           <h2 id="anime-studios-title" className="chart-card__title">
             Studios
           </h2>
+          <ChartCollapseToggle
+            collapsed={animeStudiosCollapse.collapsed}
+            onToggle={animeStudiosCollapse.toggle}
+            chartTitle="Studios"
+            controlsId="anime-studios-body"
+          />
         </div>
+        {animeStudiosCollapse.collapsed ? null : (
+        <div id="anime-studios-body">
         {animeTopStudios.length > 0 ? (
           <>
             <p id="anime-studios-summary" className="chart-card__sr-only">
@@ -955,7 +1084,121 @@ export function AnimeTab({
             {viewFullYearCta}
           </div>
         )}
+        </div>
+        )}
       </section>
     </div>
+  );
+}
+
+function AnimeRecordsSection({ records }: { records: PeriodRecordsBundle }) {
+  const cards: ReactNode[] = [];
+
+  if (records.longestCompleted) {
+    cards.push(
+      <RecordCard
+        key="longest"
+        icon="trophy"
+        label="Plus longue série complétée"
+        value={`${records.longestCompleted.count} épisode${records.longestCompleted.count > 1 ? "s" : ""}`}
+        media={records.longestCompleted.media}
+      />
+    );
+  }
+  if (records.highestScore) {
+    cards.push(
+      <RecordCard
+        key="high"
+        icon="star"
+        label="Plus haute note attribuée"
+        value={`${records.highestScore.score.toFixed(1)} / 10`}
+        media={records.highestScore.media}
+      />
+    );
+  }
+  if (records.lowestScore) {
+    cards.push(
+      <RecordCard
+        key="low"
+        icon="thumbs-down"
+        label="Plus basse note attribuée"
+        value={`${records.lowestScore.score.toFixed(1)} / 10`}
+        media={records.lowestScore.media}
+      />
+    );
+  }
+  if (records.biggestSession) {
+    cards.push(
+      <RecordCard
+        key="biggest"
+        icon="bolt"
+        label="Plus grosse session"
+        value={`${records.biggestSession.count} épisode${records.biggestSession.count > 1 ? "s" : ""}`}
+        sub={`Le ${records.biggestSession.dateLabel}`}
+        labelHint="Plus grand nombre d'épisodes vus en un seul jour de la période sélectionnée."
+      />
+    );
+  }
+  if (records.firstStarted) {
+    cards.push(
+      <RecordCard
+        key="first"
+        icon="flag"
+        label="Premier de la période"
+        value={records.firstStarted.dateLabel}
+        media={records.firstStarted.media}
+        labelHint="Premier titre commencé (date startedAt) durant la période sélectionnée."
+      />
+    );
+  }
+  if (records.lastStarted) {
+    cards.push(
+      <RecordCard
+        key="last"
+        icon="check"
+        label="Dernier de la période"
+        value={records.lastStarted.dateLabel}
+        media={records.lastStarted.media}
+        labelHint="Dernier titre commencé (date startedAt la plus récente) durant la période sélectionnée."
+      />
+    );
+  }
+  if (records.fastestCompleted) {
+    cards.push(
+      <RecordCard
+        key="fast"
+        icon="rocket"
+        label="Plus rapide à terminer"
+        value={records.fastestCompleted.days === 0 ? "En 1 journée" : `${records.fastestCompleted.days} jour${records.fastestCompleted.days > 1 ? "s" : ""}`}
+        media={records.fastestCompleted.media}
+        labelHint="Durée la plus courte entre la date de début (startedAt) et la date de fin (completedAt)."
+      />
+    );
+  }
+  if (records.longestStreak) {
+    cards.push(
+      <RecordCard
+        key="streak"
+        icon="flame"
+        label="Plus longue série de jours"
+        value={`${records.longestStreak.length} jour${records.longestStreak.length > 1 ? "s" : ""}`}
+        sub={
+          records.longestStreak.length === 1
+            ? `Le ${records.longestStreak.startDateLabel}`
+            : `Du ${records.longestStreak.startDateLabel} au ${records.longestStreak.endDateLabel}`
+        }
+        labelHint="Plus long enchaînement de jours consécutifs avec au moins une activité (épisode vu) sur la période."
+      />
+    );
+  }
+
+  return (
+    <RecordsCarouselSection
+      sectionId="anime-records"
+      titleId="anime-records-title"
+      title="Records & faits marquants"
+      cards={cards}
+      collapseId="anime.records"
+    />
   );
 }

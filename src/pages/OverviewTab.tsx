@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 import { C } from "../config/constants";
 import { StatCard, ChartCard, MediaCard, PeriodCompareLegend } from "../components/AppUi";
 import { OverviewActivityLineChart } from "../components/OverviewActivityLineChart";
+import { ActivityHeatmap, type DailyTotalsByIso } from "../components/ActivityHeatmap";
 import type { AniListEntry } from "../types/domain";
 
 export type CompareAvailability = {
@@ -37,6 +38,12 @@ export type OverviewTabProps = {
   overviewAnimeTopFades: { left: boolean; right: boolean };
   overviewMangaTopScrollRef: RefObject<HTMLDivElement | null>;
   overviewAnimeTopScrollRef: RefObject<HTMLDivElement | null>;
+  /** Activité quotidienne agrégée (anime + manga) pour la heatmap. */
+  overviewDailyTotalsForYear: DailyTotalsByIso;
+  /** Activité quotidienne anime seule, pour le détail dans le tooltip. */
+  animeDailyTotalsForYear: DailyTotalsByIso;
+  /** Activité quotidienne manga seule, pour le détail dans le tooltip. */
+  mangaDailyTotalsForYear: DailyTotalsByIso;
 };
 
 export function OverviewTab({
@@ -60,6 +67,9 @@ export function OverviewTab({
   overviewAnimeTopFades,
   overviewMangaTopScrollRef,
   overviewAnimeTopScrollRef,
+  overviewDailyTotalsForYear,
+  animeDailyTotalsForYear,
+  mangaDailyTotalsForYear,
 }: OverviewTabProps) {
   return (
     <div className="overview-page">
@@ -76,6 +86,34 @@ export function OverviewTab({
           />
         </div>
         <hr className="overview-stats-divider" />
+      </div>
+
+      <div className="fade-in fade-in-delay-1">
+        <ActivityHeatmap
+          year={year}
+          title={`Calendrier d'activité ${year}`}
+          dailyTotals={overviewDailyTotalsForYear}
+          unitSingular="action"
+          unitPlural="actions"
+          collapseId="overview.heatmap"
+          titleHint="Chaque cellule représente une journée de l'année. La couleur indique l'intensité totale d'activité (anime + manga). Une « action » correspond à un épisode vu ou un chapitre lu. Survole une cellule pour voir le détail anime / manga du jour."
+          breakdown={[
+            {
+              key: "anime",
+              label: "Anime",
+              unitSingular: "épisode",
+              unitPlural: "épisodes",
+              values: animeDailyTotalsForYear,
+            },
+            {
+              key: "manga",
+              label: "Manga",
+              unitSingular: "chapitre",
+              unitPlural: "chapitres",
+              values: mangaDailyTotalsForYear,
+            },
+          ]}
+        />
       </div>
 
       <div key={`overview-${year}-${month}`} className="overview-period-body">

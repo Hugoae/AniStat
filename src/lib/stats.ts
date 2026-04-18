@@ -314,6 +314,57 @@ import { MONTHS } from '../config/constants';
     return { episodes, minutes };
   }
 
+  /** Épisodes vus sur la période, agrégés par format (activités anime). */
+  function computePeriodWatchEpisodesByFormat(activities, year, month) {
+    const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const lastByMedia = new Map();
+    const byFormat = {};
+
+    chronological.forEach((a) => {
+      const mediaId = a?.media?.id;
+      if (!mediaId) return;
+      const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
+      const current = activityEffectiveProgress(a, prev, "anime");
+      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
+      if (isTsInPeriod(a.createdAt || 0, year, month)) {
+        const fmt = a?.media?.format || "OTHER";
+        byFormat[fmt] = (byFormat[fmt] || 0) + delta;
+      }
+      lastByMedia.set(mediaId, current);
+    });
+
+    return Object.entries(byFormat)
+      .map(([name, episodes]) => ({ name, episodes: Number(episodes) || 0 }))
+      .sort((x, y) => y.episodes - x.episodes);
+  }
+
+  /** Épisodes vus sur la période, agrégés par pays d'origine (activités anime). */
+  function computePeriodWatchEpisodesByCountry(activities, year, month) {
+    const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const lastByMedia = new Map();
+    const byCountry = {};
+
+    chronological.forEach((a) => {
+      const mediaId = a?.media?.id;
+      if (!mediaId) return;
+      const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
+      const current = activityEffectiveProgress(a, prev, "anime");
+      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
+      if (isTsInPeriod(a.createdAt || 0, year, month)) {
+        const raw = String(a?.media?.countryOfOrigin || "").trim();
+        const code = /^[A-Za-z]{2}$/.test(raw) ? raw.toUpperCase() : "__UNKNOWN__";
+        byCountry[code] = (byCountry[code] || 0) + delta;
+      }
+      lastByMedia.set(mediaId, current);
+    });
+
+    return Object.entries(byCountry)
+      .map(([code, episodes]) => ({ code, episodes: Number(episodes) || 0 }))
+      .sort((x, y) => y.episodes - x.episodes);
+  }
+
   /** Minutes visionnées sur la période, agrégées par format (activités anime). */
   function computePeriodWatchMinutesByFormat(activities, year, month) {
     const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
@@ -339,6 +390,125 @@ import { MONTHS } from '../config/constants';
       .map(([name, minutes]) => ({ name, minutes: Number(minutes) || 0 }))
       .sort((x, y) => y.minutes - x.minutes);
   }
+
+/** Chapitres lus sur la période, agrégés par format (activités manga). */
+function computePeriodReadChaptersByFormat(activities, year, month) {
+  const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const lastByMedia = new Map();
+  const byFormat = {};
+
+  chronological.forEach((a) => {
+    const mediaId = a?.media?.id;
+    if (!mediaId) return;
+    const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
+    const current = activityEffectiveProgress(a, prev, "manga");
+    const explicitDelta = getProgressRangeDelta(a?.progress);
+    const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
+    if (isTsInPeriod(a.createdAt || 0, year, month)) {
+      const fmt = a?.media?.format || "OTHER";
+      byFormat[fmt] = (byFormat[fmt] || 0) + delta;
+    }
+    lastByMedia.set(mediaId, current);
+  });
+
+  return Object.entries(byFormat)
+    .map(([name, chapters]) => ({ name, chapters: Number(chapters) || 0 }))
+    .sort((x, y) => y.chapters - x.chapters);
+}
+
+/** Chapitres lus sur la période, agrégés par pays d'origine (activités manga). */
+function computePeriodReadChaptersByCountry(activities, year, month) {
+  const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  const lastByMedia = new Map();
+  const byCountry = {};
+
+  chronological.forEach((a) => {
+    const mediaId = a?.media?.id;
+    if (!mediaId) return;
+    const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
+    const current = activityEffectiveProgress(a, prev, "manga");
+    const explicitDelta = getProgressRangeDelta(a?.progress);
+    const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
+    if (isTsInPeriod(a.createdAt || 0, year, month)) {
+      const raw = String(a?.media?.countryOfOrigin || "").trim();
+      const code = /^[A-Za-z]{2}$/.test(raw) ? raw.toUpperCase() : "__UNKNOWN__";
+      byCountry[code] = (byCountry[code] || 0) + delta;
+    }
+    lastByMedia.set(mediaId, current);
+  });
+
+  return Object.entries(byCountry)
+    .map(([code, chapters]) => ({ code, chapters: Number(chapters) || 0 }))
+    .sort((x, y) => y.chapters - x.chapters);
+}
+
+/**
+ * Top tags AniList pour les entrées d'une période (anime ou manga).
+ *
+ * - Compte le nombre d'entrées portant chaque tag.
+ * - Calcule le rang moyen (force AniList) du tag sur ces entrées.
+ * - Filtre par défaut les tags spoilers (media + génériques) et les tags adultes.
+ * - Trie par fréquence puis par rang moyen.
+ *
+ * @param entries Tableau d'entrées AniList déjà filtrées sur la période voulue (ex. `animeTabEntries`).
+ * @param options.excludeSpoilers true par défaut (cache `isMediaSpoiler` + `isGeneralSpoiler`).
+ * @param options.excludeAdult true par défaut (cache `isAdult`).
+ * @param options.minRank seuil minimum de `rank` pour qu'un tag soit comptabilisé sur l'entrée (0 par défaut).
+ */
+function computePeriodTopTags(
+  entries,
+  options: { excludeSpoilers?: boolean; excludeAdult?: boolean; minRank?: number } = {}
+) {
+  const excludeSpoilers = options.excludeSpoilers !== false;
+  const excludeAdult = options.excludeAdult !== false;
+  const minRank = Number.isFinite(options.minRank) ? Number(options.minRank) : 0;
+
+  const counter = new Map();
+  for (const entry of entries || []) {
+    const tags = entry?.media?.tags;
+    if (!Array.isArray(tags)) continue;
+    /** Déduplique les tags répétés sur un même media (sécurité). */
+    const seenForEntry = new Set();
+    for (const tag of tags) {
+      const name = tag?.name;
+      if (!name || seenForEntry.has(name)) continue;
+      if (excludeSpoilers && (tag.isMediaSpoiler || tag.isGeneralSpoiler)) continue;
+      if (excludeAdult && tag.isAdult) continue;
+      const rank = Number(tag.rank);
+      if (Number.isFinite(rank) && rank < minRank) continue;
+      seenForEntry.add(name);
+
+      const prev = counter.get(name);
+      if (prev) {
+        prev.count += 1;
+        if (Number.isFinite(rank)) {
+          prev.rankSum += rank;
+          prev.rankN += 1;
+        }
+      } else {
+        counter.set(name, {
+          count: 1,
+          rankSum: Number.isFinite(rank) ? rank : 0,
+          rankN: Number.isFinite(rank) ? 1 : 0,
+          category: tag.category ?? null,
+          isAdult: !!tag.isAdult,
+        });
+      }
+    }
+  }
+
+  return [...counter.entries()]
+    .map(([name, v]) => ({
+      name,
+      count: v.count,
+      meanRank: v.rankN > 0 ? v.rankSum / v.rankN : 0,
+      category: v.category,
+      isAdult: v.isAdult,
+    }))
+    .sort(
+      (a, b) => b.count - a.count || b.meanRank - a.meanRank || a.name.localeCompare(b.name)
+    );
+}
 
 /** Minutes visionnées sur la période, agrégées par pays d'origine (activités anime). */
 function computePeriodWatchMinutesByCountry(activities, year, month) {
@@ -388,6 +558,38 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
     });
 
     return monthly;
+  }
+
+  /**
+   * Deltas quotidiens (épisodes / chapitres effectifs) sur toute une année,
+   * indexés par chaîne ISO `YYYY-MM-DD` (heure locale, fuseau du navigateur).
+   *
+   * Sert notamment à alimenter la heatmap d'activité.
+   */
+  function computeDailyDeltasInYear(activities, year, kind = "anime") {
+    const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const lastByMedia = new Map();
+    /** @type {Record<string, number>} */
+    const daily = {};
+
+    chronological.forEach((a) => {
+      const mediaId = a?.media?.id;
+      if (!mediaId || !a.createdAt) return;
+      const d = new Date(a.createdAt * 1000);
+      const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
+      const current = activityEffectiveProgress(a, prev, kind);
+      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
+      lastByMedia.set(mediaId, current);
+      if (delta > 0 && d.getFullYear() === year) {
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        const key = `${year}-${m}-${day}`;
+        daily[key] = (daily[key] || 0) + delta;
+      }
+    });
+
+    return daily;
   }
 
   function computeDailyDeltasInMonth(activities, year, month, kind = "anime") {
@@ -459,6 +661,216 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
     };
   }
 
+  /* ----------------------------------------------------------------------- *
+   * Records / faits marquants — helpers
+   * ----------------------------------------------------------------------- */
+
+  const FR_LONG_DATE_FMT = new Intl.DateTimeFormat("fr-FR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+
+  function formatFrenchLongDate(year, month1Indexed, day) {
+    if (!year || !month1Indexed || !day) return "";
+    return FR_LONG_DATE_FMT.format(new Date(year, month1Indexed - 1, day));
+  }
+
+  function dayKeyFromTimestamp(ts) {
+    const d = new Date(ts * 1000);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  function frenchLabelFromDayKey(key) {
+    if (!key) return "";
+    const [y, m, d] = key.split("-").map(Number);
+    return formatFrenchLongDate(y, m, d);
+  }
+
+  /** Plus grosse session sur la période (somme des deltas par jour). */
+  function computePeriodBiggestSession(activities, year, month, kind) {
+    const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const lastByMedia = new Map();
+    const byDay = new Map();
+
+    chronological.forEach((a) => {
+      const mediaId = a?.media?.id;
+      if (!mediaId) return;
+      const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
+      const current = activityEffectiveProgress(a, prev, kind);
+      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
+      if (delta > 0 && isTsInPeriod(a.createdAt || 0, year, month)) {
+        const key = dayKeyFromTimestamp(a.createdAt);
+        byDay.set(key, (byDay.get(key) || 0) + delta);
+      }
+      lastByMedia.set(mediaId, current);
+    });
+
+    let bestKey = null;
+    let bestCount = 0;
+    for (const [k, v] of byDay.entries()) {
+      if (v > bestCount) {
+        bestCount = v;
+        bestKey = k;
+      }
+    }
+    if (!bestKey || bestCount <= 0) return null;
+    return { count: bestCount, dayKey: bestKey, dateLabel: frenchLabelFromDayKey(bestKey) };
+  }
+
+  /** Plus longue série de jours consécutifs avec au moins une activité (dans la période). */
+  function computePeriodLongestStreak(activities, year, month) {
+    const days = new Set();
+    activities.forEach((a) => {
+      if (!isTsInPeriod(a.createdAt || 0, year, month)) return;
+      days.add(dayKeyFromTimestamp(a.createdAt));
+    });
+    if (days.size === 0) return null;
+    const sorted = [...days].sort();
+    let bestLen = 1;
+    let bestStart = sorted[0];
+    let bestEnd = sorted[0];
+    let curLen = 1;
+    let curStart = sorted[0];
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = new Date(`${sorted[i - 1]}T00:00:00`);
+      const cur = new Date(`${sorted[i]}T00:00:00`);
+      const diffDays = Math.round((cur.getTime() - prev.getTime()) / 86400000);
+      if (diffDays === 1) {
+        curLen++;
+      } else {
+        curLen = 1;
+        curStart = sorted[i];
+      }
+      if (curLen > bestLen) {
+        bestLen = curLen;
+        bestStart = curStart;
+        bestEnd = sorted[i];
+      }
+    }
+    return {
+      length: bestLen,
+      startDateLabel: frenchLabelFromDayKey(bestStart),
+      endDateLabel: frenchLabelFromDayKey(bestEnd),
+    };
+  }
+
+  function fuzzyDateInPeriod(date, year, month) {
+    if (!date?.year || !date?.month || !date?.day) return false;
+    if (date.year !== year) return false;
+    return month === 0 ? true : date.month === month;
+  }
+
+  function fuzzyDateKey(date) {
+    if (!date?.year || !date?.month || !date?.day) return "";
+    return `${date.year}-${String(date.month).padStart(2, "0")}-${String(date.day).padStart(2, "0")}`;
+  }
+
+  /** Plus longue série complétée sur la période (max d'épisodes anime / chapitres manga). */
+  function findPeriodLongestCompleted(entries, year, month, kind) {
+    let best = null;
+    let bestCount = -1;
+    for (const e of entries) {
+      if (e?.status !== "COMPLETED") continue;
+      if (!fuzzyDateInPeriod(e?.completedAt, year, month)) continue;
+      const total =
+        kind === "manga"
+          ? Number(e?.media?.chapters || e?.progress || 0)
+          : Number(e?.media?.episodes || e?.progress || 0);
+      if (total > bestCount) {
+        best = e;
+        bestCount = total;
+      }
+    }
+    if (!best || bestCount <= 0) return null;
+    return { entry: best, count: bestCount };
+  }
+
+  /** Plus haute / plus basse note attribuée parmi les entrées de la période. */
+  function findPeriodHighestScore(entries) {
+    let best = null;
+    let bestScore = -Infinity;
+    for (const e of entries) {
+      const s = Number(e?.score || 0);
+      if (!Number.isFinite(s) || s <= 0) continue;
+      if (s > bestScore) {
+        best = e;
+        bestScore = s;
+      }
+    }
+    if (!best || !Number.isFinite(bestScore)) return null;
+    return { entry: best, score: bestScore };
+  }
+  function findPeriodLowestScore(entries) {
+    let best = null;
+    let bestScore = Infinity;
+    for (const e of entries) {
+      const s = Number(e?.score || 0);
+      if (!Number.isFinite(s) || s <= 0) continue;
+      if (s < bestScore) {
+        best = e;
+        bestScore = s;
+      }
+    }
+    if (!best || !Number.isFinite(bestScore)) return null;
+    return { entry: best, score: bestScore };
+  }
+
+  /** Premier média de la période (= startedAt le plus ancien dans la période). */
+  function findPeriodFirstStarted(entries, year, month) {
+    let best = null;
+    let bestKey = "9999-99-99";
+    for (const e of entries) {
+      if (!fuzzyDateInPeriod(e?.startedAt, year, month)) continue;
+      const key = fuzzyDateKey(e.startedAt);
+      if (key && key < bestKey) {
+        bestKey = key;
+        best = e;
+      }
+    }
+    if (!best) return null;
+    return { entry: best, dateLabel: frenchLabelFromDayKey(bestKey) };
+  }
+
+  /** Dernier média commencé de la période (= startedAt le plus récent dans la période). */
+  function findPeriodLastStarted(entries, year, month) {
+    let best = null;
+    let bestKey = "0000-00-00";
+    for (const e of entries) {
+      if (!fuzzyDateInPeriod(e?.startedAt, year, month)) continue;
+      const key = fuzzyDateKey(e.startedAt);
+      if (key && key > bestKey) {
+        bestKey = key;
+        best = e;
+      }
+    }
+    if (!best) return null;
+    return { entry: best, dateLabel: frenchLabelFromDayKey(bestKey) };
+  }
+
+  /** Plus rapide à terminer parmi les entrées complétées dans la période. */
+  function findPeriodFastestCompleted(entries, year, month) {
+    let best = null;
+    let bestDays = Infinity;
+    for (const e of entries) {
+      if (e?.status !== "COMPLETED") continue;
+      if (!fuzzyDateInPeriod(e?.completedAt, year, month)) continue;
+      const s = e?.startedAt;
+      if (!s?.year || !s?.month || !s?.day) continue;
+      const sDate = new Date(s.year, s.month - 1, s.day);
+      const cDate = new Date(e.completedAt.year, e.completedAt.month - 1, e.completedAt.day);
+      const days = Math.round((cDate.getTime() - sDate.getTime()) / 86400000);
+      if (!Number.isFinite(days) || days < 0) continue;
+      if (days < bestDays) {
+        best = e;
+        bestDays = days;
+      }
+    }
+    if (!best || !Number.isFinite(bestDays)) return null;
+    return { entry: best, days: bestDays };
+  }
+
   function mergeActivitiesForDelta(anchorYear, cache) {
     const list = [...(cache[anchorYear - 1] || []), ...(cache[anchorYear] || [])];
     const seen = new Set();
@@ -488,8 +900,22 @@ export {
   computePeriodAnimeActivityTotals,
   computePeriodWatchMinutesByFormat,
   computePeriodWatchMinutesByCountry,
+  computePeriodWatchEpisodesByFormat,
+  computePeriodWatchEpisodesByCountry,
+  computePeriodReadChaptersByFormat,
+  computePeriodReadChaptersByCountry,
+  computePeriodTopTags,
+  computePeriodBiggestSession,
+  computePeriodLongestStreak,
+  findPeriodLongestCompleted,
+  findPeriodHighestScore,
+  findPeriodLowestScore,
+  findPeriodFirstStarted,
+  findPeriodLastStarted,
+  findPeriodFastestCompleted,
   computeMonthlyDeltasFromActivities,
   computeDailyDeltasInMonth,
+  computeDailyDeltasInYear,
   getMediaIdsWithProgressInPeriod,
   normalizeEntry,
   normalizeEntries,

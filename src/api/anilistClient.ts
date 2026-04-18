@@ -31,6 +31,15 @@ query ($userName: String!, $type: MediaType!) {
           duration
           format
           genres
+          tags {
+            id
+            name
+            category
+            rank
+            isMediaSpoiler
+            isGeneralSpoiler
+            isAdult
+          }
           averageScore
           status
           siteUrl
@@ -38,6 +47,76 @@ query ($userName: String!, $type: MediaType!) {
             edges {
               isMain
               node { id name isAnimationStudio }
+            }
+          }
+        }
+      }
+    }
+  }
+}`;
+
+  /**
+   * Variante pour la liste manga : on récupère en plus les `staff` du media (auteurs,
+   * scénaristes, illustrateurs…). Spécifique au manga pour ne pas alourdir le payload
+   * anime (qui inclurait sinon doubleurs, réalisateurs, etc.).
+   * `perPage: 8` couvre largement les contributeurs principaux (mangaka, story/art).
+   */
+  export const MEDIA_LIST_QUERY_MANGA = `
+query ($userName: String!, $type: MediaType!) {
+  MediaListCollection(userName: $userName, type: $type) {
+    lists {
+      name
+      status
+      entries {
+        id
+        status
+        score(format: POINT_10_DECIMAL)
+        progress
+        progressVolumes
+        startedAt { year month day }
+        completedAt { year month day }
+        updatedAt
+        media {
+          id
+          title { romaji english }
+          coverImage { large medium color }
+          countryOfOrigin
+          season
+          seasonYear
+          startDate { year month day }
+          episodes
+          chapters
+          volumes
+          duration
+          format
+          genres
+          tags {
+            id
+            name
+            category
+            rank
+            isMediaSpoiler
+            isGeneralSpoiler
+            isAdult
+          }
+          averageScore
+          status
+          siteUrl
+          studios {
+            edges {
+              isMain
+              node { id name isAnimationStudio }
+            }
+          }
+          staff(sort: RELEVANCE, perPage: 8) {
+            edges {
+              role
+              node {
+                id
+                name { full native userPreferred }
+                image { large medium }
+                siteUrl
+              }
             }
           }
         }

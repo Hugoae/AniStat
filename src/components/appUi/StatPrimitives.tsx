@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { C } from "../../config/constants";
 
 function StatIcon({ name }: { name: string }) {
@@ -87,6 +88,46 @@ function StatIcon({ name }: { name: string }) {
           <path d="M2 17l10 5 10-5M2 12l10 5 10-5" />
         </svg>
       );
+    case "bolt":
+      return (
+        <svg viewBox="0 0 24 24" style={s} fill="currentColor" aria-hidden>
+          <path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z" />
+        </svg>
+      );
+    case "flame":
+      return (
+        <svg viewBox="0 0 24 24" style={s} fill="currentColor" aria-hidden>
+          <path d="M12 2c1 4 4 5 4 9a4 4 0 11-8 0c0-2 1-3 1-5 0 2 2 3 3 4 0-2-1-4 0-8z" />
+        </svg>
+      );
+    case "trophy":
+      return (
+        <svg viewBox="0 0 24 24" style={s} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 01-10 0V4z" />
+          <path d="M17 5h3v3a3 3 0 01-3 3M7 5H4v3a3 3 0 003 3" />
+        </svg>
+      );
+    case "thumbs-down":
+      return (
+        <svg viewBox="0 0 24 24" style={s} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M10 15v4a2 2 0 002 2l3-7V3H6.28a2 2 0 00-2 1.7l-1.38 8a2 2 0 002 2.3H10z" />
+          <path d="M19 3h-4v12h4a2 2 0 002-2V5a2 2 0 00-2-2z" />
+        </svg>
+      );
+    case "flag":
+      return (
+        <svg viewBox="0 0 24 24" style={s} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M4 22V4M4 4h12l-2 4 2 4H4" />
+        </svg>
+      );
+    case "rocket":
+      return (
+        <svg viewBox="0 0 24 24" style={s} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M5 13l3 3M14 4c4 0 6 2 6 6l-9 9-4-4 7-7c0-2 0-4 0-4z" />
+          <circle cx="15" cy="9" r="1.5" />
+          <path d="M5 19c1.5-1.5 3-1.5 4 0" />
+        </svg>
+      );
     case "dot":
     default:
       return (
@@ -97,10 +138,34 @@ function StatIcon({ name }: { name: string }) {
   }
 }
 
-/** Infobulle DA uniquement sur la bulle « ? » à côté du libellé (prop labelHint). */
+export { StatIcon };
+
+/** Marge entre le bouton « ? » et son tooltip. */
+const STAT_LABEL_HINT_TOOLTIP_GAP_PX = 8;
+/** Marge minimale à conserver entre le tooltip et les bords de la viewport. */
+const STAT_LABEL_HINT_VIEWPORT_MARGIN_PX = 8;
+
+type TooltipPos = {
+  /** Coordonnées en pixels relatives à la viewport (utilisées avec `position: fixed`). */
+  top: number;
+  left: number;
+  /** Sens du tooltip par rapport au bouton, pour piloter une éventuelle classe visuelle. */
+  vertical: "above" | "below";
+};
+
+/**
+ * Infobulle d'aide rendue dans un portal vers `document.body` afin d'échapper
+ * à tout `overflow: hidden/auto` d'un conteneur parent (ex. carrousel des records,
+ * scroll horizontal, etc.). La position est calculée en `position: fixed` à partir
+ * du rectangle du bouton « ? ». Bascule automatiquement en-dessous si pas assez
+ * de place au-dessus dans la fenêtre.
+ */
 export function StatLabelHint({ text }: { text: string }) {
   const [tipOpen, setTipOpen] = useState(false);
+  const [pos, setPos] = useState<TooltipPos | null>(null);
   const hideTimerRef = useRef<number | null>(null);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
+  const tooltipRef = useRef<HTMLDivElement | null>(null);
 
   const cancelHideTimer = useCallback(() => {
     if (hideTimerRef.current != null) {
@@ -121,9 +186,63 @@ export function StatLabelHint({ text }: { text: string }) {
 
   useEffect(() => () => cancelHideTimer(), [cancelHideTimer]);
 
+  /**
+   * Recalcule la position du tooltip dès qu'il est affiché, après avoir laissé le
+   * navigateur le mesurer (taille variable selon le texte). On utilise
+   * `useLayoutEffect` pour que le repositionnement soit appliqué avant la peinture.
+   */
+  useLayoutEffect(() => {
+    if (!tipOpen) {
+      setPos(null);
+      return;
+    }
+    const btn = btnRef.current;
+    const tip = tooltipRef.current;
+    if (!btn || !tip) return;
+
+    const compute = () => {
+      const btnRect = btn.getBoundingClientRect();
+      const tipRect = tip.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+
+      /** Centre horizontal sur le bouton, puis clamp dans la viewport. */
+      let left = btnRect.left + btnRect.width / 2 - tipRect.width / 2;
+      left = Math.max(
+        STAT_LABEL_HINT_VIEWPORT_MARGIN_PX,
+        Math.min(left, vw - tipRect.width - STAT_LABEL_HINT_VIEWPORT_MARGIN_PX),
+      );
+
+      /** Au-dessus par défaut ; bascule en-dessous si pas assez d'espace au-dessus de la viewport. */
+      const spaceAbove = btnRect.top;
+      const needed = tipRect.height + STAT_LABEL_HINT_TOOLTIP_GAP_PX + STAT_LABEL_HINT_VIEWPORT_MARGIN_PX;
+      const placeBelow = spaceAbove < needed && vh - btnRect.bottom > spaceAbove;
+      const top = placeBelow
+        ? btnRect.bottom + STAT_LABEL_HINT_TOOLTIP_GAP_PX
+        : btnRect.top - tipRect.height - STAT_LABEL_HINT_TOOLTIP_GAP_PX;
+
+      setPos({ top, left, vertical: placeBelow ? "below" : "above" });
+    };
+
+    compute();
+
+    /**
+     * Si la page scrolle ou est redimensionnée pendant que le tooltip est ouvert,
+     * on le repositionne (ou le ferme si le bouton est sorti du viewport).
+     */
+    const onUpdate = () => compute();
+    window.addEventListener("scroll", onUpdate, true);
+    window.addEventListener("resize", onUpdate);
+    return () => {
+      window.removeEventListener("scroll", onUpdate, true);
+      window.removeEventListener("resize", onUpdate);
+    };
+  }, [tipOpen, text]);
+
   return (
     <span className="stat-label-hint-anchor">
       <button
+        ref={btnRef}
         type="button"
         className="stat-label-hint__btn"
         aria-label="Explication"
@@ -134,14 +253,27 @@ export function StatLabelHint({ text }: { text: string }) {
           ?
         </span>
       </button>
-      <div
-        className={`stat-stat-al__tooltip stat-stat-al__tooltip--label${tipOpen ? " stat-stat-al__tooltip--open" : ""}`}
-        role="tooltip"
-        onMouseEnter={cancelHideTimer}
-        onMouseLeave={scheduleCloseTip}
-      >
-        {text}
-      </div>
+      {tipOpen
+        ? createPortal(
+            <div
+              ref={tooltipRef}
+              className={`stat-stat-al__tooltip stat-stat-al__tooltip--label stat-stat-al__tooltip--portal stat-stat-al__tooltip--open${
+                pos ? ` stat-stat-al__tooltip--${pos.vertical}` : " stat-stat-al__tooltip--measuring"
+              }`}
+              role="tooltip"
+              onMouseEnter={cancelHideTimer}
+              onMouseLeave={scheduleCloseTip}
+              style={
+                pos
+                  ? { position: "fixed", top: pos.top, left: pos.left }
+                  : { position: "fixed", top: 0, left: 0, visibility: "hidden" }
+              }
+            >
+              {text}
+            </div>,
+            document.body,
+          )
+        : null}
     </span>
   );
 }

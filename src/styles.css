@@ -193,6 +193,23 @@ button:hover { opacity: 0.9; }
   padding: 6px 8px;
   font-size: 11px;
 }
+/*
+ * Variante du tooltip rendue dans un portal vers <body> (StatLabelHint) : on
+ * neutralise les règles de positionnement CSS par défaut pour laisser le calcul
+ * JS piloter `top` / `left` en `position: fixed`. Sinon `bottom` + `transform`
+ * du style de base décaleraient/étireraient l'élément.
+ */
+.stat-stat-al__tooltip--portal {
+  position: fixed;
+  bottom: auto;
+  right: auto;
+  transform: none;
+  z-index: 1000;
+}
+.stat-stat-al__tooltip--portal.stat-stat-al__tooltip--measuring {
+  /* Frame de mesure : tooltip rendu invisible et sans pointer events le temps de mesurer sa taille. */
+  pointer-events: none;
+}
 .stat-stat-al__bubble {
   flex-shrink: 0;
   width: 42px;
@@ -230,6 +247,230 @@ button:hover { opacity: 0.9; }
 .chart-section {
   display: flex;
   flex-direction: column;
+}
+
+/* Records / faits marquants ----------------------------------------------- */
+.list-tab-records-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* Pas d'arrière-plan : la section est volontairement plate. */
+}
+.list-tab-records-section__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.list-tab-records-section__title-row .overview-block-title {
+  min-width: 0;
+  margin-bottom: 0;
+}
+.list-tab-records-carousel-wrap {
+  position: relative;
+  isolation: isolate;
+}
+.list-tab-records-carousel-wrap::before,
+.list-tab-records-carousel-wrap::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 14px;
+  width: 56px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.22s ease;
+  z-index: 2;
+}
+.list-tab-records-carousel-wrap::before {
+  left: 0;
+  background: linear-gradient(
+    90deg,
+    #0b1622 0%,
+    rgba(11, 22, 34, 0.65) 45%,
+    rgba(11, 22, 34, 0) 100%
+  );
+}
+.list-tab-records-carousel-wrap::after {
+  right: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(11, 22, 34, 0) 0%,
+    rgba(11, 22, 34, 0.65) 45%,
+    #0b1622 100%
+  );
+}
+.list-tab-records-carousel-wrap--fade-start::before {
+  opacity: 1;
+}
+.list-tab-records-carousel-wrap--fade-end::after {
+  opacity: 1;
+}
+.list-tab-records-carousel {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 12px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-bottom: 10px;
+  margin-bottom: -4px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(74, 93, 110, 0.65) rgba(14, 22, 34, 0.55);
+  -webkit-overflow-scrolling: touch;
+}
+.list-tab-records-carousel::-webkit-scrollbar {
+  height: 6px;
+}
+.list-tab-records-carousel::-webkit-scrollbar-track {
+  background: rgba(10, 16, 26, 0.65);
+  border-radius: 999px;
+}
+.list-tab-records-carousel::-webkit-scrollbar-thumb {
+  background: rgba(74, 93, 110, 0.75);
+  border-radius: 999px;
+}
+.list-tab-records-carousel::-webkit-scrollbar-thumb:hover {
+  background: rgba(90, 112, 132, 0.85);
+}
+.record-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 14px 12px;
+  background: var(--surface-bg, rgba(20, 30, 44, 0.65));
+  border: 1px solid var(--surface-border, rgba(31, 45, 61, 0.85));
+  border-radius: var(--radius-card, 12px);
+  box-shadow: var(--shadow-control, 0 1px 0 rgba(255, 255, 255, 0.02));
+  flex: 0 0 300px;
+  width: 300px;
+  min-width: 0;
+  scroll-snap-align: start;
+}
+.record-card__top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.record-card__bubble {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 42, 58, 0.95);
+  border: 1px solid rgba(31, 45, 61, 0.85);
+  color: #8ba0b2;
+}
+.record-card__heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.record-card__value {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.record-card__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #8ba0b2;
+  line-height: 1.25;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.record-card__label--with-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.record-card__label-text {
+  min-width: 0;
+}
+.record-card__media {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(31, 45, 61, 0.55);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.record-card__thumb-wrap {
+  flex-shrink: 0;
+  width: 64px;
+  height: 96px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(30, 42, 58, 0.95);
+  border: 1px solid rgba(31, 45, 61, 0.85);
+}
+.record-card__thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.record-card__media-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: center;
+}
+.record-card__media-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d6e1ec;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.record-card__media-title--link {
+  text-decoration: none;
+  transition: color 0.12s ease;
+}
+.record-card__media-title--link:hover,
+.record-card__media-title--link:focus-visible {
+  color: rgba(91, 196, 247, 0.98);
+  text-decoration: underline;
+}
+.record-card__media-meta {
+  font-size: 11px;
+  color: #8ba0b2;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+}
+.record-card__sub {
+  padding-top: 10px;
+  border-top: 1px solid rgba(31, 45, 61, 0.55);
+  font-size: 12px;
+  color: #8ba0b2;
+  line-height: 1.35;
+}
+.list-tab-records-empty {
+  font-size: 13px;
+  color: #8ba0b2;
+  padding: 8px 4px;
 }
 
 /* Vue d’ensemble : titres de blocs (graphiques + tops) */
@@ -769,7 +1010,7 @@ button:hover { opacity: 0.9; }
   }
 }
 .list-tab-anime-pie-bottom {
-  margin-top: 0;
+  margin-top: 28px;
 }
 .list-tab-pie-pair {
   display: grid;
@@ -974,6 +1215,237 @@ button:hover { opacity: 0.9; }
   outline: 2px solid #3db4f2;
   outline-offset: 2px;
 }
+
+/*
+ * Top auteurs (manga) — pendant du module Studios côté anime.
+ * Les classes ci-dessous miment `.list-tab-studios-*` / `.list-tab-studio-card__*`
+ * pour garantir une cohérence visuelle entre les deux modules. La principale
+ * différence est le portrait rond de l'auteur (vs logo carré du studio) et un
+ * libellé de rôle (Mangaka, Scénariste, Illustrateur, Créateur original).
+ */
+.list-tab-authors-section {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  margin-top: 8px;
+}
+.list-tab-authors-section__title-row {
+  margin-bottom: 2px;
+}
+.list-tab-authors-grid {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
+}
+.list-tab-authors-actions {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding-top: 12px;
+  margin-top: 4px;
+}
+.list-tab-authors-actions .list-tab-anime-more-btn--authors-toggle {
+  width: auto;
+  min-width: min(280px, 100%);
+  max-width: min(480px, 100%);
+}
+.list-tab-author-card {
+  min-width: 0;
+  min-height: 280px;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-inner);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
+.list-tab-author-card__top {
+  padding: 14px 14px 12px;
+  background: linear-gradient(
+    180deg,
+    rgba(44, 62, 86, 0.55) 0%,
+    rgba(30, 44, 62, 0.42) 100%
+  );
+  border-bottom: 1px solid rgba(139, 160, 178, 0.14);
+}
+.list-tab-author-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.list-tab-author-card__identity {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+.list-tab-author-card__rank {
+  flex-shrink: 0;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: rgba(91, 196, 247, 0.98);
+  background: rgba(61, 180, 242, 0.18);
+  border: 1px solid rgba(61, 180, 242, 0.42);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.list-tab-author-card__portrait-wrap {
+  width: 58px;
+  height: 58px;
+  /* Portrait circulaire pour différencier visuellement des logos studio (carrés). */
+  border-radius: 50%;
+  border: 1px solid rgba(139, 160, 178, 0.2);
+  background: rgba(20, 30, 44, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.list-tab-author-card__portrait {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.list-tab-author-card__portrait-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 18px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(61, 180, 242, 0.16);
+}
+.list-tab-author-card__name-block {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.list-tab-author-card__name {
+  color: rgba(237, 241, 245, 0.98);
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.25;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.list-tab-author-card__name-link {
+  color: inherit;
+  text-decoration: none;
+}
+.list-tab-author-card__name-link:hover {
+  color: #5bc4f7;
+  text-decoration: underline;
+}
+.list-tab-author-card__name-link:focus-visible {
+  outline: 1px solid rgba(61, 180, 242, 0.65);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+.list-tab-author-card__role {
+  color: rgba(139, 160, 178, 0.92);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.list-tab-author-card__cover {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.list-tab-author-card__cover--fallback {
+  background: linear-gradient(140deg, rgba(61, 180, 242, 0.15), rgba(10, 17, 28, 0.45));
+}
+.list-tab-author-card__stats {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 8px;
+}
+.list-tab-author-stat {
+  min-width: 0;
+}
+.list-tab-author-stat__value {
+  color: rgba(237, 241, 245, 0.95);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.05;
+}
+.list-tab-author-stat__value--chapters {
+  font-size: clamp(15px, 2.4vw, 22px);
+  font-weight: 800;
+  line-height: 1.2;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.list-tab-author-stat__label {
+  margin-top: 2px;
+  color: rgba(139, 160, 178, 0.92);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+.list-tab-author-card__carousel {
+  margin-top: 0;
+  flex: 1;
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 14px 14px 16px;
+  background: rgba(8, 14, 22, 0.72);
+  align-items: stretch;
+  min-height: 124px;
+}
+.list-tab-author-card__carousel-item {
+  width: 76px;
+  height: 104px;
+  border-radius: var(--radius-chip);
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid rgba(139, 160, 178, 0.18);
+}
+.list-tab-author-card__carousel-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.list-tab-author-card__carousel-link:hover {
+  border-color: rgba(61, 180, 242, 0.45);
+  box-shadow: 0 0 0 1px rgba(61, 180, 242, 0.2);
+}
+.list-tab-author-card__carousel-link:focus-visible {
+  outline: 2px solid #3db4f2;
+  outline-offset: 2px;
+}
 @media (max-width: 900px) {
   .list-tab-pie-pair {
     grid-template-columns: 1fr;
@@ -981,6 +1453,47 @@ button:hover { opacity: 0.9; }
 }
 .list-tab-pie-card.chart-card {
   min-height: 0;
+}
+.list-tab-pie-card__title-row .list-tab-pie-card__mode-toggle {
+  margin-left: auto;
+}
+.list-tab-pie-card__mode-toggle {
+  display: inline-flex;
+  align-items: stretch;
+  padding: 3px;
+  border-radius: var(--radius-full);
+  background: rgba(15, 24, 36, 0.72);
+  border: 1px solid rgba(31, 45, 61, 0.85);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  gap: 2px;
+}
+.list-tab-pie-card__mode-toggle-btn {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: rgba(232, 238, 244, 0.6);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  line-height: 1.1;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.list-tab-pie-card__mode-toggle-btn:hover:not(.is-active) {
+  color: rgba(232, 238, 244, 0.9);
+  background: rgba(61, 180, 242, 0.08);
+}
+.list-tab-pie-card__mode-toggle-btn.is-active {
+  background: rgba(61, 180, 242, 0.18);
+  color: rgba(91, 196, 247, 0.98);
+  box-shadow: inset 0 0 0 1px rgba(61, 180, 242, 0.42);
+}
+.list-tab-pie-card__mode-toggle-btn:focus-visible {
+  outline: 2px solid rgba(61, 180, 242, 0.6);
+  outline-offset: 2px;
 }
 .list-tab-pie-card__body {
   display: flex;
@@ -1054,7 +1567,7 @@ button:hover { opacity: 0.9; }
   flex: 1;
   min-width: 0;
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: nowrap;
   gap: 0.38em;
   overflow: hidden;
@@ -1125,8 +1638,41 @@ button:hover { opacity: 0.9; }
   flex-wrap: wrap;
 }
 .chart-card__title-row--with-hint .chart-card__title {
-  flex: 1 1 auto;
   min-width: 0;
+}
+.chart-collapse-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid rgba(139, 160, 178, 0.18);
+  border-radius: 8px;
+  background: rgba(21, 31, 46, 0.55);
+  color: rgba(232, 238, 244, 0.7);
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    transform 0.18s ease;
+}
+.chart-collapse-toggle:hover {
+  color: #edf1f5;
+  background: rgba(40, 58, 82, 0.7);
+  border-color: rgba(61, 180, 242, 0.45);
+}
+.chart-collapse-toggle:focus-visible {
+  outline: 2px solid rgba(61, 180, 242, 0.55);
+  outline-offset: 2px;
+}
+.chart-collapse-toggle__icon {
+  display: block;
+  transition: transform 0.22s ease;
+}
+.chart-collapse-toggle.is-collapsed .chart-collapse-toggle__icon {
+  transform: rotate(-90deg);
 }
 .chart-card__title {
   margin: 0;
@@ -1217,6 +1763,57 @@ button:hover { opacity: 0.9; }
 }
 .list-tab-anime-score-chart-wrap .recharts-cartesian-axis-tick-value {
   font-variant-numeric: tabular-nums;
+}
+.score-scatter {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.score-scatter .recharts-cartesian-axis-tick-value {
+  font-variant-numeric: tabular-nums;
+}
+.score-scatter__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--text-muted, #8ba0b2);
+}
+.score-scatter__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.score-scatter__dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.06) inset;
+}
+.score-scatter__legend-line {
+  display: inline-block;
+  width: 20px;
+  height: 0;
+  border-top: 1px dashed rgba(139, 160, 178, 0.7);
+}
+.score-scatter__legend-sep {
+  color: rgba(139, 160, 178, 0.45);
+}
+.score-scatter__footnote {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(139, 160, 178, 0.65);
+}
+.score-scatter__footnote strong {
+  font-weight: 600;
 }
 .list-tab-anime-charts__empty {
   display: flex;
@@ -1987,4 +2584,266 @@ button:hover { opacity: 0.9; }
 .back-to-top-btn:focus-visible {
   outline: 2px solid #3db4f2;
   outline-offset: 3px;
+}
+
+/* Module Top tags AniList (anime + manga) */
+.top-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+.top-tags__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.top-tags__item {
+  display: inline-flex;
+}
+.top-tags__pill {
+  --top-tag-intensity: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 12px;
+  border-radius: 999px;
+  background: rgba(20, 32, 48, calc(0.45 + 0.25 * var(--top-tag-intensity)));
+  border: 1px solid rgba(61, 180, 242, calc(0.16 + 0.34 * var(--top-tag-intensity)));
+  color: rgba(232, 238, 244, calc(0.7 + 0.3 * var(--top-tag-intensity)));
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  line-height: 1.2;
+  transition: transform 0.15s ease, background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+  cursor: pointer;
+  max-width: 100%;
+}
+.top-tags__pill:hover {
+  background: rgba(61, 180, 242, 0.16);
+  border-color: rgba(61, 180, 242, 0.85);
+  color: #f3f7fb;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+}
+.top-tags__pill:focus-visible {
+  outline: 2px solid rgba(61, 180, 242, 0.65);
+  outline-offset: 2px;
+}
+.top-tags__pill-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
+.top-tags__pill-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 0 6px;
+  height: 18px;
+  border-radius: 999px;
+  background: rgba(11, 22, 34, 0.55);
+  color: rgba(91, 196, 247, calc(0.78 + 0.22 * var(--top-tag-intensity)));
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.top-tags__pill:hover .top-tags__pill-count {
+  background: rgba(11, 22, 34, 0.78);
+  color: #5bc4f7;
+}
+.top-tags__more {
+  display: flex;
+  justify-content: center;
+}
+.top-tags__more-btn {
+  appearance: none;
+  background: rgba(20, 32, 48, 0.55);
+  border: 1px solid rgba(139, 160, 178, 0.22);
+  color: #8ba0b2;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 8px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+.top-tags__more-btn:hover {
+  background: rgba(61, 180, 242, 0.12);
+  color: #edf1f5;
+  border-color: rgba(61, 180, 242, 0.5);
+}
+.top-tags__more-btn:focus-visible {
+  outline: 2px solid rgba(61, 180, 242, 0.55);
+  outline-offset: 2px;
+}
+
+/* Heatmap d'activité (overview, anime, manga) */
+.activity-heatmap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.activity-heatmap__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  /*
+   * Sert de référent au positionnement absolu du tooltip survolant les cellules.
+   * Le tooltip est volontairement rendu hors du `.activity-heatmap__scroll` (qui a
+   * `overflow: hidden`) pour pouvoir déborder verticalement sans être tronqué.
+   */
+  position: relative;
+}
+.activity-heatmap__scroll {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Scroll horizontal subtil sur petits écrans */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(61, 180, 242, 0.45) rgba(20, 32, 48, 0.4);
+  padding-bottom: 4px;
+}
+.activity-heatmap__scroll::-webkit-scrollbar {
+  height: 8px;
+}
+.activity-heatmap__scroll::-webkit-scrollbar-track {
+  background: rgba(20, 32, 48, 0.4);
+  border-radius: 4px;
+}
+.activity-heatmap__scroll::-webkit-scrollbar-thumb {
+  background: rgba(61, 180, 242, 0.45);
+  border-radius: 4px;
+}
+.activity-heatmap__svg {
+  display: block;
+}
+.activity-heatmap__svg rect {
+  transition: transform 0.12s ease, filter 0.12s ease;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+.activity-heatmap__svg rect:hover {
+  transform: scale(1.18);
+  filter: brightness(1.18);
+}
+.activity-heatmap__tooltip {
+  position: absolute;
+  z-index: 5;
+  min-width: 160px;
+  max-width: 240px;
+  padding: 8px 10px;
+  background: #151f2e;
+  border: 1px solid #1f2d3d;
+  border-radius: 8px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+  font-size: 12px;
+  color: #edf1f5;
+  pointer-events: none;
+  /*
+   * Positionnement via deux variables CSS combinant l'axe horizontal et vertical.
+   * - `--tt-x` : décalage horizontal (centré, ancré à gauche, ou ancré à droite).
+   * - `--tt-y` : décalage vertical (au-dessus de la cellule, ou en-dessous).
+   * Un offset de 8px est gardé entre la cellule et le tooltip dans les deux sens.
+   */
+  --tt-x: -50%;
+  --tt-y: calc(-100% - 8px);
+  transform: translate(var(--tt-x), var(--tt-y));
+}
+.activity-heatmap__tooltip--left {
+  /* Sur la moitié droite de la grille, on déroule vers la gauche pour éviter de déborder */
+  --tt-x: -100%;
+}
+.activity-heatmap__tooltip--right {
+  --tt-x: 0;
+}
+.activity-heatmap__tooltip--above {
+  --tt-y: calc(-100% - 8px);
+}
+.activity-heatmap__tooltip--below {
+  /* Cellule trop haute dans la grille : on bascule le tooltip en-dessous pour ne pas être tronqué */
+  --tt-y: 8px;
+}
+.activity-heatmap__tooltip-date {
+  color: rgba(139, 160, 178, 0.95);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: capitalize;
+  margin-bottom: 4px;
+}
+.activity-heatmap__tooltip-main {
+  font-size: 13px;
+  color: #edf1f5;
+  margin-bottom: 4px;
+}
+.activity-heatmap__tooltip-main strong {
+  color: #5bc4f7;
+  font-weight: 700;
+}
+.activity-heatmap__tooltip-breakdown {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 6px 0 0;
+  border-top: 1px solid rgba(139, 160, 178, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.activity-heatmap__tooltip-breakdown li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+}
+.activity-heatmap__tooltip-key {
+  color: rgba(139, 160, 178, 0.95);
+}
+.activity-heatmap__tooltip-val {
+  color: #edf1f5;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.activity-heatmap__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: rgba(139, 160, 178, 0.95);
+}
+.activity-heatmap__total strong {
+  color: #edf1f5;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.activity-heatmap__legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.activity-heatmap__legend-label {
+  font-size: 11px;
+  color: rgba(139, 160, 178, 0.85);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 4px;
+}
+.activity-heatmap__legend-cell {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  border: 1px solid transparent;
 }

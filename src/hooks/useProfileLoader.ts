@@ -5,6 +5,7 @@ import {
   sleep,
   USER_QUERY,
   MEDIA_LIST_QUERY,
+  MEDIA_LIST_QUERY_MANGA,
 } from "../api/anilistClient";
 import {
   PROFILE_USER_TTL_MS,
@@ -321,7 +322,7 @@ export function useProfileLoader(
           );
           await sleep(200, abortController.signal);
           const md = await fetchAL(
-            MEDIA_LIST_QUERY,
+            MEDIA_LIST_QUERY_MANGA,
             { userName: name, type: "MANGA" },
             { signal: abortController.signal }
           );
