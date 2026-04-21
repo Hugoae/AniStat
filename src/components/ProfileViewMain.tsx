@@ -1,6 +1,12 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { C } from "../config/constants";
-import { LoadingBlock, PeriodFloatingChip } from "./AppUi";
+import { DevPanel, LoadingBlock, PeriodFloatingChip } from "./AppUi";
+import type { FetchLogEntry } from "../api/anilistClient";
+import {
+  getProfileFetchStats,
+  subscribeProfileFetchStats,
+  type ProfileFetchStats,
+} from "../lib/profileFetchStats";
 
 /**
  * Messages narratifs pour le loader principal : un enchaînement court qui
@@ -27,12 +33,20 @@ type ActivityLoadDebug = {
 type RateLimitStateSlice = {
   queued?: number;
   inFlight?: number;
+  blockedForMs?: number;
+  estimatedWaitMs?: number;
+  rateLimit?: number | null;
+  rateRemaining?: number | null;
+  rateResetAt?: number | null;
+  requestIntervalMs?: number;
 };
 
 type ProxyCacheStatsSlice = {
   hit?: number;
   miss?: number;
   bypass?: number;
+  unknown?: number;
+  policy?: Record<string, number>;
 };
 
 type DebugMetricsView = {
@@ -41,6 +55,7 @@ type DebugMetricsView = {
   cacheWrite?: number;
   rateLimitErrors?: number;
   avgProfileFetchMs?: number;
+  profileFetchCount?: number;
 };
 
 export type ProfileTabDef = { key: string; label: string };
@@ -54,9 +69,21 @@ export type ProfileViewMainProps = {
   awaitingPrimaryYearActivities: boolean;
   loadingActivities: boolean;
   error: string | null;
+  /**
+   * `true` quand l'API AniList a répondu en 403 / indiqué que l'API est
+   * désactivée. L'encart d'erreur bascule alors sur un ton neutre et un
+   * message UX explicite (cause externe, réessaie plus tard).
+   */
+  apiDisabled?: boolean;
   displayActivityLoadingMessage: string;
   activityLoadingMessage: string;
   activityEtaSeconds: number | null;
+  /**
+   * Libellé d'ETA déjà formaté (« 14 s », « 1 min 20 »), préféré à
+   * `activityEtaSeconds` quand il est non-null : il garantit une unité
+   * cohérente (sec / min) et se base sur les mesures observées.
+   */
+  activityEtaLabel: string | null;
   rateInfoLabel: string | null;
   activityWarning: string | null;
   handleRetryComparisonNow: () => void;
@@ -69,6 +96,13 @@ export type ProfileViewMainProps = {
   debugMetricsView: DebugMetricsView | null;
   proxyCacheStats: ProxyCacheStatsSlice | null | undefined;
   setDebugMetricsView: (v: DebugMetricsView | null) => void;
+  /** Journal des dernières requêtes GraphQL (dev panel). */
+  fetchLog: readonly FetchLogEntry[];
+  /** Remet à zéro uniquement le journal de requêtes. */
+  resetFetchLog: () => void;
+  /** Compteurs dérivés des listes chargées, surfacés dans le dev panel. */
+  animeEntriesCount: number;
+  mangaEntriesCount: number;
   tabs: ProfileTabDef[];
   tab: string;
   setTab: (k: string) => void;
@@ -87,9 +121,11 @@ export function ProfileViewMain({
   awaitingPrimaryYearActivities,
   loadingActivities,
   error,
+  apiDisabled = false,
   displayActivityLoadingMessage,
   activityLoadingMessage,
   activityEtaSeconds,
+  activityEtaLabel,
   rateInfoLabel,
   activityWarning,
   handleRetryComparisonNow,
@@ -102,6 +138,10 @@ export function ProfileViewMain({
   debugMetricsView,
   proxyCacheStats,
   setDebugMetricsView,
+  fetchLog,
+  resetFetchLog,
+  animeEntriesCount,
+  mangaEntriesCount,
   tabs,
   tab,
   setTab,
@@ -112,17 +152,59 @@ export function ProfileViewMain({
   periodSetMonth,
   children,
 }: ProfileViewMainProps) {
+  /**
+   * Stats historiques (persistées en localStorage) des derniers fetchs
+   * profil complets. Sert à projeter un ETA « reste ~Xs » dans le loader
+   * principal. On s'abonne aux mises à jour pour capturer le premier fetch
+   * de la session sans avoir à remonter.
+   */
+  const [profileFetchStats, setProfileFetchStats] = useState<ProfileFetchStats>(() =>
+    getProfileFetchStats()
+  );
+  useEffect(() => {
+    const unsubscribe = subscribeProfileFetchStats(() => {
+      setProfileFetchStats(getProfileFetchStats());
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // On prend la plus défavorable de (moyenne × 1.15, max observé) pour que
+  // l'ETA ne mente pas quand certains fetchs historiques ont été plus lents.
+  const primaryLoaderEstimateMs = (() => {
+    const avg = profileFetchStats.avgMs;
+    const max = profileFetchStats.maxMs;
+    if (avg == null) return null;
+    return Math.max(Math.round(avg * 1.15), max ?? 0);
+  })();
+
   return (
     <div className="profile-view-main">
       {primaryProfileLoader && (
         <LoadingBlock
           messages={PRIMARY_LOADING_MESSAGES}
           caption="Première requête un peu longue ? AniList envoie toutes tes données d'un coup."
+          estimatedMs={primaryLoaderEstimateMs}
         />
       )}
 
-      {error && (
-        <div className="error-banner">
+      {error && apiDisabled && (
+        <div
+          className="error-banner error-banner--api-disabled"
+          role="status"
+          aria-live="polite"
+        >
+          <strong className="error-banner__title">AniList est momentanément indisponible</strong>
+          <span className="error-banner__message">
+            L'API d'AniList a répondu qu'elle était désactivée. Ce n'est pas un
+            problème de ton côté : réessaie dans quelques minutes.
+          </span>
+        </div>
+      )}
+
+      {error && !apiDisabled && (
+        <div className="error-banner" role="alert">
           Erreur : {error}
         </div>
       )}
@@ -131,8 +213,8 @@ export function ProfileViewMain({
         <div className="activity-loading-line">
           <span className="activity-loading-message-blink">
             {displayActivityLoadingMessage || activityLoadingMessage}
-            {activityEtaSeconds != null && activityEtaSeconds > 0
-              ? ` ~${activityEtaSeconds}s`
+            {activityEtaLabel
+              ? ` · reste ~${activityEtaLabel}`
               : activityEtaSeconds === 0
                 ? " — finalisation…"
                 : ""}
@@ -166,85 +248,24 @@ export function ProfileViewMain({
       )}
 
       {loaded && !loading && !awaitingPrimaryYearActivities && isDevLocal && showDevPanel && (
-        <div className="dev-panel">
-          <div className="dev-panel__row">
-            <strong className="dev-panel__heading">
-              Activités (période & graphiques)
-            </strong>
-            {activityLoadDebug ? (
-              <>
-                <span>
-                  Années ciblées :{" "}
-                  <span className="dev-panel__value">{activityLoadDebug.yearsTotal}</span>
-                </span>
-                <span>
-                  Chargées :{" "}
-                  <span className="dev-panel__value--success">{activityLoadDebug.yearsComplete}</span>
-                </span>
-                <span>
-                  Restantes :{" "}
-                  <span
-                    className={
-                      activityLoadDebug.yearsPending
-                        ? "dev-panel__value--warning"
-                        : "dev-panel__value"
-                    }
-                  >
-                    {activityLoadDebug.yearsPending}
-                  </span>
-                </span>
-                <span>
-                  Entrées anime en cache :{" "}
-                  <span className="dev-panel__value">
-                    {activityLoadDebug.animeRows.toLocaleString("fr-FR")}
-                  </span>
-                </span>
-                <span>
-                  Entrées manga en cache :{" "}
-                  <span className="dev-panel__value">
-                    {activityLoadDebug.mangaRows.toLocaleString("fr-FR")}
-                  </span>
-                </span>
-                <span>
-                  File requêtes AniList :{" "}
-                  <span className="dev-panel__value">{rateLimitState?.queued ?? 0}</span> en attente,{" "}
-                  <span className="dev-panel__value">{rateLimitState?.inFlight ?? 0}</span> en cours
-                </span>
-              </>
-            ) : (
-              <span>—</span>
-            )}
-          </div>
-          <div className="dev-panel__row dev-panel__row--secondary">
-            <strong className="dev-panel__heading dev-panel__heading--dim">
-              Cache profil & proxy (détail)
-            </strong>
-            <span>
-              profil hit/miss/write : {debugMetricsView?.cacheHit ?? 0} / {debugMetricsView?.cacheMiss ?? 0} /{" "}
-              {debugMetricsView?.cacheWrite ?? 0}
-            </span>
-            <span>rate-limit : {debugMetricsView?.rateLimitErrors ?? 0}</span>
-            <span>profil fetch moy. : {debugMetricsView?.avgProfileFetchMs ?? 0} ms</span>
-            <span>
-              proxy hit/miss/bypass : {proxyCacheStats?.hit ?? 0} / {proxyCacheStats?.miss ?? 0} /{" "}
-              {proxyCacheStats?.bypass ?? 0}
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              const reset = window.AniListStatDebug?.resetMetrics;
-              if (typeof reset === "function") reset();
-              const getter = window.AniListStatDebug?.getMetrics;
-              if (typeof getter === "function") {
-                setDebugMetricsView(getter() as DebugMetricsView);
-              }
-            }}
-            className="btn-outline btn-outline--accent btn-outline--compact dev-panel__reset"
-          >
-            Reset metrics
-          </button>
-        </div>
+        <DevPanel
+          rateLimitState={rateLimitState}
+          proxyCacheStats={proxyCacheStats}
+          debugMetricsView={debugMetricsView}
+          activityLoadDebug={activityLoadDebug}
+          animeEntriesCount={animeEntriesCount}
+          mangaEntriesCount={mangaEntriesCount}
+          fetchLog={fetchLog}
+          onResetMetrics={() => {
+            const reset = window.AniListStatDebug?.resetMetrics;
+            if (typeof reset === "function") reset();
+            const getter = window.AniListStatDebug?.getMetrics;
+            if (typeof getter === "function") {
+              setDebugMetricsView(getter() as DebugMetricsView);
+            }
+          }}
+          onResetFetchLog={resetFetchLog}
+        />
       )}
 
       {loaded && !loading && !awaitingPrimaryYearActivities && (

@@ -111,5 +111,9 @@ export type PeriodRecordsBundle = {
   lowestScore: { media: RecordMediaRef; score: number } | null;
   firstStarted: { media: RecordMediaRef; dateLabel: string } | null;
   lastStarted: { media: RecordMediaRef; dateLabel: string } | null;
+  /** Toute première activité de la période (progrès ou changement de statut). */
+  firstActivity: { media: RecordMediaRef; dateLabel: string } | null;
+  /** Toute dernière activité de la période (progrès ou changement de statut). */
+  lastActivity: { media: RecordMediaRef; dateLabel: string } | null;
   fastestCompleted: { media: RecordMediaRef; days: number } | null;
 };

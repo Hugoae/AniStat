@@ -27,6 +27,8 @@ import {
   findPeriodLowestScore,
   findPeriodFirstStarted,
   findPeriodLastStarted,
+  findPeriodFirstActivity,
+  findPeriodLastActivity,
   findPeriodFastestCompleted,
   computeMonthlyDeltasFromActivities,
   computeDailyDeltasInMonth,
@@ -40,9 +42,17 @@ import {
   subscribeRateLimit,
   getProxyCacheStats,
   subscribeProxyCache,
+  subscribeFetchLog,
+  getFetchLog,
+  resetFetchLog,
+  type FetchLogEntry,
 } from './api/anilistClient';
 import { buildAnimeHalfScoreDistributionFullRange } from "./lib/animeScoreUtils";
 import { compareEntriesByUserScoreThenAverage } from "./lib/compareEntries";
+import {
+  buildMediaBitsIndex,
+  type ActivityMediaBits,
+} from "./lib/activityEnrichment";
 import { anilistMediaUrl } from "./components/appUi/mediaDisplayHelpers";
 import { HomePage } from "./pages/HomePage";
 import { OverviewTab } from "./pages/OverviewTab";
@@ -58,6 +68,7 @@ import {
   parseRouteFromHash,
   profileHashForUserName,
 } from "./lib/routing";
+import { recordProfileFetch } from "./lib/profileFetchStats";
 import { useProfileLoader } from "./hooks/useProfileLoader";
 import { useActivityYearsLoader } from "./hooks/useActivityYearsLoader";
 import { useActivityLoadingUi } from "./hooks/useActivityLoadingUi";
@@ -106,6 +117,7 @@ function App() {
   const [resourceStatus, setResourceStatus] = useState<Record<string, unknown>>({});
   const [rateLimitState, setRateLimitState] = useState(() => getRateLimitState());
   const [proxyCacheStats, setProxyCacheStats] = useState(() => getProxyCacheStats());
+  const [fetchLog, setFetchLog] = useState<readonly FetchLogEntry[]>(() => getFetchLog());
   const [showDevPanel, setShowDevPanel] = useState(false);
   const [debugMetricsView, setDebugMetricsView] = useState(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
@@ -123,6 +135,15 @@ function App() {
   const activityRetryCountRef = useRef(new Map<string, number>());
   const activityYearsInFlightRef = useRef(new Set<number>());
   const activityMissLogRef = useRef(new Set<string>());
+  /*
+   * Index `mediaId → { duration, episodes, chapters, format, countryOfOrigin }`
+   * construit à partir des listes chargées. Sert à enrichir les activités
+   * (LIST_ACTIVITY_QUERY allégée à `media { id }` pour économiser le payload)
+   * au moment du fetch. Tenu à jour via un `useEffect` qui écoute
+   * `allAnime` + `allManga` ; la ref reste stable, seul le Map interne est
+   * remplacé quand les listes changent.
+   */
+  const mediaBitsByIdRef = useRef<Map<number, ActivityMediaBits>>(new Map());
   const headerSearchInputRef = useRef(null);
   /*
    * Compteurs in-memory (non persistés) pour le debug panel local : hits /
@@ -189,6 +210,9 @@ function App() {
   const metricProfileFetchDuration = useCallback((ms) => {
     metricsRef.current.profileFetchCount += 1;
     metricsRef.current.profileFetchTotalMs += ms;
+    // Persisté pour alimenter l'ETA du loader principal au prochain démarrage
+    // (cf. `LoadingBlock` sur la page « Préparation du tableau de bord »).
+    recordProfileFetch(ms);
   }, []);
 
   /* ─── Chargement du profil (useProfileLoader) ─────────────────────────
@@ -250,6 +274,7 @@ function App() {
     loading,
     error,
     setError,
+    apiDisabled,
     user,
     loaded,
     allAnime,
@@ -300,6 +325,18 @@ function App() {
       unsubscribe();
     };
   }, []);
+  useEffect(() => {
+    /*
+     * Le journal de requêtes alimente le panneau de debug : chaque appel
+     * `fetchAL` y ajoute une ligne détaillée (durée, taille, cache proxy,
+     * statut HTTP). On s'abonne tout le temps (poids négligeable : 80
+     * entrées max en buffer circulaire).
+     */
+    const unsubscribe = subscribeFetchLog((log) => setFetchLog(log));
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   /* ─── Activités : années à charger pour la période courante ───────────
    * On charge l'année sélectionnée + éventuellement l'année précédente
@@ -339,7 +376,7 @@ function App() {
     };
   }, [appUser?.id, activityYearsScope, animeActivityCache, mangaActivityCache]);
 
-  const { displayActivityLoadingMessage, activityEtaSeconds } = useActivityLoadingUi({
+  const { displayActivityLoadingMessage, activityEtaSeconds, activityEtaLabel } = useActivityLoadingUi({
     loadingActivities,
     activityLoadingMessage,
     userId: appUser?.id,
@@ -425,6 +462,17 @@ function App() {
     }
   }, [years, year]);
 
+  /*
+   * Reconstruit l'index media quand les listes changent (profil rechargé,
+   * listes hydratées depuis le cache, etc.). L'index est ensuite lu par
+   * `useActivityYearsLoader` via `mediaBitsByIdRef` pour enrichir les
+   * activités fetchées avec les champs nécessaires aux stats (durée, format,
+   * pays…), sans avoir à les demander à chaque activité côté GraphQL.
+   */
+  useEffect(() => {
+    mediaBitsByIdRef.current = buildMediaBitsIndex([allAnime, allManga]);
+  }, [allAnime, allManga]);
+
   const activityLoaderRefs = {
     latestUserIdRef,
     activityInFlightRef,
@@ -432,6 +480,7 @@ function App() {
     activityRetryCountRef,
     activityYearsInFlightRef,
     activityMissLogRef,
+    mediaBitsByIdRef,
   };
 
   const activityUserForLoader = appUser
@@ -744,10 +793,26 @@ function App() {
       const low = findPeriodLowestScore(entries);
       const first = findPeriodFirstStarted(entries, year, month);
       const last = findPeriodLastStarted(entries, year, month);
+      // Premier / dernier de la période « toutes activités confondues » :
+      // on balaie les activités brutes, pas les entrées (une session de lecture
+      // sur un manga déjà en cours compte, là où `firstStarted` ne retenait
+      // que les nouvelles séries).
+      const firstAct = findPeriodFirstActivity(activities, year, month);
+      const lastAct = findPeriodLastActivity(activities, year, month);
       const fast = findPeriodFastestCompleted(entries, year, month);
       const wrap = <T extends { entry: AniListEntry }>(r: T | null) => {
         if (!r) return null;
         const m = buildRecordMediaRef(r.entry);
+        return m ? { ...r, media: m } : null;
+      };
+      // Les activités portent leur `media` au même format qu'une entry, mais
+      // pas dans `r.entry` : on adapte en synthétisant une mini-entry pour
+      // réutiliser `buildRecordMediaRef` sans duplication.
+      const wrapActivity = <T extends { activity: ActivityItem }>(r: T | null) => {
+        if (!r) return null;
+        const media = r.activity.media;
+        if (!media?.id) return null;
+        const m = buildRecordMediaRef({ id: media.id, media } as AniListEntry);
         return m ? { ...r, media: m } : null;
       };
       const longestM = wrap(longest);
@@ -755,6 +820,8 @@ function App() {
       const lowM = wrap(low);
       const firstM = wrap(first);
       const lastM = wrap(last);
+      const firstActM = wrapActivity(firstAct);
+      const lastActM = wrapActivity(lastAct);
       const fastM = wrap(fast);
       return {
         biggestSession: biggest,
@@ -764,6 +831,8 @@ function App() {
         lowestScore: lowM ? { media: lowM.media, score: lowM.score } : null,
         firstStarted: firstM ? { media: firstM.media, dateLabel: firstM.dateLabel } : null,
         lastStarted: lastM ? { media: lastM.media, dateLabel: lastM.dateLabel } : null,
+        firstActivity: firstActM ? { media: firstActM.media, dateLabel: firstActM.dateLabel } : null,
+        lastActivity: lastActM ? { media: lastActM.media, dateLabel: lastActM.dateLabel } : null,
         fastestCompleted: fastM ? { media: fastM.media, days: fastM.days } : null,
       };
     },
@@ -1626,9 +1695,11 @@ function App() {
         awaitingPrimaryYearActivities={awaitingPrimaryYearActivities}
         loadingActivities={loadingActivities}
         error={error != null ? String(error) : null}
+        apiDisabled={apiDisabled}
         displayActivityLoadingMessage={displayActivityLoadingMessage}
         activityLoadingMessage={activityLoadingMessage}
         activityEtaSeconds={activityEtaSeconds}
+        activityEtaLabel={activityEtaLabel}
         rateInfoLabel={rateInfoLabel}
         activityWarning={activityWarning != null ? String(activityWarning) : null}
         handleRetryComparisonNow={handleRetryComparisonNow}
@@ -1641,6 +1712,10 @@ function App() {
         debugMetricsView={debugMetricsView}
         proxyCacheStats={proxyCacheStats}
         setDebugMetricsView={setDebugMetricsView}
+        fetchLog={fetchLog}
+        resetFetchLog={resetFetchLog}
+        animeEntriesCount={allAnime.length}
+        mangaEntriesCount={allManga.length}
         tabs={tabs}
         tab={tab}
         setTab={setTab}

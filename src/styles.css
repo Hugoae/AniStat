@@ -2614,6 +2614,17 @@ a:focus-visible,
 .loading-block__footer {
   margin-top: var(--space-5);
 }
+/* Compteur discret « reste ~Xs » / « depuis Ys » affiché sous le caption.
+ * Volontairement très léger : pas de badge, pas de bord, on veut que ça
+ * rassure sans attirer le regard au point de voler la vedette au spinner. */
+.loading-block__countdown {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-dim);
+  opacity: 0.85;
+  letter-spacing: 0.01em;
+}
 @media (prefers-reduced-motion: reduce) {
   .loading-block__message {
     animation: none;
@@ -2639,6 +2650,32 @@ a:focus-visible,
   color: var(--color-danger);
   font-size: var(--font-size-base);
   box-shadow: var(--shadow-card);
+}
+
+/*
+ * Variante « API AniList désactivée » : ton informatif plutôt qu'alarmant,
+ * car la cause est externe (décision côté AniList) et aucune action
+ * utilisateur ne peut débloquer la situation. On adopte la palette accent
+ * (bleu) avec un ton neutre pour ne pas stresser inutilement.
+ */
+.error-banner.error-banner--api-disabled {
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  color: var(--color-text);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.error-banner__title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.error-banner__message {
+  color: var(--color-text-muted);
+  line-height: 1.5;
 }
 
 .activity-loading-line {
@@ -2704,43 +2741,172 @@ a:focus-visible,
   overflow-x: auto;
 }
 
+/*
+ * Panneau de debug local : agrégat d'informations pour comprendre le
+ * comportement du fetcher AniList. Mise en page en sections distinctes
+ * (état live, données en mémoire, caches, journal de requêtes) pour
+ * faciliter le scan visuel.
+ */
 .dev-panel {
   margin-top: var(--space-3);
   background: var(--surface-bg);
   border: 1px solid var(--surface-border);
   border-radius: var(--radius-card);
-  padding: var(--space-3);
+  padding: var(--space-4);
   font-size: var(--font-size-xs);
   color: var(--color-text-muted);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-4);
   box-shadow: var(--shadow-card);
 }
-.dev-panel__row {
+.dev-panel__header {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
   flex-wrap: wrap;
-  gap: 10px 16px;
-  align-items: baseline;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--surface-border);
 }
-.dev-panel__row--secondary {
-  font-size: var(--font-size-2xs);
-  opacity: 0.92;
+.dev-panel__title {
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text);
+  font-weight: var(--font-weight-bold);
 }
-.dev-panel__heading {
-  width: 100%;
+.dev-panel__header-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.dev-panel__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.dev-panel__section-title {
   font-size: var(--font-size-2xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--color-text);
   font-weight: var(--font-weight-bold);
+  margin: 0;
 }
-.dev-panel__heading--dim { color: var(--color-text-dim); }
+.dev-panel__section-hint {
+  color: var(--color-text-dim);
+  font-weight: var(--font-weight-regular, 400);
+  text-transform: none;
+  letter-spacing: normal;
+  margin-left: var(--space-2);
+  font-size: var(--font-size-2xs);
+}
+.dev-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+.dev-panel__kv {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: help;
+}
+.dev-panel__kv dt {
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.dev-panel__kv dd {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text);
+}
 .dev-panel__value { color: var(--color-text); }
 .dev-panel__value--success { color: var(--color-success); }
 .dev-panel__value--warning { color: var(--color-warning); }
-.dev-panel__reset {
-  align-self: flex-end;
+.dev-panel__value--dim { color: var(--color-text-dim); }
+
+/* Bandeau résumant les agrégats du journal de requêtes. */
+.dev-panel__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: color-mix(in srgb, var(--surface-bg-hover, #1a232d) 80%, transparent);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-muted);
+}
+.dev-panel__summary strong {
+  color: var(--color-text);
+}
+.dev-panel__tablewrap {
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-sm);
+}
+.dev-panel__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-2xs);
+}
+.dev-panel__table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-bg);
+  text-align: left;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-2);
+  border-bottom: 1px solid var(--surface-border);
+  cursor: help;
+  white-space: nowrap;
+}
+.dev-panel__table tbody td {
+  padding: 6px var(--space-2);
+  border-bottom: 1px solid color-mix(in srgb, var(--surface-border) 45%, transparent);
+  color: var(--color-text-muted);
+  vertical-align: top;
+}
+.dev-panel__table tbody tr:last-child td {
+  border-bottom: none;
+}
+.dev-panel__table tbody tr:hover td {
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+.dev-panel__table-row--error td {
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+}
+.dev-panel__table-row--aborted td {
+  opacity: 0.6;
+}
+.dev-panel__table-cell--time {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+.dev-panel__table-cell--vars {
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.dev-panel__empty {
+  margin: 0;
+  padding: var(--space-3);
+  color: var(--color-text-dim);
+  font-style: italic;
+  text-align: center;
+  background: var(--surface-bg);
+  border: 1px dashed var(--surface-border);
+  border-radius: var(--radius-sm);
 }
 
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }

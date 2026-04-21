@@ -13,6 +13,11 @@ import {
   fetchActivitiesWithRetry,
 } from "../lib/profileLocalCache";
 import type { ActivityCacheByYear, ActivityItem, AniListUser } from "../types/domain";
+import {
+  enrichActivitiesWithMediaBits,
+  type ActivityMediaBits,
+} from "../lib/activityEnrichment";
+import { recordActivityYearSample } from "../lib/activityFetchStats";
 
 export type ActivityLoaderRefs = {
   latestUserIdRef: MutableRefObject<number | null>;
@@ -21,6 +26,16 @@ export type ActivityLoaderRefs = {
   activityRetryCountRef: MutableRefObject<Map<string, number>>;
   activityYearsInFlightRef: MutableRefObject<Set<number>>;
   activityMissLogRef: MutableRefObject<Set<string>>;
+  /**
+   * Index `mediaId → bits` mis à jour par le parent dès que les listes
+   * anime/manga sont hydratées. Utilisé pour enrichir les activités fetchées
+   * avec la payload allégée (`media { id }`). Si la ref est vide au moment
+   * d'un fetch (fenêtre rare : fetch idle d'une année adjacente déclenché
+   * avant que l'index soit reconstruit), les activités restent « slim » et
+   * seront filtrées par le pipeline stats (pas de régression, juste un cache
+   * moins informatif pour cette année-là — régénérable au prochain fetch).
+   */
+  mediaBitsByIdRef: MutableRefObject<Map<number, ActivityMediaBits>>;
 };
 
 export type ActivityYearsLoaderParams = {
@@ -106,6 +121,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     activityRetryCountRef,
     activityYearsInFlightRef,
     activityMissLogRef,
+    mediaBitsByIdRef,
   } = refs;
 
   const prefetchYearActivities = useCallback(
@@ -129,9 +145,14 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
             activityInFlightRef.current.delete(key);
           }
         };
-        const aActs = await fetchOne("ANIME_LIST");
-        const mActs = await fetchOne("MANGA_LIST");
+        const aActsRaw = await fetchOne("ANIME_LIST");
+        const mActsRaw = await fetchOne("MANGA_LIST");
         if (latestUserIdRef.current !== uid) return;
+        // Enrichit avec les métadonnées media (durée, format…) issues des
+        // listes déjà chargées : la query a été allégée à `media { id }`.
+        const mediaBits = mediaBitsByIdRef.current;
+        const aActs = enrichActivitiesWithMediaBits(aActsRaw, mediaBits);
+        const mActs = enrichActivitiesWithMediaBits(mActsRaw, mediaBits);
         setAnimeActivityCache((prev) => ({ ...prev, [targetYear]: aActs }));
         setMangaActivityCache((prev) => ({ ...prev, [targetYear]: mActs }));
         safeWriteCache(activityCacheKey(uid, "ANIME_LIST", targetYear), aActs, getActivityTtlMs(targetYear));
@@ -152,6 +173,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     [
       activityInFlightRef,
       latestUserIdRef,
+      mediaBitsByIdRef,
       metricInc,
       setAnimeActivityCache,
       setMangaActivityCache,
@@ -368,6 +390,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
           if (cancelled) return;
           if (activityYearsInFlightRef.current.has(yf)) continue;
           activityYearsInFlightRef.current.add(yf);
+          const yearStartedAt = Date.now();
           try {
             const fetchActivity = async (type: "ANIME_LIST" | "MANGA_LIST") => {
               const key = `activity:${ownerId}:${type}:${yf}`;
@@ -395,11 +418,17 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
               }
             };
 
-            const aActs = await fetchActivity("ANIME_LIST");
+            const aActsRaw = await fetchActivity("ANIME_LIST");
             await sleep(300, activityAbortController.signal);
-            const mActs = await fetchActivity("MANGA_LIST");
+            const mActsRaw = await fetchActivity("MANGA_LIST");
             if (cancelled) return;
             if (latestUserIdRef.current !== ownerId) continue;
+            // Enrichit avec les métadonnées media (durée, format…) issues
+            // des listes chargées en mémoire : la query a été allégée à
+            // `media { id }` pour réduire le payload.
+            const mediaBits = mediaBitsByIdRef.current;
+            const aActs = enrichActivitiesWithMediaBits(aActsRaw, mediaBits);
+            const mActs = enrichActivitiesWithMediaBits(mActsRaw, mediaBits);
             setAnimeActivityCache((prev) => ({ ...prev, [yf]: aActs }));
             setMangaActivityCache((prev) => ({ ...prev, [yf]: mActs }));
             safeWriteCache(activityCacheKey(ownerId, "ANIME_LIST", yf), aActs, getActivityTtlMs(yf));
@@ -413,6 +442,15 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
             activityRetryCountRef.current.delete(`activity:${ownerId}:MANGA_LIST:${yf}`);
             activityCooldownRef.current.delete(`activity:${ownerId}:ANIME_LIST:${yf}`);
             activityCooldownRef.current.delete(`activity:${ownerId}:MANGA_LIST:${yf}`);
+            /*
+             * Enregistre la durée observée pour cette année.
+             * `pagesFetched` est approximé à partir du nombre d'items reçus
+             * (50 par page AniList) : imprécis sur la dernière page mais
+             * suffisant pour l'affichage DevPanel / les projections d'ETA.
+             */
+            const pagesFetched =
+              Math.ceil(aActsRaw.length / 50) + Math.ceil(mActsRaw.length / 50);
+            recordActivityYearSample(Date.now() - yearStartedAt, pagesFetched);
           } catch (err: unknown) {
             const er = err as { name?: string; message?: string };
             if (er?.name === "AbortError") return;
@@ -465,6 +503,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     month,
     animeActivityCache,
     mangaActivityCache,
+    mediaBitsByIdRef,
     metricInc,
     prefetchYearActivities,
     setResource,

@@ -1189,10 +1189,10 @@ function AnimeRecordsSection({ records }: { records: PeriodRecordsBundle }) {
       <RecordCard
         key="first"
         icon="flag"
-        label="Premier de la période"
+        label="Première nouvelle série"
         value={records.firstStarted.dateLabel}
         media={records.firstStarted.media}
-        labelHint="Premier titre commencé (date startedAt) durant la période sélectionnée."
+        labelHint="Premier anime commencé (date startedAt la plus ancienne) durant la période sélectionnée."
       />
     );
   }
@@ -1201,10 +1201,34 @@ function AnimeRecordsSection({ records }: { records: PeriodRecordsBundle }) {
       <RecordCard
         key="last"
         icon="check"
-        label="Dernier de la période"
+        label="Dernière nouvelle série"
         value={records.lastStarted.dateLabel}
         media={records.lastStarted.media}
-        labelHint="Dernier titre commencé (date startedAt la plus récente) durant la période sélectionnée."
+        labelHint="Dernier anime commencé (date startedAt la plus récente) durant la période sélectionnée."
+      />
+    );
+  }
+  if (records.firstActivity) {
+    cards.push(
+      <RecordCard
+        key="first-activity"
+        icon="calendar"
+        label="Première activité"
+        value={records.firstActivity.dateLabel}
+        media={records.firstActivity.media}
+        labelHint="Toute première activité anime de la période (épisode vu, changement de statut, etc.), nouvelle série ou non."
+      />
+    );
+  }
+  if (records.lastActivity) {
+    cards.push(
+      <RecordCard
+        key="last-activity"
+        icon="clock"
+        label="Dernière activité"
+        value={records.lastActivity.dateLabel}
+        media={records.lastActivity.media}
+        labelHint="Toute dernière activité anime enregistrée sur la période, peu importe qu'il s'agisse d'une nouvelle série ou d'une série en cours."
       />
     );
   }

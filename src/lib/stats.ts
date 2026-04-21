@@ -871,6 +871,59 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
     return { entry: best, days: bestDays };
   }
 
+  /**
+   * Première activité de la période (tous types : épisode visionné, chapitre
+   * lu, changement de statut). Contrairement à `findPeriodFirstStarted` qui
+   * ne regarde que les séries *commencées* (date `startedAt` de l'entrée
+   * utilisateur), on balaie ici l'ensemble des activités brutes et on garde
+   * celle au `createdAt` le plus ancien. Utile pour savoir « par quoi tu as
+   * démarré ta période » même quand il s'agissait de continuer une série
+   * déjà en cours.
+   */
+  function findPeriodFirstActivity(activities, year, month) {
+    let best = null;
+    let bestTs = Number.POSITIVE_INFINITY;
+    for (const a of activities) {
+      const ts = a?.createdAt || 0;
+      if (!ts || !a?.media?.id) continue;
+      if (!isTsInPeriod(ts, year, month)) continue;
+      if (ts < bestTs) {
+        bestTs = ts;
+        best = a;
+      }
+    }
+    if (!best) return null;
+    return {
+      activity: best,
+      dateLabel: frenchLabelFromDayKey(dayKeyFromTimestamp(bestTs)),
+    };
+  }
+
+  /**
+   * Dernière activité de la période : symétrique de `findPeriodFirstActivity`
+   * (on garde le `createdAt` le plus récent). Permet d'afficher « la toute
+   * dernière chose que tu as faite » sur la fenêtre sélectionnée, qu'il
+   * s'agisse ou non d'un nouveau titre.
+   */
+  function findPeriodLastActivity(activities, year, month) {
+    let best = null;
+    let bestTs = 0;
+    for (const a of activities) {
+      const ts = a?.createdAt || 0;
+      if (!ts || !a?.media?.id) continue;
+      if (!isTsInPeriod(ts, year, month)) continue;
+      if (ts > bestTs) {
+        bestTs = ts;
+        best = a;
+      }
+    }
+    if (!best) return null;
+    return {
+      activity: best,
+      dateLabel: frenchLabelFromDayKey(dayKeyFromTimestamp(bestTs)),
+    };
+  }
+
   function mergeActivitiesForDelta(anchorYear, cache) {
     const list = [...(cache[anchorYear - 1] || []), ...(cache[anchorYear] || [])];
     const seen = new Set();
@@ -912,6 +965,8 @@ export {
   findPeriodLowestScore,
   findPeriodFirstStarted,
   findPeriodLastStarted,
+  findPeriodFirstActivity,
+  findPeriodLastActivity,
   findPeriodFastestCompleted,
   computeMonthlyDeltasFromActivities,
   computeDailyDeltasInMonth,

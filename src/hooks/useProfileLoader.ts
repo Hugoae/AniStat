@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import {
   fetchAL,
-  sleep,
   USER_QUERY,
   MEDIA_LIST_QUERY,
   MEDIA_LIST_QUERY_MANGA,
+  AniListApiDisabledError,
 } from "../api/anilistClient";
 import {
   PROFILE_USER_TTL_MS,
@@ -120,6 +120,13 @@ export function useProfileLoader(
   const [hashTick, setHashTick] = useState(0);
   const [loading, setLoading] = useState(initialLoadingFromHash);
   const [error, setError] = useState<unknown>(null);
+  /*
+   * Drapeau distinct pour la situation « API AniList désactivée côté serveur »
+   * (HTTP 403 ou message GraphQL dédié). On garde `error` pour les messages
+   * d'erreur classiques ; ce flag active un encart UX spécifique (ton neutre,
+   * message rassurant, pas de prompt « réessaie » agressif).
+   */
+  const [apiDisabled, setApiDisabled] = useState(false);
   const [user, setUser] = useState<AniListUser | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [allAnime, setAllAnime] = useState<AniListEntry[]>([]);
@@ -163,6 +170,7 @@ export function useProfileLoader(
     setLoaded(false);
     setLoading(false);
     setError(null);
+    setApiDisabled(false);
     setPendingProfileName(null);
     setAllAnime([]);
     setAllManga([]);
@@ -324,6 +332,7 @@ export function useProfileLoader(
         } catch (err: unknown) {
           const e = err as { name?: string; message?: string };
           if (e?.name !== "AbortError") {
+            if (err instanceof AniListApiDisabledError) setApiDisabled(true);
             setError(e.message || "Erreur lors du chargement");
             cross.setResource(profileKey, "error", e.message || "Erreur profil");
             if (!background) setPendingProfileName(null);
@@ -339,33 +348,52 @@ export function useProfileLoader(
         setPendingProfileName(name.trim());
         setLoading(true);
         setError(null);
+        setApiDisabled(false);
         setLoaded(false);
       } else {
         setError(null);
+        setApiDisabled(false);
       }
       const startedAt = performance.now();
       try {
+        /*
+         * Pipeline de chargement initial en deux étapes :
+         *  1. `USER_QUERY` seul : dès que la réponse arrive, on peut peindre
+         *     l'avatar + le pseudo dans le header (transition visuelle avant
+         *     que les grosses listes n'arrivent).
+         *  2. `MEDIA_LIST_QUERY` (ANIME) + `MEDIA_LIST_QUERY_MANGA` (MANGA)
+         *     lancées en parallèle via `Promise.all`. Le scheduler interne
+         *     (`REQUEST_INTERVAL_MS`) va quand même les espacer pour respecter
+         *     le rate-limit AniList, mais on évite les `sleep(200)` manuels
+         *     qui étaient redondants avec cet espacement. Le résultat est
+         *     identique côté rate-limit et ~400 ms plus rapide côté UX.
+         *
+         * Si l'une des deux listes échoue (`Promise.all` rejette à la première
+         * erreur), on remonte l'erreur globalement comme avant : les deux
+         * onglets (anime / manga) ont besoin d'être chargés ensemble pour
+         * que la vue Overview ait du sens.
+         */
         const req = (async () => {
           const ud = await fetchAL<UserProfileQuery>(USER_QUERY, { name }, { signal: abortController.signal });
           if (!background && ud?.User && activeProfileIntentRef.current === profileKey) {
-            // Les types AniList (codegen) et le domaine applicatif partagent la
-            // même forme ; on cast vers le type domaine qui est le contrat
+            // Les types AniList (codegen) et le domaine applicatif partagent
+            // la même forme ; on cast vers le type domaine qui est le contrat
             // stable utilisé dans le reste de l'app.
             setUser(ud.User as unknown as AniListUser);
             setPendingProfileName(null);
           }
-          await sleep(200, abortController.signal);
-          const ad = await fetchAL<MediaListQuery>(
-            MEDIA_LIST_QUERY,
-            { userName: name, type: "ANIME" },
-            { signal: abortController.signal }
-          );
-          await sleep(200, abortController.signal);
-          const md = await fetchAL<MediaListMangaQuery>(
-            MEDIA_LIST_QUERY_MANGA,
-            { userName: name, type: "MANGA" },
-            { signal: abortController.signal }
-          );
+          const [ad, md] = await Promise.all([
+            fetchAL<MediaListQuery>(
+              MEDIA_LIST_QUERY,
+              { userName: name, type: "ANIME" },
+              { signal: abortController.signal }
+            ),
+            fetchAL<MediaListMangaQuery>(
+              MEDIA_LIST_QUERY_MANGA,
+              { userName: name, type: "MANGA" },
+              { signal: abortController.signal }
+            ),
+          ]);
           return { ud, ad, md };
         })();
         profileInFlightRef.current.set(profileKey, req);
@@ -418,6 +446,7 @@ export function useProfileLoader(
           return;
         }
         if (!background) {
+          if (err instanceof AniListApiDisabledError) setApiDisabled(true);
           setError(e.message || "Erreur lors du chargement");
           setPendingProfileName(null);
         }
@@ -504,6 +533,8 @@ export function useProfileLoader(
     loading,
     error,
     setError,
+    apiDisabled,
+    setApiDisabled,
     user,
     loaded,
     allAnime,

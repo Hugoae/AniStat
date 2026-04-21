@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import { fetchAL, USER_AVATAR_QUERY } from "../api/anilistClient";
+import { fetchUsersAvatarsBatch } from "../api/anilistClient";
 import { PROFILE_QUICK_SUGGESTIONS } from "../config/constants";
 import {
   QUICKPICK_AVATAR_TTL_MS,
@@ -11,7 +11,6 @@ import {
   safeWriteCache,
 } from "../lib/profileLocalCache";
 import type { AniListUser } from "../types/domain";
-import type { UserAvatarQuery } from "../types/anilistGraphql";
 
 /** Map pseudo-normalisé → URL d'avatar résolue (cache in-memory de la session). */
 type QuickPickState = Record<string, string | null | undefined>;
@@ -50,9 +49,10 @@ type Params = {
  *      4. cache in-memory (résolu dans la session courante),
  *      5. null (fallback vers un placeholder avec initiale).
  *  - **Résolution paresseuse des avatars** : quand la liste devient visible,
- *    on fetch les avatars manquants en parallèle, un par un, pour alimenter
- *    le cache sans exploser le rate-limit AniList. Les requêtes sont
- *    annulables (`AbortController`) si la liste se referme.
+ *    on fetch en UNE SEULE requête GraphQL (via alias `u0: User(...)`,
+ *    `u1: User(...)`, …) tous les avatars manquants. Plus rapide et plus doux
+ *    pour le rate-limiter qu'une requête par profil. La requête est
+ *    annulable (`AbortController`) si la liste se referme.
  */
 export function useHeaderQuickPicks({
   appUser,
@@ -116,25 +116,43 @@ export function useHeaderQuickPicks({
 
     let cancelled = false;
     (async () => {
-      for (const p of todo) {
-        const name = p.userName;
+      if (cancelled || ac.signal.aborted) return;
+      try {
+        const batch = await fetchUsersAvatarsBatch(
+          todo.map((p) => p.userName),
+          { signal: ac.signal }
+        );
         if (cancelled || ac.signal.aborted) return;
-        try {
-          const data = await fetchAL<UserAvatarQuery>(
-            USER_AVATAR_QUERY,
-            { name },
-            { signal: ac.signal }
-          );
-          const url = data?.User?.avatar?.large || data?.User?.avatar?.medium || null;
-          if (url && !cancelled) {
-            const k = normalizeName(name);
-            safeWriteCache(quickPickAvatarCacheKey(k), url, QUICKPICK_AVATAR_TTL_MS);
-            setQuickPickResolvedAvatars((prev) => (prev[k] ? prev : { ...prev, [k]: url }));
-          }
-        } catch (e: unknown) {
-          const err = e as { name?: string };
-          if (err?.name === "AbortError") return;
+        // Collecte des mises à jour de state en un seul `set`, pour ne
+        // provoquer qu'un re-render même si on a résolu 5 avatars.
+        const nextResolved: Record<string, string> = {};
+        for (const [name, avatar] of Object.entries(batch)) {
+          const url = avatar?.large || avatar?.medium || null;
+          if (!url) continue;
+          const k = normalizeName(name);
+          safeWriteCache(quickPickAvatarCacheKey(k), url, QUICKPICK_AVATAR_TTL_MS);
+          nextResolved[k] = url;
         }
+        if (Object.keys(nextResolved).length > 0) {
+          setQuickPickResolvedAvatars((prev) => {
+            // On préserve les entrées déjà résolues (évite d'écraser un
+            // avatar récemment mis en cache par un autre flux).
+            const merged = { ...prev };
+            let changed = false;
+            for (const [k, url] of Object.entries(nextResolved)) {
+              if (!merged[k]) {
+                merged[k] = url;
+                changed = true;
+              }
+            }
+            return changed ? merged : prev;
+          });
+        }
+      } catch (e: unknown) {
+        const err = e as { name?: string };
+        if (err?.name === "AbortError") return;
+        // Erreurs réseau non-critiques : les avatars manquants resteront
+        // sur le placeholder initiale, on retentera au prochain focus.
       }
     })();
     return () => {
