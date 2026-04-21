@@ -11,19 +11,49 @@ import {
   safeWriteCache,
 } from "../lib/profileLocalCache";
 import type { AniListUser } from "../types/domain";
+import type { UserAvatarQuery } from "../types/anilistGraphql";
 
+/** Map pseudo-normalisé → URL d'avatar résolue (cache in-memory de la session). */
 type QuickPickState = Record<string, string | null | undefined>;
 
 type Params = {
+  /** Profil AniList actuellement chargé (ou null tant qu'aucun profil n'est actif). */
   appUser: AniListUser | null;
+  /** Pseudo en cours de chargement (différent d'`appUser.name` pendant la transition). */
   pendingProfileName: string | null;
+  /** `true` si un fetch de profil est en cours. */
   loading: boolean;
+  /** Contenu courant du champ de recherche. */
   inputVal: string;
+  /** `true` quand l'input de recherche a le focus (pilote la visibilité de la liste). */
   headerSearchFocused: boolean;
+  /** Cache in-memory des avatars résolus par le hook (plus rapide que localStorage). */
   quickPickResolvedAvatars: QuickPickState;
   setQuickPickResolvedAvatars: Dispatch<SetStateAction<QuickPickState>>;
 };
 
+/**
+ * Hook qui pilote la liste d'auto-complétion « Quick Picks » du header et le
+ * bloc profil en transition.
+ *
+ * Responsabilités :
+ *  - **Transition visuelle** : pendant qu'un autre profil se charge, on
+ *    affiche immédiatement le pseudo ciblé + son avatar (s'il est en cache),
+ *    plutôt que de garder l'ancien profil ou d'afficher un placeholder vide.
+ *    `transitionActive` indique si on est dans cet état intermédiaire.
+ *  - **Filtrage des suggestions** : filtre `PROFILE_QUICK_SUGGESTIONS`
+ *    (liste statique de profils favoris) en fonction du texte saisi, et
+ *    enrichit chaque ligne avec un `displayAvatar` résolu dans cet ordre :
+ *      1. avatar explicite fourni dans la liste,
+ *      2. avatar du profil courant s'il correspond,
+ *      3. cache localStorage (TTL 7 jours),
+ *      4. cache in-memory (résolu dans la session courante),
+ *      5. null (fallback vers un placeholder avec initiale).
+ *  - **Résolution paresseuse des avatars** : quand la liste devient visible,
+ *    on fetch les avatars manquants en parallèle, un par un, pour alimenter
+ *    le cache sans exploser le rate-limit AniList. Les requêtes sont
+ *    annulables (`AbortController`) si la liste se referme.
+ */
 export function useHeaderQuickPicks({
   appUser,
   pendingProfileName,
@@ -90,7 +120,11 @@ export function useHeaderQuickPicks({
         const name = p.userName;
         if (cancelled || ac.signal.aborted) return;
         try {
-          const data = await fetchAL(USER_AVATAR_QUERY, { name }, { signal: ac.signal });
+          const data = await fetchAL<UserAvatarQuery>(
+            USER_AVATAR_QUERY,
+            { name },
+            { signal: ac.signal }
+          );
           const url = data?.User?.avatar?.large || data?.User?.avatar?.medium || null;
           if (url && !cancelled) {
             const k = normalizeName(name);

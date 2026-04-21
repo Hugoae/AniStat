@@ -30,6 +30,11 @@ import {
   initialLoadingFromHash,
 } from "../lib/routing";
 import type { ActivityCacheByYear, ActivityItem, AniListEntry, AniListUser } from "../types/domain";
+import type {
+  MediaListQuery,
+  MediaListMangaQuery,
+  UserProfileQuery,
+} from "../types/anilistGraphql";
 
 type FetchDataOptions = { forceNetwork?: boolean; background?: boolean };
 
@@ -74,8 +79,34 @@ function hydrateActivityCachesFromLocalStorage(
 }
 
 /**
- * Chargement du profil AniList (user + listes), routing par hash, reset accueil.
- * Les caches d’activités et la file d’activités sont réinitialisés via les setters passés (partagés avec useActivityYearsLoader).
+ * Gestionnaire central du cycle de vie d'un profil AniList.
+ *
+ * Ce hook orchestre :
+ *  1. **Routing** — lecture de la route hash (`#/u/<name>` ou racine), écoute
+ *     des `hashchange` pour recharger un profil, bascule vers l'accueil
+ *     quand la route redevient vide.
+ *  2. **Fetch du profil** — requête `USER_QUERY` puis pagination anime/manga
+ *     (`MEDIA_LIST_QUERY`, `MEDIA_LIST_QUERY_MANGA`). Exposé via
+ *     `{ user, allAnime, allManga }`.
+ *  3. **Cache local (SWR)** — `safeReadCache`/`safeWriteCache` gèrent la
+ *     rehydratation immédiate depuis `localStorage` + un refresh réseau
+ *     silencieux quand les données dépassent `PROFILE_SWR_STALE_MS`. Cela
+ *     donne un rendu instantané quand on revient sur un profil déjà visité.
+ *  4. **Dédoublonnage des requêtes** — `profileInFlightRef` évite deux fetchs
+ *     concurrents pour le même pseudo. Les changements de profil annulent
+ *     l'ancien via `AbortController`.
+ *  5. **Coordination avec `useActivityYearsLoader`** — au changement de
+ *     profil, le cache d'activités et ses files internes sont réinitialisés
+ *     via les setters/refs passés en paramètres. On réhydrate ensuite depuis
+ *     `localStorage` pour remettre en place les années déjà en cache.
+ *  6. **Ciblage UI avant résolution** — `pendingProfileName` permet à la
+ *     barre de header de montrer « tu vas arriver sur X » pendant le fetch,
+ *     même si `user` est encore l'ancien profil.
+ *
+ * Les options de `fetchData` (`forceNetwork`, `background`) contrôlent si
+ * l'on contourne le cache (bouton « recharger ») et si le fetch doit
+ * s'effectuer silencieusement (refresh SWR qui ne doit pas remplacer le
+ * profil actif quand l'utilisateur en consulte un autre en parallèle).
  */
 export function useProfileLoader(
   refs: ProfileLoaderRefs,
@@ -146,6 +177,12 @@ export function useProfileLoader(
     cross.setMonth(0);
     setInputVal("");
     cross.setResourceStatus({});
+    /* `cross` est un sac de setters passé en prop (objet recréé à chaque
+     * render du parent). Le référencer entier ferait recréer la callback à
+     * chaque render, ce qu'on veut éviter. Les setters React/refs sont
+     * stables par contrat, on peut donc les lister individuellement sans
+     * craindre de références périmées. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     cross.setTab,
     cross.setYear,
@@ -309,19 +346,22 @@ export function useProfileLoader(
       const startedAt = performance.now();
       try {
         const req = (async () => {
-          const ud = await fetchAL(USER_QUERY, { name }, { signal: abortController.signal });
+          const ud = await fetchAL<UserProfileQuery>(USER_QUERY, { name }, { signal: abortController.signal });
           if (!background && ud?.User && activeProfileIntentRef.current === profileKey) {
-            setUser(ud.User);
+            // Les types AniList (codegen) et le domaine applicatif partagent la
+            // même forme ; on cast vers le type domaine qui est le contrat
+            // stable utilisé dans le reste de l'app.
+            setUser(ud.User as unknown as AniListUser);
             setPendingProfileName(null);
           }
           await sleep(200, abortController.signal);
-          const ad = await fetchAL(
+          const ad = await fetchAL<MediaListQuery>(
             MEDIA_LIST_QUERY,
             { userName: name, type: "ANIME" },
             { signal: abortController.signal }
           );
           await sleep(200, abortController.signal);
-          const md = await fetchAL(
+          const md = await fetchAL<MediaListMangaQuery>(
             MEDIA_LIST_QUERY_MANGA,
             { userName: name, type: "MANGA" },
             { signal: abortController.signal }
@@ -334,20 +374,29 @@ export function useProfileLoader(
           devLog("profile background stale skip", normalized);
           return;
         }
-        latestUserIdRef.current = (ud.User as AniListUser | undefined)?.id ?? null;
-        setUser(ud.User);
-        const aa = (ad.MediaListCollection?.lists || []).flatMap((l: { entries?: AniListEntry[]; name?: string; status?: string }) =>
-          (l.entries || []).map((e) => ({ ...e, listName: l.name, listStatus: l.status }))
+        const userObj = (ud?.User ?? null) as AniListUser | null;
+        latestUserIdRef.current = userObj?.id ?? null;
+        setUser(userObj);
+        const aa = (ad?.MediaListCollection?.lists || []).flatMap((l) =>
+          ((l.entries || []) as unknown as AniListEntry[]).map((e) => ({
+            ...e,
+            listName: l.name ?? undefined,
+            listStatus: l.status ?? undefined,
+          }))
         );
-        const am = (md.MediaListCollection?.lists || []).flatMap((l: { entries?: AniListEntry[]; name?: string; status?: string }) =>
-          (l.entries || []).map((e) => ({ ...e, listName: l.name, listStatus: l.status }))
+        const am = (md?.MediaListCollection?.lists || []).flatMap((l) =>
+          ((l.entries || []) as unknown as AniListEntry[]).map((e) => ({
+            ...e,
+            listName: l.name ?? undefined,
+            listStatus: l.status ?? undefined,
+          }))
         );
         setAllAnime(aa);
         setAllManga(am);
         if (!background) {
           setAnimeActivities([]);
           setMangaActivities([]);
-          hydrateActivityCachesFromLocalStorage((ud.User as AniListUser | undefined)?.id, cross);
+          hydrateActivityCachesFromLocalStorage(userObj?.id, cross);
         }
         setLoaded(true);
         if (!background) {
@@ -355,7 +404,7 @@ export function useProfileLoader(
           setInputVal("");
         }
         if (!background) lastForegroundProfileKeyRef.current = profileKey;
-        safeWriteCache(profileUserCacheKey(normalized), ud.User, PROFILE_USER_TTL_MS);
+        safeWriteCache(profileUserCacheKey(normalized), userObj, PROFILE_USER_TTL_MS);
         safeWriteCache(profileAnimeCacheKey(normalized), aa, PROFILE_LIST_TTL_MS);
         safeWriteCache(profileMangaCacheKey(normalized), am, PROFILE_LIST_TTL_MS);
         metricInc("cacheWrite", 3);
@@ -383,6 +432,10 @@ export function useProfileLoader(
         if (!background) setLoading(false);
       }
     },
+    /* Mêmes considérations que pour le reset plus haut : on liste les
+     * setters de `cross` individuellement plutôt que l'objet entier, pour
+     * éviter de re-créer `fetchData` à chaque render du parent. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       metricInc,
       metricProfileFetchDuration,

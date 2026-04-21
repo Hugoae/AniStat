@@ -22,7 +22,7 @@ export function CTooltip({
     <div className="chart-tooltip chart-tooltip--basic">
       <div className="chart-tooltip__label">{label}</div>
       {payload.map((p, i) => (
-        <div key={i} style={{ color: p.color || C.accent }}>{p.name}: {p.value}</div>
+        <div key={i} style={{ color: p.color || C.accent }}>{String(p.name ?? "")}: {String(p.value ?? "")}</div>
       ))}
     </div>
   );
@@ -72,7 +72,7 @@ export function CompareLineTooltip({
   const cmp = payload.find((p) => p.dataKey === "compare");
   const title = (() => {
     if (month === 0) {
-      const idx = MONTHS.indexOf(label || "");
+      const idx = (MONTHS as readonly string[]).indexOf(label || "");
       if (idx >= 0) return `${MONTHS_FULL[idx]} ${year}`;
       return String(label);
     }
@@ -84,8 +84,8 @@ export function CompareLineTooltip({
     <div className="chart-tooltip chart-tooltip--compare">
       <div className="chart-tooltip__title">{title}</div>
       <div className="chart-tooltip__compare-row">
-        <span className="chart-tooltip__compare-current">{cur?.value ?? 0}</span>
-        <span className="chart-tooltip__compare-compare">{cmp?.value ?? 0}</span>
+        <span className="chart-tooltip__compare-current">{String(cur?.value ?? 0)}</span>
+        <span className="chart-tooltip__compare-compare">{String(cmp?.value ?? 0)}</span>
       </div>
     </div>
   );

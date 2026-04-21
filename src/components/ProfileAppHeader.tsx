@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import { C, MONTHS } from "../config/constants";
+import { C } from "../config/constants";
 
 export type ProfileHeaderQuickPick = {
   userName: string;
@@ -28,12 +28,6 @@ export type ProfileAppHeaderProps = {
   isDevLocal: boolean;
   showDevPanel: boolean;
   setShowDevPanel: (v: boolean | ((p: boolean) => boolean)) => void;
-  loaded: boolean;
-  years: number[];
-  year: number;
-  month: number;
-  changeYear: (y: number) => void;
-  setMonth: (m: number) => void;
   headerUser: HeaderProfileUser | null;
   transitionActive: boolean;
   anilistProfileUrl: string | null;
@@ -55,12 +49,6 @@ export function ProfileAppHeader({
   isDevLocal,
   showDevPanel,
   setShowDevPanel,
-  loaded,
-  years,
-  year,
-  month,
-  changeYear,
-  setMonth,
   headerUser,
   transitionActive,
   anilistProfileUrl,
@@ -194,44 +182,6 @@ export function ProfileAppHeader({
             </button>
           )}
         </div>
-
-        {loaded && (
-          <div className="period-panel">
-            <div className="period-panel-title">Période d'analyse</div>
-            <div className="period-pills period-pills--years">
-              {years.map((y) => (
-                <button
-                  key={y}
-                  type="button"
-                  className={`period-pill ${y === year ? "active" : ""}`}
-                  onClick={() => changeYear(y)}
-                >
-                  {y}
-                </button>
-              ))}
-            </div>
-            <div className="period-divider" />
-            <div className="period-pills period-pills--months">
-              <button
-                type="button"
-                className={`period-pill period-pill--wide ${month === 0 ? "active" : ""}`}
-                onClick={() => setMonth(0)}
-              >
-                Toute l'année
-              </button>
-              {MONTHS.map((m, idx) => (
-                <button
-                  key={m}
-                  type="button"
-                  className={`period-pill ${month === idx + 1 ? "active" : ""}`}
-                  onClick={() => setMonth(idx + 1)}
-                >
-                  {m}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
 
         {headerUser && (
           <div className="header-profile fade-in">

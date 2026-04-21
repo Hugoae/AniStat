@@ -35,9 +35,13 @@ export function MediaCard({
   /** N’affiche la jaquette qu’à l’approche du viewport (grilles longues). */
   deferCover?: boolean;
 }) {
-  const m = entry.media;
-  if (!m) return null;
-  const title = m.title?.english || m.title?.romaji || "";
+  /*
+   * Tous les hooks doivent être appelés de manière inconditionnelle avant
+   * tout early-return : React se base sur l'ordre d'appel stable des hooks
+   * pour rattacher leur état entre les renders. On reporte donc le
+   * `return null` après les hooks, en gérant le cas `m === undefined`
+   * localement dans l'effet.
+   */
   const coverWrapRef = useRef<HTMLDivElement | null>(null);
   const [coverVisible, setCoverVisible] = useState(!deferCover);
   useEffect(() => {
@@ -53,6 +57,10 @@ export function MediaCard({
     io.observe(el);
     return () => io.disconnect();
   }, [deferCover, coverVisible]);
+
+  const m = entry.media;
+  if (!m) return null;
+  const title = m.title?.english || m.title?.romaji || "";
   const originMeta = mediaCountryOriginMeta(m?.countryOfOrigin);
   const listUrl = anilistMediaUrl(m, type);
   const progressCur = entry.progress || 0;

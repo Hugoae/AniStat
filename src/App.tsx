@@ -66,9 +66,33 @@ import { useOverviewTopScrollFades } from "./hooks/useOverviewTopScrollFades";
 import { ProfileAppHeader } from "./components/ProfileAppHeader";
 import { ProfileViewMain } from "./components/ProfileViewMain";
 import { BackToTopButton } from "./components/BackToTopButton";
-import type { ActivityCacheByYear, AniListEntry, AniListUser } from "./types/domain";
+import type { ActivityCacheByYear, ActivityItem, AniListEntry, AniListUser } from "./types/domain";
 
+/**
+ * Composant racine de l'application.
+ *
+ * Responsabilités, dans l'ordre où elles apparaissent dans le corps :
+ *  1. État local de navigation (`tab`, `year`, `month`) et caches d'activités.
+ *  2. Refs de coordination (requêtes en vol, cooldowns, user courant, etc.)
+ *     partagés entre `useProfileLoader` et `useActivityYearsLoader` pour
+ *     éviter des dépendances circulaires entre hooks.
+ *  3. Effets globaux : migration du cache, scroll listener (bouton retour
+ *     en haut), debug panel en développement.
+ *  4. Chargement profil (`useProfileLoader`) et activités par année
+ *     (`useActivityYearsLoader`), coordonnés via les refs du point 2.
+ *  5. Calculs dérivés (memo) : entrées filtrées par période, moyennes,
+ *     totaux, distributions par genre/format/tag, histogrammes…
+ *  6. Préparation des « bundles » passés aux onglets (Overview, Anime,
+ *     Manga) avec une API stable.
+ *  7. Rendu : header, body (onglet actif) ou home landing.
+ *
+ * Note : ce fichier est volontairement gros — il concentre toute la
+ * logique d'orchestration. Les détails métier sont délégués aux libs
+ * (`lib/stats.ts`, `lib/animeScoreUtils.ts`, `lib/compareEntries.ts`…)
+ * et aux hooks du dossier `hooks/`.
+ */
 function App() {
+  /* ─── État local : navigation, sélection de période, caches d'activités ── */
   const [headerSearchFocused, setHeaderSearchFocused] = useState(false);
   const [quickPickResolvedAvatars, setQuickPickResolvedAvatars] = useState<Record<string, string | null | undefined>>({});
   const [tab, setTab] = useState("overview");
@@ -86,7 +110,7 @@ function App() {
   const [debugMetricsView, setDebugMetricsView] = useState(null);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const profileInFlightRef = useRef(new Map<string, Promise<unknown>>());
-  const activityInFlightRef = useRef(new Map<string, Promise<unknown>>());
+  const activityInFlightRef = useRef(new Map<string, Promise<ActivityItem[]>>());
   const profileAbortRef = useRef<AbortController | null>(null);
   const profileAbortKeyRef = useRef<string | null>(null);
   /** Réponses d’activités async plus anciennes qu’un changement de profil sont ignorées (évite mélange A/B). */
@@ -100,6 +124,11 @@ function App() {
   const activityYearsInFlightRef = useRef(new Set<number>());
   const activityMissLogRef = useRef(new Set<string>());
   const headerSearchInputRef = useRef(null);
+  /*
+   * Compteurs in-memory (non persistés) pour le debug panel local : hits /
+   * miss du cache, nombre d'erreurs rate-limit, durée cumulée des fetchs
+   * profil. Exposés via `window.AniListStatDebug.getMetrics()` en dev.
+   */
   const metricsRef = useRef({
     cacheHit: 0,
     cacheMiss: 0,
@@ -109,6 +138,13 @@ function App() {
     profileFetchTotalMs: 0,
   });
 
+  /* ─── Effets globaux (migration cache, scroll, debug logs) ──────────── */
+
+  /**
+   * Mémorise l'état courant (loading / success / error) d'une ressource
+   * réseau indexée par clé. Agrège dans `resourceStatus` ; utilisé par le
+   * panneau de debug et pour produire des logs en dev uniquement.
+   */
   const setResource = useCallback((key, status, error = null) => {
     setResourceStatus((prev) => ({
       ...prev,
@@ -155,6 +191,10 @@ function App() {
     metricsRef.current.profileFetchTotalMs += ms;
   }, []);
 
+  /* ─── Chargement du profil (useProfileLoader) ─────────────────────────
+   * Les refs ci-dessous sont partagées avec useActivityYearsLoader pour
+   * que les deux hooks se coordonnent (annulation croisée, éviction du
+   * cache d'activités lors d'un changement de profil, etc.). */
   const profileLoaderRefs = {
     profileInFlightRef,
     profileAbortRef,
@@ -196,6 +236,13 @@ function App() {
 
   const profile = useProfileLoader(profileLoaderRefs, profileCross, metricInc, metricProfileFetchDuration);
 
+  /*
+   * On ne destructure pas `animeActivities` / `mangaActivities` : on passe
+   * directement par `animeActivityCache` / `mangaActivityCache` (cache par
+   * année), alimentés par useActivityYearsLoader. Les setters sont exposés
+   * pour qu'on puisse réinitialiser le cache du loader au changement de
+   * profil.
+   */
   const {
     inputVal,
     setInputVal,
@@ -207,8 +254,6 @@ function App() {
     loaded,
     allAnime,
     allManga,
-    animeActivities,
-    mangaActivities,
     setAnimeActivities,
     setMangaActivities,
     pendingProfileName,
@@ -256,6 +301,11 @@ function App() {
     };
   }, []);
 
+  /* ─── Activités : années à charger pour la période courante ───────────
+   * On charge l'année sélectionnée + éventuellement l'année précédente
+   * quand on affiche « toute l'année » ou janvier (le tooltip de
+   * comparaison remonte jusqu'à N-1). Borne inférieure 1970 pour éviter
+   * les dates invalides issues de données AniList corrompues. */
   const activityYearsScope = useMemo(() => {
     const s = new Set([year]);
     if (month === 0 || month === 1) s.add(year - 1);
@@ -330,8 +380,14 @@ function App() {
     return () => clearInterval(id);
   }, [showDevPanel]);
 
+  /* Setter simple pour le sélecteur de période (chips + floating chip). */
   const changeYear = (y: number) => setYear(y);
 
+  /**
+   * Soumission du champ de recherche du header : on blurre l'input pour
+   * fermer le dropdown de quick-picks, puis on met à jour le hash — le
+   * `useProfileLoader` réagit au changement de hash pour lancer le fetch.
+   */
   const handleSubmit = () => {
     const q = inputVal.trim();
     if (!q) return;
@@ -340,6 +396,12 @@ function App() {
     window.location.hash = profileHashForUserName(q);
   };
 
+  /*
+   * Années navigables, dérivées des listes chargées : union de l'année
+   * courante + toutes les années trouvées dans `updatedAt`, `startedAt`
+   * ou `completedAt`, puis remplissage des trous (pour que le sélecteur
+   * affiche une plage continue). Tri décroissant (plus récent en tête).
+   */
   const years = useMemo((): number[] => {
     const nowYear = new Date().getFullYear();
     const ys = new Set<number>([nowYear]);
@@ -397,6 +459,18 @@ function App() {
     refs: activityLoaderRefs,
   });
 
+  /* ─── Calculs dérivés de la période courante ──────────────────────────
+   * Tout ce qui suit est recalculé quand `year`, `month`, ou les caches
+   * d'activités changent. Le pattern est systématiquement : (1) fusionner
+   * les activités utiles pour la période via `mergeActivitiesForDelta`,
+   * (2) en tirer un set de médias « actifs sur la période », (3) filtrer
+   * les entrées complètes sur cette base. On évite ainsi de recalculer
+   * à chaque frame et on garantit une sémantique unique pour « sur cette
+   * période ».
+   */
+
+  /* Activités pertinentes pour les totaux globaux (overview) : on garde
+   * aussi l'année N-1 quand on compare. */
   const mergedAnimeForTotals = useMemo(
     () => mergeActivitiesForDelta(year, animeActivityCache),
     [year, animeActivityCache]
@@ -415,6 +489,17 @@ function App() {
     [mergedMangaForTotals, year, month]
   );
 
+  /**
+   * Prédicat unifié « cette entrée concerne-t-elle la période (y, m) ? ».
+   * Retourne vrai si **au moins une** des conditions suivantes est remplie :
+   *  - il y a eu de la progression (épisode / chapitre) durant la période
+   *    — détecté via l'ensemble `activeIds` calculé à partir des activités ;
+   *  - l'entrée a été **terminée** dans la période (mois = 0 = année entière) ;
+   *  - l'entrée a été **démarrée** dans la période.
+   *
+   * Cela évite de rater les médias marqués « complétés » mais sans activity
+   * détaillée, ou à l'inverse de compter des médias juste planifiés.
+   */
   const isEntryInPeriod = useCallback((e, y, m, activeIds) => {
     const mediaId = e?.media?.id;
     const hasProgressInPeriod = Boolean(mediaId && activeIds?.has(mediaId));
@@ -496,7 +581,9 @@ function App() {
     [mergedAnimeForTotals, year, month]
   );
   const totalEp = animeActivityTotals.episodes;
-  const totalMin = animeActivityTotals.minutes;
+  /* `totalMin` existe sur `animeActivityTotals` mais n'est plus affiché en
+   * overview (remplacé par la lecture globale calculée côté AnimeTab). On ne
+   * garde ici que les épisodes pour la card « Épisodes vus ». */
   const totalCh = useMemo(
     () => computePeriodDeltaFromActivities(mergedMangaForTotals, year, month, "manga"),
     [mergedMangaForTotals, year, month]
@@ -623,6 +710,18 @@ function App() {
       .map(([yearLabel, count]) => ({ yearLabel: String(yearLabel), count }));
   }, [mangaTabEntries]);
 
+  /* ─── Records / faits marquants ───────────────────────────────────────
+   * Un « record » est un superlatif calculé sur la période (meilleur score,
+   * plus longue œuvre terminée, plus grande session, plus longue série…).
+   * On produit une structure uniforme `{ media, <metric> }` pour chaque
+   * record, que la carrousel de records affiche dans un template commun.
+   */
+
+  /**
+   * Transforme une entrée AniList en référence minimale (id, titre, cover)
+   * pour l'affichage dans une card de record. Renvoie `null` si l'entrée
+   * n'a pas d'id utilisable, auquel cas le record est ignoré.
+   */
   const buildRecordMediaRef = useCallback((entry: AniListEntry | undefined | null) => {
     if (!entry?.media?.id) return null;
     const media = entry.media;
@@ -681,6 +780,12 @@ function App() {
     [mangaTabEntries, mergedMangaForTabTotals, buildPeriodRecordsBundle]
   );
 
+  /* ─── Top studios anime ───────────────────────────────────────────────
+   * Agrégation du nombre d'épisodes regardés par studio d'animation sur
+   * la période. AniList distingue main / non-main studio sur ses edges
+   * mais taggue parfois incorrectement `isAnimationStudio: false` sur le
+   * main studio. La logique locale ci-dessous privilégie `isMain: true`
+   * quoi qu'il arrive pour rester proche de la vérité éditoriale. */
   const animeTopStudios = useMemo(() => {
     function animationStudioNameToId(
       edges:
@@ -1154,6 +1259,11 @@ function App() {
     return out;
   }, [animeTabEntries]);
 
+  /* ─── Séries temporelles pour les graphiques « courbes N vs N-1 » ─────
+   * Mois = 0 (toute l'année) : on affiche les 12 mois de l'année courante
+   * comparés aux 12 mois de l'année précédente.
+   * Mois > 0 : on descend au niveau quotidien (jour par jour) pour le
+   * mois sélectionné vs même mois de l'année précédente. */
   const mangaChaptersChartData = useMemo(() => {
     const { compareY, compareM } = getComparisonPeriodMeta(year, month);
     const mergedCur = mergeActivitiesForDelta(year, mangaActivityCache);
@@ -1303,6 +1413,10 @@ function App() {
     return Math.sqrt(variance).toFixed(2);
   }, [mangaTabEntries]);
 
+  /* Tri unifié « note user desc → moyenne AniList desc → titre » pour que
+   * les égalités entre deux œuvres à la même note perso soient tranchées
+   * de façon stable et intuitive (priorité aux œuvres mieux notées par la
+   * communauté). */
   const sortedATab = useMemo(
     () => [...animeTabEntries].sort(compareEntriesByUserScoreThenAverage),
     [animeTabEntries]
@@ -1315,6 +1429,8 @@ function App() {
   const topA = sortedATab;
   const topM = sortedMTab;
 
+  /** Carrousel « Top 10 » affiché sur l'overview. 10 est un bon compromis
+   * entre richesse et scroll horizontal gérable. */
   const overviewTopCount = 10;
   const overviewTopAnime = useMemo(() => topA.slice(0, overviewTopCount), [topA, overviewTopCount]);
   const overviewTopManga = useMemo(() => topM.slice(0, overviewTopCount), [topM, overviewTopCount]);
@@ -1433,15 +1549,27 @@ function App() {
     setQuickPickResolvedAvatars,
   });
 
-  const pickQuickProfile = useCallback((name) => {
+  /**
+   * Sélection d'un pseudo depuis la liste quick-picks (header) : on remplit
+   * l'input pour que l'utilisateur voie ce qu'il a choisi, on ferme le
+   * dropdown, puis on met à jour le hash — le `useProfileLoader` prend la
+   * relève pour déclencher le fetch.
+   */
+  const pickQuickProfile = useCallback((name: string) => {
     const n = String(name || "").trim();
     if (!n) return;
     setInputVal(n);
     setHeaderSearchFocused(false);
     headerSearchInputRef.current?.blur();
     window.location.hash = profileHashForUserName(n);
-  }, []);
+  }, [setInputVal]);
 
+  /* `hashTick` est incrémenté à chaque `hashchange` par `useProfileLoader` ;
+   * on s'en sert comme dépendance pour recalculer la route sans écouter
+   * `window.location` directement (évite la désynchronisation React).
+   * `parseRouteFromHash` lit `window.location.hash`, donc la dep `hashTick`
+   * est bien nécessaire côté comportement même si ESLint ne la voit pas. */
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const isLandingHome = useMemo(() => parseRouteFromHash().type === "home", [hashTick]);
 
   /** Évite l’écran vide (gris) en dev : Strict Mode peut couper un fetch sans erreur, laissant loading=false avant le 2e essai. */
@@ -1458,11 +1586,9 @@ function App() {
 
       {isLandingHome ? (
         <HomePage
-          C={C}
           inputVal={inputVal}
           setInputVal={setInputVal}
           headerSearchInputRef={headerSearchInputRef}
-          headerSearchFocused={headerSearchFocused}
           setHeaderSearchFocused={setHeaderSearchFocused}
           handleSubmit={handleSubmit}
           showHeaderQuickPicks={showHeaderQuickPicks}
@@ -1487,12 +1613,6 @@ function App() {
         isDevLocal={IS_DEV_LOCAL}
         showDevPanel={showDevPanel}
         setShowDevPanel={setShowDevPanel}
-        loaded={loaded}
-        years={years}
-        year={year}
-        month={month}
-        changeYear={changeYear}
-        setMonth={setMonth}
         headerUser={headerUser}
         transitionActive={transitionActive}
         anilistProfileUrl={anilistProfileUrl}
@@ -1524,6 +1644,11 @@ function App() {
         tabs={tabs}
         tab={tab}
         setTab={setTab}
+        periodYears={years}
+        periodYear={year}
+        periodMonth={month}
+        periodChangeYear={changeYear}
+        periodSetMonth={setMonth}
       >
             <div key={tab} className="tab-transition-wrapper">
             {tab === "overview" && (

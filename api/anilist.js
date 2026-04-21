@@ -84,7 +84,6 @@ function maybeLogMetrics() {
     `store=${proxyMetrics.store}`,
     `upstreamErr=${proxyMetrics.upstreamErr}`,
   ].join(" ");
-  // eslint-disable-next-line no-console
   console.log(line);
 }
 

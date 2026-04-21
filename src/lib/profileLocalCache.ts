@@ -1,5 +1,5 @@
 import { fetchListActivitiesForYear, sleep } from "../api/anilistClient";
-import type { ActivityCacheByYear } from "../types/domain";
+import type { ActivityCacheByYear, ActivityItem } from "../types/domain";
 
 export const CACHE_PREFIX = "aniliststat:v3";
 /** Dernier pseudo recherché avec succès — préremplit la barre au chargement suivant (sans fetch automatique). */
@@ -193,16 +193,29 @@ export function runCacheMigrationOnce() {
   }
 }
 
-export async function fetchActivitiesWithRetry(userId, type, year, signal) {
+export async function fetchActivitiesWithRetry(
+  userId: number,
+  type: "ANIME_LIST" | "MANGA_LIST",
+  year: number,
+  signal?: AbortSignal
+): Promise<ActivityItem[]> {
   const maxExtraRetries = 2;
   let attempt = 0;
   while (true) {
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     try {
-      return await fetchListActivitiesForYear(userId, type, year, { signal });
-    } catch (err) {
-      if (err?.name === "AbortError") throw err;
-      const msg = String(err?.message || "");
+      // Les types générés par codegen pour les activités AniList sont des
+      // unions discriminées par `__typename` (ListActivity | TextActivity | …).
+      // Notre domaine applicatif (`ActivityItem`) ne conserve que les champs
+      // utiles communs (`createdAt`, `media`, …) : on cast via `unknown` car
+      // les deux formes sont compatibles au runtime mais divergent côté types.
+      return (await fetchListActivitiesForYear(userId, type, year, {
+        signal,
+      })) as unknown as ActivityItem[];
+    } catch (err: unknown) {
+      const e = err as { name?: string; message?: string };
+      if (e?.name === "AbortError") throw err;
+      const msg = String(e?.message || "");
       const retryable = msg.includes("Rate limit") || msg.includes("429");
       if (!retryable || attempt >= maxExtraRetries) throw err;
       attempt += 1;

@@ -2,12 +2,31 @@ import { useEffect, useRef, useState } from "react";
 import { getRateLimitState } from "../api/anilistClient";
 
 type Params = {
+  /** `true` tant qu'au moins une année d'activités est en cours de chargement. */
   loadingActivities: boolean;
+  /** Dernier message de phase produit par le loader (« Chargement 2024… »). */
   activityLoadingMessage: string;
+  /** Id AniList du profil courant ; sert à détecter les changements de profil. */
   userId: number | null | undefined;
+  /** Nombre d'années encore à charger dans la requête courante. */
   activityYearsPendingCount: number;
 };
 
+/**
+ * UI state du chargement d'activités AniList :
+ *  - **displayActivityLoadingMessage** : variante « avec transition »
+ *    (délai de 200 ms) du message courant, pour éviter le clignotement
+ *    quand on enchaîne rapidement plusieurs phases de chargement.
+ *  - **activityEtaSeconds** : estimation grossière du temps restant, basée
+ *    sur la politique de rate-limit AniList (`getRateLimitState`), le
+ *    nombre d'années en attente et la file de requêtes. Recalculée à
+ *    chaque changement de phase (profil × message) et mise à jour toutes
+ *    les 500 ms pour afficher un décompte fluide (`~12s`, `~11s`, …).
+ *
+ * Les estimations se « rallongent » elles-mêmes si on dépasse l'ETA initial
+ * (cas classique : rate-limit plus strict que prévu). On ne bloque jamais
+ * l'utilisateur sur une promesse irréaliste : l'ETA est indicatif.
+ */
 export function useActivityLoadingUi({
   loadingActivities,
   activityLoadingMessage,

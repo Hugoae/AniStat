@@ -1,5 +1,4 @@
 import type { RefObject } from "react";
-import { C } from "../config/constants";
 import { StatCard, ChartCard, MediaCard, PeriodCompareLegend, SectionTitle, EmptyState } from "../components/AppUi";
 import { OverviewActivityLineChart } from "../components/OverviewActivityLineChart";
 import { ActivityHeatmap, type DailyTotalsByIso } from "../components/ActivityHeatmap";

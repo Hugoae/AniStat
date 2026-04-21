@@ -121,6 +121,10 @@ export function AnimeTab({
   animeDailyTotalsForYear,
   animeListLayoutActive,
 }: AnimeTabProps) {
+  /* ─── État local : UI-only (toggles, filtres, tri, largeur mesurée) ──
+   * Tout le « métier » (entrées, stats, tops) arrive via les props, calculé
+   * en amont par `App.tsx`. Ici on ne gère que l'état d'affichage propre à
+   * l'onglet Anime. */
   const animeStudiosCollapse = useCollapsedChart("anime.studios");
   const [studiosExpanded, setStudiosExpanded] = useState(false);
   const [studioLogoByName, setStudioLogoByName] = useState<Record<string, string>>({});
@@ -171,6 +175,12 @@ export function AnimeTab({
     return animeGridSorted.slice(0, animeListCollapsedMax);
   }, [animeGridSorted, animeListNeedsMoreLess, animeListExpanded, animeListCollapsedMax]);
 
+  /*
+   * Mesure dynamique de la largeur de la grille pour en déduire le nombre
+   * de colonnes (aligné sur la grille CSS). Ne s'active que lorsque
+   * l'onglet est visible (`animeListLayoutActive = true`) : mesurer une
+   * grille masquée renverrait 0 et casserait le calcul.
+   */
   useLayoutEffect(() => {
     if (!animeListLayoutActive) return undefined;
     const el = animeMediaGridRef.current;
@@ -189,6 +199,9 @@ export function AnimeTab({
     return () => ro.disconnect();
   }, [animeListLayoutActive, animeGridSorted.length]);
 
+  /* Au changement de période, on remet tous les filtres et tris à zéro :
+   * sinon l'utilisateur verrait une liste filtrée/triée avec une sélection
+   * qui n'a pas de sens pour la nouvelle période. */
   useEffect(() => {
     setAnimeListExpanded(false);
     setAnimeSearchQuery("");
@@ -306,6 +319,13 @@ export function AnimeTab({
     return m;
   }, [animeTopStudios]);
 
+  /*
+   * Résolution paresseuse des logos de studios (bundle public local). On
+   * ne charge que les studios actuellement visibles (6 par défaut, plus
+   * si l'utilisateur a dépilé) pour limiter les accès disque inutiles.
+   * `visibleStudioNamesKey` sert de signature stable pour ne pas relancer
+   * l'effet tant que la liste est identique.
+   */
   useEffect(() => {
     if (visibleStudioNames.length === 0) {
       return;
@@ -323,8 +343,15 @@ export function AnimeTab({
     return () => {
       cancelled = true;
     };
+    /* `visibleStudioNames` est déjà capturé via la clé stable
+     * `visibleStudioNamesKey` (jointure normalisée). Ajouter le tableau lui-
+     * même en dep relancerait l'effet sur des références identiques en
+     * contenu mais différentes en identité. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleStudioNamesKey]);
 
+  /* Replier la liste étendue quand la période change (même logique que la
+   * grille d'animes plus haut). */
   useEffect(() => {
     setStudiosExpanded(false);
   }, [year, month]);
@@ -346,8 +373,6 @@ export function AnimeTab({
         </div>
       </div>
 
-      <AnimeRecordsSection records={animeRecords} />
-
       <section
         id="anime-heatmap"
         className="fade-in list-tab-anchor"
@@ -363,6 +388,8 @@ export function AnimeTab({
           titleHint="Chaque cellule représente une journée de l'année. La couleur indique le nombre d'épisodes vus ce jour-là (toutes activités anime AniList confondues, période ignorée). Survole une cellule pour voir le total exact."
         />
       </section>
+
+      <AnimeRecordsSection records={animeRecords} />
 
       <section
         id="anime-repartition"

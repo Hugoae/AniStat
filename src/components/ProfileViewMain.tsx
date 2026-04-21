@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { C } from "../config/constants";
-import { LoadingBlock } from "./AppUi";
+import { LoadingBlock, PeriodFloatingChip } from "./AppUi";
 
 /**
  * Messages narratifs pour le loader principal : un enchaînement court qui
@@ -72,6 +72,11 @@ export type ProfileViewMainProps = {
   tabs: ProfileTabDef[];
   tab: string;
   setTab: (k: string) => void;
+  periodYears: number[];
+  periodYear: number;
+  periodMonth: number;
+  periodChangeYear: (y: number) => void;
+  periodSetMonth: (m: number) => void;
   children: ReactNode;
 };
 
@@ -100,6 +105,11 @@ export function ProfileViewMain({
   tabs,
   tab,
   setTab,
+  periodYears,
+  periodYear,
+  periodMonth,
+  periodChangeYear,
+  periodSetMonth,
   children,
 }: ProfileViewMainProps) {
   return (
@@ -251,6 +261,13 @@ export function ProfileViewMain({
               </button>
             ))}
           </div>
+          <PeriodFloatingChip
+            years={periodYears}
+            year={periodYear}
+            month={periodMonth}
+            changeYear={periodChangeYear}
+            setMonth={periodSetMonth}
+          />
           {children}
         </>
       )}

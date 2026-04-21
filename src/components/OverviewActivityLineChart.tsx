@@ -8,9 +8,44 @@ import {
   Area,
   Line,
   LabelList,
+  type TooltipProps,
 } from "recharts";
 import { C } from "../config/constants";
 import { CompareLineTooltip } from "./AppUi";
+
+/** Type générique du payload passé par Recharts à un `content` de `Tooltip`. */
+type RechartsTooltipProps = TooltipProps<
+  number | string | Array<number | string>,
+  number | string
+>;
+
+/**
+ * Adapte le payload générique de Recharts vers le shape plus strict attendu
+ * par `CompareLineTooltip` (name en string, value brute). Sans cet adaptateur,
+ * les types génériques `ValueType | NameType` de Recharts (qui défaillent à
+ * `unknown`) ne sont pas compatibles avec notre tooltip.
+ */
+function renderCompareTooltip(
+  props: RechartsTooltipProps,
+  year: number,
+  month: number
+) {
+  const payload = (props.payload ?? []).map((p) => ({
+    dataKey: p.dataKey as string | number | undefined,
+    name: p.name != null ? String(p.name) : undefined,
+    value: p.value,
+    color: p.color,
+  }));
+  return (
+    <CompareLineTooltip
+      active={props.active}
+      payload={payload}
+      label={typeof props.label === "string" ? props.label : String(props.label ?? "")}
+      year={year}
+      month={month}
+    />
+  );
+}
 
 export function OverviewActivityLineChart({
   data,
@@ -51,7 +86,7 @@ export function OverviewActivityLineChart({
           width={40}
         />
         <Tooltip
-          content={(props) => <CompareLineTooltip {...props} year={year} month={month} />}
+          content={(props) => renderCompareTooltip(props, year, month)}
           cursor={{ stroke: "rgba(139, 160, 178, 0.2)", strokeWidth: 1 }}
         />
         <Area type="monotone" dataKey="current" stroke="none" fill={`url(#${fillGradientId})`} isAnimationActive={false} />

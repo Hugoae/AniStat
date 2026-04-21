@@ -1,5 +1,4 @@
 import { useEffect, type Dispatch, type RefObject, type SetStateAction } from "react";
-import { C } from "../config/constants";
 
 export type HomeQuickPickRow = {
   userName: string;
@@ -9,11 +8,9 @@ export type HomeQuickPickRow = {
 };
 
 export type HomeLandingProps = {
-  C: typeof C;
   inputVal: string;
   setInputVal: Dispatch<SetStateAction<string>>;
   headerSearchInputRef: RefObject<HTMLInputElement | null>;
-  headerSearchFocused: boolean;
   setHeaderSearchFocused: Dispatch<SetStateAction<boolean>>;
   handleSubmit: () => void;
   showHeaderQuickPicks: boolean;
@@ -21,13 +18,15 @@ export type HomeLandingProps = {
   pickQuickProfile: (userName: string) => void;
 };
 
-/** Page d’accueil plein écran : décor, titre et recherche. */
+/**
+ * Page d'accueil plein écran (décor, titre, recherche). Affichée tant qu'aucun
+ * profil n'a été ciblé via le hash ; dès qu'on a un pseudo, `App` bascule sur
+ * `ProfileAppHeader` + `ProfileViewMain` pour le dashboard.
+ */
 export function HomeLanding({
-  C,
   inputVal,
   setInputVal,
   headerSearchInputRef,
-  headerSearchFocused,
   setHeaderSearchFocused,
   handleSubmit,
   showHeaderQuickPicks,

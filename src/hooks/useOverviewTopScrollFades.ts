@@ -9,7 +9,25 @@ import {
 export type OverviewTopFades = { left: boolean; right: boolean };
 
 /**
- * Gère le défilement horizontal des listes « top » de l’overview (dégradés gauche/droite).
+ * Gère l'état visuel des carrousels « top anime / top manga » de l'overview.
+ *
+ * Pour chaque carrousel, le hook :
+ *  1. Expose un `ref` à attacher au conteneur scrollable.
+ *  2. Calcule deux booléens `{ left, right }` qui servent à afficher ou
+ *     masquer les dégradés latéraux (indication « il reste du contenu à
+ *     gauche/droite »). La détection utilise un `slop` de 8 px pour ignorer
+ *     les micro-décalages de rendu.
+ *
+ * Particularités de l'overview vs `useHorizontalScrollFades` :
+ *  - On reset `scrollLeft = 0` à chaque changement de `tab`, `year`, `month`
+ *    ou longueur de liste, via une cascade de `requestAnimationFrame`. Cela
+ *    évite qu'un défilement hérité de la période précédente reste en place
+ *    quand l'utilisateur change de sélection.
+ *  - Un second passage à 80 ms recentre les listes une fois que les images
+ *    de cover ont commencé leur fade-in (elles peuvent faire varier
+ *    légèrement la hauteur/largeur dans les premiers frames).
+ *  - `ResizeObserver` + event `scroll` + `resize` (fenêtre) : on rafraîchit
+ *    les fades dès que le viewport ou le contenu change.
  */
 export function useOverviewTopScrollFades(
   tab: string,

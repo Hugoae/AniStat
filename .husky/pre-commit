@@ -1,0 +1,23 @@
+#
+# Hook pre-commit : qualité non négociable avant chaque commit.
+#
+# Chaîne exécutée : ESLint -> TypeScript (tsc --noEmit) -> tests Vitest.
+# À la moindre erreur, le commit est annulé et l'auteur voit le rapport dans
+# son terminal. Pour bypasser volontairement (WIP, bump de version, …) on
+# peut utiliser `git commit --no-verify`, mais ça doit rester exceptionnel.
+#
+# Note : tsc / vitest prennent quelques secondes. Si la lenteur devient
+# gênante, le plan suivant serait d'introduire `lint-staged` pour ne lint
+# que les fichiers modifiés, tout en gardant tsc + tests en pre-push.
+#
+
+echo "[pre-commit] 1/3 eslint ..."
+npm run lint || exit 1
+
+echo "[pre-commit] 2/3 tsc --noEmit ..."
+npx tsc --noEmit || exit 1
+
+echo "[pre-commit] 3/3 vitest ..."
+npm test --silent || exit 1
+
+echo "[pre-commit] OK"

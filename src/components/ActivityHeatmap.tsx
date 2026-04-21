@@ -3,7 +3,6 @@ import { ChartCard, EmptyState, SectionTitle } from "./AppUi";
 import { ChartCollapseToggle } from "./appUi/ChartCollapseToggle";
 import { StatLabelHint } from "./appUi/StatPrimitives";
 import { useCollapsedChart } from "../hooks/useCollapsedChart";
-import { C } from "../config/constants";
 
 /**
  * Données quotidiennes (clé `YYYY-MM-DD` → valeur agrégée).
@@ -292,6 +291,29 @@ type TooltipState = {
  */
 const TOOLTIP_FLIP_BELOW_MAX_ROW = 2;
 
+/**
+ * Grille type « contribution calendar » façon GitHub, adaptée à l'activité
+ * AniList (épisodes vus, chapitres lus, ou somme des deux).
+ *
+ * Points notables :
+ *  - Les **seuils de couleur** (4 niveaux non-nuls) sont calculés par
+ *    quantiles sur les valeurs strictement positives de l'année
+ *    (`computeBucketThresholds`). Cela rend la coloration robuste à un
+ *    gros binge (qui rendrait un seuil linéaire quasi uniforme) tout en
+ *    gardant un seuil linéaire quand trop peu de jours sont actifs pour
+ *    un quantile fiable (< 8 jours).
+ *  - La **matrice** est calculée en une passe dans `buildMatrix` : on
+ *    remplit d'abord le préfixe de la première semaine (jours avant le
+ *    1er janvier), puis tous les jours de l'année, puis un suffixe pour
+ *    compléter la dernière semaine. Cela garantit une grille rectangulaire
+ *    stable quelle que soit l'année (53 ou 54 colonnes selon les cas).
+ *  - Le **tooltip** est positionné dynamiquement : à gauche ou à droite
+ *    selon la proximité du bord, et retourné sous la cellule uniquement
+ *    pour les 3 premières rangées (lundi/mardi/mercredi), pour éviter
+ *    d'être masqué par la légende / le footer situés en dessous.
+ *  - Le composant est **collapsible** : si `collapseId` est fourni, l'état
+ *    est persisté via `useCollapsedChart` et partagé entre instances.
+ */
 export function ActivityHeatmap({
   year,
   dailyTotals,

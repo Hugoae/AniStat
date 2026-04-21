@@ -8,7 +8,10 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "studio-logos": "node scripts/process-studio-logos.mjs"
+    "lint": "eslint .",
+    "codegen": "graphql-codegen --config codegen.ts",
+    "studio-logos": "node scripts/process-studio-logos.mjs",
+    "prepare": "husky"
   },
   "dependencies": {
     "react": "^18.2.0",
@@ -16,11 +19,22 @@
     "recharts": "^2.12.7"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@graphql-codegen/cli": "^6.3.1",
+    "@graphql-codegen/typescript": "^5.0.10",
+    "@graphql-codegen/typescript-operations": "^5.1.0",
     "@types/react": "^18.2.79",
     "@types/react-dom": "^18.2.25",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^10.2.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.5.0",
+    "graphql": "^16.13.2",
+    "husky": "^9.1.7",
     "sharp": "^0.33.5",
     "typescript": "~5.6.3",
+    "typescript-eslint": "^8.59.0",
     "vite": "^5.4.14",
     "vitest": "^2.1.8"
   }

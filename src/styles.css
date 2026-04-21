@@ -2941,16 +2941,7 @@ a:focus-visible,
 }
 .year-btn.active { background: #3db4f2; border-color: #3db4f2; color: #fff; }
 
-/* Sélection période (année + mois regroupés) */
-.period-panel {
-  background: rgba(21, 31, 46, 0.65);
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-card);
-  padding: 10px 12px 11px;
-  margin-bottom: 16px;
-  backdrop-filter: blur(6px);
-  box-shadow: var(--shadow-card);
-}
+/* Sélection période (titre + pills année/mois réutilisés par le popover du chip flottant) */
 .period-panel-title {
   font-size: 10px;
   font-weight: 700;
@@ -3035,6 +3026,213 @@ a:focus-visible,
 .period-pill--wide {
   padding-left: 14px;
   padding-right: 14px;
+}
+
+/* ———————————————————————————————————————————————————————————————
+ * Chip flottant de période : toujours visible, ancré à droite
+ * ———————————————————————————————————————————————————————————————
+ * Rend un bloc compact vertical ancré dans l'espace libre à droite
+ * du contenu principal, centré en hauteur. Affiche la période active
+ * (année + mois), des flèches verticales (année) et horizontales
+ * (mois) pour avancer vite, et un bouton Modifier qui ouvre un
+ * popover (les pills complètes) à gauche du chip.
+ */
+@keyframes periodPopoverIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.period-floating-chip {
+  position: fixed;
+  /* Centré dans l'espace libre à droite du contenu (.profile-view-main
+   * max-width: 1100 px). `(100vw - 1100px) / 4` = demi-espace, moins la
+   * demi-largeur du chip (~80 px) aligne son centre sur le milieu du gap.
+   * Retombe sur 12 px du bord si l'espace n'est pas assez large. */
+  right: max(12px, calc((100vw - 1100px) / 4 - 95px));
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 10px;
+  min-width: 190px;
+  background: rgba(15, 24, 38, 0.92);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.period-floating-chip__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+  text-align: center;
+}
+.period-floating-chip__value-row {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+.period-floating-chip__value {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 6px;
+  border-radius: var(--radius-control);
+  background: var(--surface-inner);
+  border: 1px solid var(--surface-border);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.period-floating-chip__year {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: 0.02em;
+}
+.period-floating-chip__month {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+.period-floating-chip__nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  border-radius: var(--radius-control);
+  background: var(--surface-inner);
+  border: 1px solid var(--surface-border);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.period-floating-chip__nav-btn:hover:not(:disabled) {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+}
+.period-floating-chip__nav-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inline);
+}
+.period-floating-chip__nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+/* Chevrons horizontaux (◀ ▶) encadrant la valeur pour naviguer rapidement
+ * entre les mois (rollover d'année aux bornes jan/déc). Carrés compacts
+ * pour ne pas déborder du chip. */
+.period-floating-chip__nav-btn-side {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  flex: 0 0 24px;
+  border-radius: var(--radius-control);
+  background: var(--surface-inner);
+  border: 1px solid var(--surface-border);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.period-floating-chip__nav-btn-side:hover:not(:disabled) {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+}
+.period-floating-chip__nav-btn-side:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inline);
+}
+.period-floating-chip__nav-btn-side:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.period-floating-chip__modify-btn {
+  margin-top: 2px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+.period-floating-chip__modify-btn:hover,
+.period-floating-chip__modify-btn[aria-expanded="true"] {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+}
+.period-floating-chip__modify-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inline);
+}
+.period-floating-chip__popover {
+  position: absolute;
+  top: 0;
+  right: calc(100% + 8px);
+  z-index: var(--z-dropdown);
+  min-width: 320px;
+  max-width: min(420px, 86vw);
+  padding: 12px 14px;
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  animation: periodPopoverIn var(--duration-base) var(--ease-out);
+}
+.period-floating-chip__popover .period-panel-title {
+  margin-bottom: 8px;
+}
+@media (max-width: 720px) {
+  .period-floating-chip {
+    /* Sur mobile, on bascule dans le coin bas-droit en compact pour
+     * éviter de masquer le contenu principal au milieu de l'écran. */
+    top: auto;
+    bottom: 16px;
+    transform: none;
+    right: 12px;
+    min-width: 96px;
+    padding: 8px;
+  }
+  .period-floating-chip__popover {
+    top: auto;
+    bottom: 0;
+    right: calc(100% + 8px);
+    max-width: min(320px, 82vw);
+  }
+}
+@media (max-width: 420px) {
+  .period-floating-chip__popover {
+    right: 0;
+    bottom: calc(100% + 8px);
+    max-width: 88vw;
+  }
 }
 
 /* Header */
@@ -3315,7 +3513,10 @@ a:focus-visible,
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-top: 4px;
+  /* Respiration entre la barre de recherche et le bloc profil : laisse la
+   * bannière transparaître sur une bande plus généreuse (≈ 28 px + les
+   * 14 px de `margin-bottom` du top-row, soit ~42 px de banner visible). */
+  margin-top: 28px;
   color: inherit;
 }
 .header-profile-name-link {

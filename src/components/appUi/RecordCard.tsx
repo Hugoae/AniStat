@@ -24,19 +24,24 @@ export type RecordCardProps = {
 };
 
 export function RecordCard({ label, value, sub, media, icon = "trophy", labelHint, className }: RecordCardProps) {
-  const TitleEl = ({ children }: { children: ReactNode }) =>
-    media?.anilistUrl ? (
-      <a
-        href={media.anilistUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="record-card__media-title record-card__media-title--link"
-      >
-        {children}
-      </a>
-    ) : (
-      <span className="record-card__media-title">{children}</span>
-    );
+  /*
+   * Titre du média : lien cliquable si `anilistUrl` est fourni, sinon simple
+   * span. Calculé en valeur (pas en composant interne) pour éviter que React
+   * recrée un nouveau type de composant à chaque render — ce qui invaliderait
+   * l'état interne et les refs à chaque update.
+   */
+  const titleNode: ReactNode = media?.anilistUrl ? (
+    <a
+      href={media.anilistUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="record-card__media-title record-card__media-title--link"
+    >
+      {media.title}
+    </a>
+  ) : (
+    <span className="record-card__media-title">{media?.title}</span>
+  );
 
   return (
     <article className={`record-card${className ? ` ${className}` : ""}`}>
@@ -72,7 +77,7 @@ export function RecordCard({ label, value, sub, media, icon = "trophy", labelHin
             ) : null}
           </div>
           <div className="record-card__media-text">
-            <TitleEl>{media.title}</TitleEl>
+            {titleNode}
             {media.meta ? <div className="record-card__media-meta">{media.meta}</div> : null}
           </div>
         </div>

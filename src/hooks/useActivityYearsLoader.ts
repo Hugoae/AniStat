@@ -16,7 +16,7 @@ import type { ActivityCacheByYear, ActivityItem, AniListUser } from "../types/do
 
 export type ActivityLoaderRefs = {
   latestUserIdRef: MutableRefObject<number | null>;
-  activityInFlightRef: MutableRefObject<Map<string, Promise<unknown>>>;
+  activityInFlightRef: MutableRefObject<Map<string, Promise<ActivityItem[]>>>;
   activityCooldownRef: MutableRefObject<Map<string, number>>;
   activityRetryCountRef: MutableRefObject<Map<string, number>>;
   activityYearsInFlightRef: MutableRefObject<Set<number>>;
@@ -45,7 +45,37 @@ export type ActivityYearsLoaderParams = {
 };
 
 /**
- * Chargement des listes d’activités par année (cache SWR, rate limit, comparaison année N-1).
+ * Chargement orchestré des activités AniList par année (ep. vus, chapitres
+ * lus) avec cache SWR, gestion du rate-limit et pré-chargement pour la
+ * comparaison N-1.
+ *
+ * Contrat de base :
+ *  - Pour chaque changement de période (`year`, `month`), on s'assure que
+ *    l'année courante **et** l'année précédente (pour le mode « comparer »)
+ *    sont présentes dans `animeActivityCache` / `mangaActivityCache`.
+ *  - Les activités sont stockées par `(userId, ANIME_LIST|MANGA_LIST, year)`
+ *    en localStorage (TTL variable : court pour l'année en cours, long pour
+ *    les années closes via `getActivityTtlMs`).
+ *  - Les données périmées (> `ACTIVITY_SWR_STALE_MS`) sont retournées
+ *    immédiatement depuis le cache, puis rafraîchies en arrière-plan.
+ *
+ * Robustesse face au rate-limit AniList (lourd sur cet endpoint) :
+ *  - `activityInFlightRef` : déduplication des requêtes concurrentes (même
+ *    année pour le même profil → une seule requête partagée).
+ *  - `activityCooldownRef` : après un 429, on interdit un retry pour
+ *    `ACTIVITY_RATE_LIMIT_COOLDOWN_MS` afin d'éviter un ban temporaire.
+ *  - `activityRetryCountRef` : jusqu'à `ACTIVITY_MAX_AUTO_RETRY` tentatives
+ *    automatiques sur erreurs transitoires ; au-delà, on remonte l'erreur
+ *    à l'utilisateur (banner d'avertissement).
+ *  - `activityYearsInFlightRef` : empêche de reprogrammer un effet pour une
+ *    année dont le fetch est déjà en vol.
+ *  - `activityMissLogRef` : évite de repousser des warnings bruyants pour
+ *    la même combinaison année × user déjà signalée.
+ *
+ * Toutes les écritures dans les setters sont guardées par un check
+ * `latestUserIdRef.current !== uid` : si l'utilisateur a changé de profil
+ * entre-temps, les réponses en vol sont ignorées pour ne pas polluer le
+ * cache du nouveau profil avec des données de l'ancien.
  */
 export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
   const {
@@ -85,7 +115,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
       const aKey = `activity:${uid}:ANIME_LIST:${targetYear}`;
       const mKey = `activity:${uid}:MANGA_LIST:${targetYear}`;
       try {
-        const fetchOne = async (type: string) => {
+        const fetchOne = async (type: "ANIME_LIST" | "MANGA_LIST") => {
           const key = `activity:${uid}:${type}:${targetYear}`;
           let req = activityInFlightRef.current.get(key);
           if (!req) {
@@ -339,7 +369,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
           if (activityYearsInFlightRef.current.has(yf)) continue;
           activityYearsInFlightRef.current.add(yf);
           try {
-            const fetchActivity = async (type: string) => {
+            const fetchActivity = async (type: "ANIME_LIST" | "MANGA_LIST") => {
               const key = `activity:${ownerId}:${type}:${yf}`;
               setResource(key, "loading");
               let req = activityInFlightRef.current.get(key);
@@ -468,12 +498,12 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     const ownerId = user.id;
     const candidates = [year - 1, year + 1].filter((y) => years.includes(y) && y >= 1970);
     if (candidates.length === 0) return undefined;
-    const idle = window.requestIdleCallback
-      ? window.requestIdleCallback
-      : (cb: () => void) => setTimeout(cb, 1800);
-    const cancelIdle = window.cancelIdleCallback
-      ? window.cancelIdleCallback
-      : (id: number) => clearTimeout(id);
+    const idle: (cb: () => void) => number = window.requestIdleCallback
+      ? (cb) => window.requestIdleCallback(cb)
+      : (cb) => window.setTimeout(cb, 1800);
+    const cancelIdle: (id: number) => void = window.cancelIdleCallback
+      ? (id) => window.cancelIdleCallback(id)
+      : (id) => window.clearTimeout(id);
     const idleId = idle(() => {
       candidates.forEach((y) => {
         if (!animeActivityCache[y] || !mangaActivityCache[y]) prefetchYearActivities(y, ownerId);

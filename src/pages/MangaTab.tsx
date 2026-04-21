@@ -324,8 +324,6 @@ export function MangaTab({
         </div>
       </div>
 
-      <MangaRecordsSection records={mangaRecords} />
-
       <section
         id="manga-heatmap"
         className="fade-in list-tab-anchor"
@@ -341,6 +339,8 @@ export function MangaTab({
           titleHint="Chaque cellule représente une journée de l'année. La couleur indique le nombre de chapitres lus ce jour-là (toutes activités manga AniList confondues, période ignorée). Survole une cellule pour voir le total exact."
         />
       </section>
+
+      <MangaRecordsSection records={mangaRecords} />
 
       <section
         id="manga-repartition"
