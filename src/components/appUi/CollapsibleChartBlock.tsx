@@ -1,5 +1,6 @@
 import { useId, type ReactNode } from "react";
 import { ChartCollapseToggle } from "./ChartCollapseToggle";
+import { SectionTitle } from "./SectionTitle";
 import { useCollapsedChart } from "../../hooks/useCollapsedChart";
 
 export type CollapsibleChartBlockProps = {
@@ -33,21 +34,38 @@ export function CollapsibleChartBlock({
   const { collapsed, toggle } = useCollapsedChart(id);
   const reactId = useId();
   const bodyId = `${reactId}-body`;
-  const finalTitleRowClass = `${titleRowClassName}${withHint ? " chart-card__title-row--with-hint" : ""}`;
+  // Le `titleRowClassName` par défaut inclut `chart-card__title-row` — on le
+  // retire pour ne pas le doubler avec celui injecté par `SectionTitle`.
+  const extraRowClass = titleRowClassName.replace(/(^|\s)chart-card__title-row(\s|$)/, " ").trim();
 
   return (
     <div className={blockClassName}>
-      <div className={finalTitleRowClass}>
-        <h2 className="chart-card__title">{title}</h2>
-        <ChartCollapseToggle
-          collapsed={collapsed}
-          onToggle={toggle}
-          chartTitle={title}
-          controlsId={bodyId}
-        />
-        {titleAside}
+      <SectionTitle
+        withHint={withHint}
+        rowClassName={extraRowClass || undefined}
+        aside={
+          <>
+            <ChartCollapseToggle
+              collapsed={collapsed}
+              onToggle={toggle}
+              chartTitle={title}
+              controlsId={bodyId}
+            />
+            {titleAside}
+          </>
+        }
+      >
+        {title}
+      </SectionTitle>
+      <div
+        className={`collapsible-chart-animator${collapsed ? " collapsible-chart-animator--collapsed" : ""}`}
+        aria-hidden={collapsed}
+        {...(collapsed ? ({ inert: "" } as Record<string, string>) : {})}
+      >
+        <div id={bodyId} className="collapsible-chart-animator__inner">
+          {children}
+        </div>
       </div>
-      {collapsed ? null : <div id={bodyId}>{children}</div>}
     </div>
   );
 }

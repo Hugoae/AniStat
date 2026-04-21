@@ -19,8 +19,8 @@ export function CTooltip({
 }) {
   if (!active || !payload?.length) return null;
   return (
-    <div style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: "var(--radius-control)", padding: "10px 14px", fontSize: 13, boxShadow: "var(--shadow-tooltip)" }}>
-      <div style={{ color: C.text, fontWeight: 600, marginBottom: 4 }}>{label}</div>
+    <div className="chart-tooltip chart-tooltip--basic">
+      <div className="chart-tooltip__label">{label}</div>
       {payload.map((p, i) => (
         <div key={i} style={{ color: p.color || C.accent }}>{p.name}: {p.value}</div>
       ))}
@@ -42,13 +42,13 @@ export function PeriodCompareLegend({
   const cls = ["period-compare-legend", className].filter(Boolean).join(" ");
   return (
     <div className={cls} style={style}>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-        <span style={{ width: 20, height: 3, background: C.accent, borderRadius: 1 }} />
-        <span style={{ color: C.text }}>{legendCurrent}</span>
+      <span className="period-compare-legend__item">
+        <span className="period-compare-legend__swatch period-compare-legend__swatch--current" />
+        <span className="period-compare-legend__label period-compare-legend__label--current">{legendCurrent}</span>
       </span>
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-        <span style={{ width: 20, height: 3, background: "rgba(74, 93, 110, 0.42)", borderRadius: 1 }} />
-        <span style={{ color: C.textDim }}>{legendCompare}</span>
+      <span className="period-compare-legend__item">
+        <span className="period-compare-legend__swatch period-compare-legend__swatch--compare" />
+        <span className="period-compare-legend__label period-compare-legend__label--compare">{legendCompare}</span>
       </span>
     </div>
   );
@@ -81,11 +81,11 @@ export function CompareLineTooltip({
     return String(label);
   })();
   return (
-    <div style={{ background: C.cardBg, border: `1px solid ${C.border}`, borderRadius: "var(--radius-card)", padding: "12px 14px", boxShadow: "var(--shadow-tooltip)" }}>
-      <div style={{ color: C.text, fontWeight: 700, marginBottom: 10, fontSize: 14 }}>{title}</div>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 14 }}>
-        <span style={{ color: C.accent, fontSize: 17, fontWeight: 800, lineHeight: 1 }}>{cur?.value ?? 0}</span>
-        <span style={{ color: "rgba(74, 93, 110, 0.78)", fontSize: 14, fontWeight: 600 }}>{cmp?.value ?? 0}</span>
+    <div className="chart-tooltip chart-tooltip--compare">
+      <div className="chart-tooltip__title">{title}</div>
+      <div className="chart-tooltip__compare-row">
+        <span className="chart-tooltip__compare-current">{cur?.value ?? 0}</span>
+        <span className="chart-tooltip__compare-compare">{cmp?.value ?? 0}</span>
       </div>
     </div>
   );

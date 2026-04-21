@@ -1,5 +1,6 @@
 import { useId, type CSSProperties, type ReactNode } from "react";
 import { StatLabelHint } from "./StatPrimitives";
+import { SectionTitle } from "./SectionTitle";
 
 type ChartCardProps = {
   title?: string;
@@ -19,19 +20,18 @@ export function ChartCard({ title, titleHint, screenReaderSummary, children, sty
   return (
     <div className={cls} style={style}>
       {showInnerTitle ? (
-        <header className="chart-card__header">
+        <header className="chart-card__header" aria-describedby={screenReaderSummary ? summaryId : undefined}>
           {screenReaderSummary ? (
             <p id={summaryId} className="chart-card__sr-only">
               {screenReaderSummary}
             </p>
           ) : null}
-          <div
-            className={`chart-card__title-row${titleHint ? " chart-card__title-row--with-hint" : ""}`}
-            aria-describedby={screenReaderSummary ? summaryId : undefined}
+          <SectionTitle
+            withHint={Boolean(titleHint)}
+            aside={titleHint ? <StatLabelHint text={titleHint} /> : null}
           >
-            <h2 className="chart-card__title">{title}</h2>
-            {titleHint ? <StatLabelHint text={titleHint} /> : null}
-          </div>
+            {title}
+          </SectionTitle>
         </header>
       ) : null}
       {children}

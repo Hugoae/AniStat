@@ -1,5 +1,5 @@
 import { useId, useMemo, useState, type ReactNode } from "react";
-import { ChartCard } from "./AppUi";
+import { ChartCard, EmptyState, SectionTitle } from "./AppUi";
 import { ChartCollapseToggle } from "./appUi/ChartCollapseToggle";
 import { StatLabelHint } from "./appUi/StatPrimitives";
 import { useCollapsedChart } from "../hooks/useCollapsedChart";
@@ -377,34 +377,40 @@ export function ActivityHeatmap({
 
   return (
     <div className={`activity-heatmap${className ? ` ${className}` : ""}`}>
-      <div className="chart-card__title-row list-tab-anime-chart-block__title-row">
-        <h2 className="chart-card__title">{title}</h2>
-        {collapseId ? (
-          <ChartCollapseToggle
-            collapsed={collapsed}
-            onToggle={collapseState.toggle}
-            chartTitle={title}
-            controlsId={bodyId}
-          />
-        ) : null}
-        {titleHint ? <StatLabelHint text={titleHint} /> : null}
-        {titleAside}
-      </div>
-      {collapsed ? null : (
-        <div id={collapseId ? bodyId : undefined}>
+      <SectionTitle
+        rowClassName="list-tab-anime-chart-block__title-row"
+        aside={
+          <>
+            {collapseId ? (
+              <ChartCollapseToggle
+                collapsed={collapsed}
+                onToggle={collapseState.toggle}
+                chartTitle={title}
+                controlsId={bodyId}
+              />
+            ) : null}
+            {titleHint ? <StatLabelHint text={titleHint} /> : null}
+            {titleAside}
+          </>
+        }
+      >
+        {title}
+      </SectionTitle>
+      <div
+        className={`collapsible-chart-animator${collapsed ? " collapsible-chart-animator--collapsed" : ""}`}
+        aria-hidden={collapsed}
+      >
+        <div id={collapseId ? bodyId : undefined} className="collapsible-chart-animator__inner">
           <ChartCard
             noTitle
             screenReaderSummary={`Heatmap d'activité ${year} : ${matrix.totalActiveDays} jours actifs, ${matrix.totalValue} ${totalsLabel} au total.`}
           >
             {matrix.totalActiveDays === 0 ? (
-              <div
-                className={`list-tab-anime-charts__empty${emptyExtra ? " list-tab-anime-charts__empty--with-cta" : ""}`}
-              >
-                <span style={{ color: C.textMuted }}>
-                  Aucune activité enregistrée sur l'année {year}.
-                </span>
-                {emptyExtra}
-              </div>
+              <EmptyState
+                icon="calendar"
+                title={`Aucune activité enregistrée sur l'année ${year}.`}
+                cta={emptyExtra}
+              />
             ) : (
               <div className="activity-heatmap__body">
                 <div className="activity-heatmap__scroll">
@@ -536,7 +542,7 @@ export function ActivityHeatmap({
             )}
           </ChartCard>
         </div>
-      )}
+      </div>
     </div>
   );
 }

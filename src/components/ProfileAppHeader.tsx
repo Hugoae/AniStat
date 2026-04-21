@@ -76,20 +76,21 @@ export function ProfileAppHeader({
           : undefined
       }
     >
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+      <div className="header-container">
         <div className="header-top-row">
           <a href="#/" className="header-brand header-brand--home" aria-label="AniList Stat — Accueil">
             <span className="header-brand-mark">
               <span className="header-brand-a">A</span>
-              <span className="header-brand-s" style={{ color: C.accent }}>
-                S
-              </span>
+              <span className="header-brand-s">S</span>
             </span>
           </a>
           <div className="header-search-wrap">
             <div className="header-search-group">
               <input
                 ref={headerSearchInputRef}
+                id="header-anilist-username"
+                name="anilist-username"
+                type="search"
                 value={inputVal}
                 onChange={(e) => setInputVal(e.target.value)}
                 onFocus={() => setHeaderSearchFocused(true)}
@@ -109,20 +110,11 @@ export function ProfileAppHeader({
                 }}
                 placeholder="Nom d'utilisateur AniList"
                 autoComplete="off"
+                aria-label="Rechercher un pseudo AniList"
                 aria-autocomplete="list"
                 aria-expanded={showHeaderQuickPicks}
                 aria-controls="header-quick-picks"
-                style={{
-                  flex: 1,
-                  background: C.cardBg,
-                  border: `1px solid ${C.border}`,
-                  borderRight: "none",
-                  borderRadius: "var(--radius-control) 0 0 var(--radius-control)",
-                  padding: "10px 14px",
-                  color: C.text,
-                  fontSize: 14,
-                  fontFamily: "inherit",
-                }}
+                className="header-search-input"
               />
               <button
                 type="button"
@@ -130,19 +122,6 @@ export function ProfileAppHeader({
                 aria-label="Rechercher ce profil"
                 disabled={!inputVal.trim()}
                 onClick={handleSubmit}
-                style={{
-                  background: C.accent,
-                  color: "#fff",
-                  border: `1px solid ${C.accent}`,
-                  borderLeft: "none",
-                  borderRadius: "0 var(--radius-control) var(--radius-control) 0",
-                  padding: "10px 14px",
-                  minWidth: 48,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontFamily: "inherit",
-                }}
               >
                 <svg
                   width="20"
@@ -201,34 +180,15 @@ export function ProfileAppHeader({
           </a>
           <div className="header-nav-fill" aria-hidden />
           {showApiBadge && (
-            <div
-              style={{
-                background: "rgba(255,255,255,0.03)",
-                border: `1px solid ${C.border}`,
-                borderRadius: "var(--radius-full)",
-                padding: "6px 10px",
-                fontSize: 12,
-                color: apiStatusBadge.color,
-                fontWeight: 700,
-              }}
-            >
+            <div className="header-api-badge" style={{ color: apiStatusBadge.color }}>
               {apiStatusBadge.label}
             </div>
           )}
           {isDevLocal && (
             <button
               type="button"
+              className="header-dev-toggle"
               onClick={() => setShowDevPanel((v) => !v)}
-              style={{
-                background: "transparent",
-                border: `1px solid ${C.border}`,
-                color: C.textMuted,
-                borderRadius: "var(--radius-control)",
-                padding: "6px 10px",
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
             >
               {showDevPanel ? "Masquer debug" : "Afficher debug"}
             </button>
@@ -277,15 +237,13 @@ export function ProfileAppHeader({
           <div className="header-profile fade-in">
             {headerUser.avatar?.large || headerUser.avatar?.medium ? (
               <img
-                className="header-profile-avatar"
+                className="header-profile-avatar header-profile-avatar--accent"
                 src={headerUser.avatar.large || headerUser.avatar.medium || ""}
                 alt=""
-                style={{ border: `2px solid ${C.accent}` }}
               />
             ) : (
               <span
-                className="header-profile-avatar header-profile-avatar-placeholder"
-                style={{ border: `2px solid ${C.accent}` }}
+                className="header-profile-avatar header-profile-avatar-placeholder header-profile-avatar--accent"
                 aria-hidden
               >
                 {String(headerUser.name).trim().charAt(0).toUpperCase() || "?"}

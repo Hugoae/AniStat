@@ -1,5 +1,20 @@
 import type { ReactNode } from "react";
 import { C } from "../config/constants";
+import { LoadingBlock } from "./AppUi";
+
+/**
+ * Messages narratifs pour le loader principal : un enchaînement court qui
+ * raconte ce que fait l'app pendant les quelques secondes où on attend la
+ * réponse d'AniList. Chaque message s'affiche ~2,2 s avant de passer au suivant.
+ */
+const PRIMARY_LOADING_MESSAGES = [
+  "Connexion à AniList…",
+  "Récupération de ton profil…",
+  "On rassemble tes anime…",
+  "On compile tes manga…",
+  "Analyse de tes notes…",
+  "Préparation du tableau de bord…",
+];
 
 type ActivityLoadDebug = {
   yearsTotal: number;
@@ -61,7 +76,6 @@ export type ProfileViewMainProps = {
 };
 
 export function ProfileViewMain({
-  C,
   loaded,
   loading,
   primaryProfileLoader,
@@ -89,62 +103,22 @@ export function ProfileViewMain({
   children,
 }: ProfileViewMainProps) {
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 24px 60px" }}>
+    <div className="profile-view-main">
       {primaryProfileLoader && (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 80,
-            minHeight: "min(60vh, 480px)",
-          }}
-        >
-          <div
-            style={{
-              width: 48,
-              height: 48,
-              border: `3px solid ${C.border}`,
-              borderTop: `3px solid ${C.accent}`,
-              borderRadius: "50%",
-              animation: "spin 0.8s linear infinite",
-            }}
-          />
-          <div style={{ color: C.textMuted, marginTop: 16, fontSize: 14 }}>
-            Chargement des données AniList...
-          </div>
-        </div>
+        <LoadingBlock
+          messages={PRIMARY_LOADING_MESSAGES}
+          caption="Première requête un peu longue ? AniList envoie toutes tes données d'un coup."
+        />
       )}
 
       {error && (
-        <div
-          style={{
-            background: "rgba(229,57,53,0.1)",
-            border: `1px solid ${C.red}`,
-            borderRadius: "var(--radius-card)",
-            padding: "16px 20px",
-            marginTop: 24,
-            color: C.red,
-            fontSize: 14,
-            boxShadow: "var(--shadow-card)",
-          }}
-        >
+        <div className="error-banner">
           Erreur : {error}
         </div>
       )}
 
       {loaded && !loading && !awaitingPrimaryYearActivities && loadingActivities && (
-        <div
-          style={{
-            marginTop: 24,
-            color: C.textMuted,
-            fontSize: 13,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
+        <div className="activity-loading-line">
           <span className="activity-loading-message-blink">
             {displayActivityLoadingMessage || activityLoadingMessage}
             {activityEtaSeconds != null && activityEtaSeconds > 0
@@ -154,36 +128,17 @@ export function ProfileViewMain({
                 : ""}
             {rateInfoLabel ? ` · ${rateInfoLabel}` : ""}
           </span>
-          <span
-            aria-hidden="true"
-            style={{
-              width: 14,
-              height: 14,
-              border: `2px solid ${C.border}`,
-              borderTop: `2px solid ${C.accent}`,
-              borderRadius: "50%",
-              animation: "spin 0.8s linear infinite",
-            }}
-          />
+          <span className="spinner spinner--sm" aria-hidden="true" />
         </div>
       )}
 
       {loaded && !loading && !awaitingPrimaryYearActivities && activityWarning && !loadingActivities && (
-        <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ color: C.orange, fontSize: 12 }}>{activityWarning}</div>
+        <div className="activity-warning-row">
+          <div className="activity-warning-row__message">{activityWarning}</div>
           <button
             type="button"
             onClick={handleRetryComparisonNow}
-            style={{
-              background: "transparent",
-              color: C.accent,
-              border: `1px solid ${C.accent}`,
-              borderRadius: "var(--radius-control)",
-              padding: "6px 10px",
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
+            className="btn-outline btn-outline--accent"
           >
             Reessayer la comparaison maintenant
           </button>
@@ -192,16 +147,7 @@ export function ProfileViewMain({
               key={`retry-year-${yy}`}
               type="button"
               onClick={() => retryYearNow(yy)}
-              style={{
-                background: "transparent",
-                color: C.text,
-                border: `1px solid ${C.border}`,
-                borderRadius: "var(--radius-control)",
-                padding: "6px 10px",
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
+              className="btn-outline btn-outline--neutral"
             >
               Reessayer {yy}
             </button>
@@ -210,85 +156,57 @@ export function ProfileViewMain({
       )}
 
       {loaded && !loading && !awaitingPrimaryYearActivities && isDevLocal && showDevPanel && (
-        <div
-          style={{
-            marginTop: 12,
-            background: C.cardBg,
-            border: `1px solid ${C.border}`,
-            borderRadius: "var(--radius-card)",
-            padding: "10px 12px",
-            fontSize: 12,
-            color: C.textMuted,
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-            boxShadow: "var(--shadow-card)",
-          }}
-        >
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 16px", alignItems: "baseline" }}>
-            <strong
-              style={{
-                color: C.text,
-                width: "100%",
-                fontSize: 11,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-              }}
-            >
+        <div className="dev-panel">
+          <div className="dev-panel__row">
+            <strong className="dev-panel__heading">
               Activités (période & graphiques)
             </strong>
             {activityLoadDebug ? (
               <>
                 <span>
                   Années ciblées :{" "}
-                  <span style={{ color: C.text }}>{activityLoadDebug.yearsTotal}</span>
+                  <span className="dev-panel__value">{activityLoadDebug.yearsTotal}</span>
                 </span>
                 <span>
                   Chargées :{" "}
-                  <span style={{ color: C.green }}>{activityLoadDebug.yearsComplete}</span>
+                  <span className="dev-panel__value--success">{activityLoadDebug.yearsComplete}</span>
                 </span>
                 <span>
                   Restantes :{" "}
                   <span
-                    style={{
-                      color: activityLoadDebug.yearsPending ? C.orange : C.text,
-                    }}
+                    className={
+                      activityLoadDebug.yearsPending
+                        ? "dev-panel__value--warning"
+                        : "dev-panel__value"
+                    }
                   >
                     {activityLoadDebug.yearsPending}
                   </span>
                 </span>
                 <span>
                   Entrées anime en cache :{" "}
-                  <span style={{ color: C.text }}>
+                  <span className="dev-panel__value">
                     {activityLoadDebug.animeRows.toLocaleString("fr-FR")}
                   </span>
                 </span>
                 <span>
                   Entrées manga en cache :{" "}
-                  <span style={{ color: C.text }}>
+                  <span className="dev-panel__value">
                     {activityLoadDebug.mangaRows.toLocaleString("fr-FR")}
                   </span>
                 </span>
                 <span>
                   File requêtes AniList :{" "}
-                  <span style={{ color: C.text }}>{rateLimitState?.queued ?? 0}</span> en attente,{" "}
-                  <span style={{ color: C.text }}>{rateLimitState?.inFlight ?? 0}</span> en cours
+                  <span className="dev-panel__value">{rateLimitState?.queued ?? 0}</span> en attente,{" "}
+                  <span className="dev-panel__value">{rateLimitState?.inFlight ?? 0}</span> en cours
                 </span>
               </>
             ) : (
               <span>—</span>
             )}
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px 16px", fontSize: 11, opacity: 0.92 }}>
-            <strong
-              style={{
-                color: C.textDim,
-                width: "100%",
-                fontSize: 11,
-                letterSpacing: "0.06em",
-                textTransform: "uppercase",
-              }}
-            >
+          <div className="dev-panel__row dev-panel__row--secondary">
+            <strong className="dev-panel__heading dev-panel__heading--dim">
               Cache profil & proxy (détail)
             </strong>
             <span>
@@ -312,17 +230,7 @@ export function ProfileViewMain({
                 setDebugMetricsView(getter() as DebugMetricsView);
               }
             }}
-            style={{
-              alignSelf: "flex-end",
-              background: "transparent",
-              color: C.accent,
-              border: `1px solid ${C.accent}`,
-              borderRadius: "var(--radius-chip)",
-              padding: "4px 8px",
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: "pointer",
-            }}
+            className="btn-outline btn-outline--accent btn-outline--compact dev-panel__reset"
           >
             Reset metrics
           </button>
@@ -331,16 +239,7 @@ export function ProfileViewMain({
 
       {loaded && !loading && !awaitingPrimaryYearActivities && (
         <>
-          <div
-            style={{
-              display: "flex",
-              gap: 4,
-              marginTop: 24,
-              marginBottom: 24,
-              borderBottom: `1px solid ${C.border}`,
-              overflowX: "auto",
-            }}
-          >
+          <div className="profile-tabs">
             {tabs.map((t) => (
               <button
                 key={t.key}

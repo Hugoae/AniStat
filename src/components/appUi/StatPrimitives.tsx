@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { C } from "../../config/constants";
+import { useCountUp } from "../../hooks/useCountUp";
 
 function StatIcon({ name }: { name: string }) {
   const s = { width: 20, height: 20, display: "block" as const };
@@ -278,6 +279,61 @@ export function StatLabelHint({ text }: { text: string }) {
   );
 }
 
+/**
+ * Extrait les parties animables d'une valeur de StatCard. Retourne `null` si
+ * la valeur ne peut pas être animée (texte libre, plusieurs nombres, ReactNode
+ * complexe, etc.) — dans ce cas, on la rend telle quelle sans count-up.
+ *
+ * Accepte :
+ * - un `number` fini → count-up de 0 à N, sans préfixe/suffixe ;
+ * - une `string` qui matche `^(\D*)(-?\d+(?:[.,]\d+)?)(\D*)$`, avec préfixe et
+ *   suffixe non numériques optionnels (ex. `"45 %"`, `"~12.3"`, `"−5.2"`). Le
+ *   séparateur décimal (`.` ou `,`) est préservé dans le rendu final.
+ */
+type Animatable = {
+  target: number;
+  decimals: number;
+  prefix: string;
+  suffix: string;
+  decimalSep: "." | ",";
+};
+function parseAnimatable(value: ReactNode): Animatable | null {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return null;
+    return { target: value, decimals: 0, prefix: "", suffix: "", decimalSep: "." };
+  }
+  if (typeof value !== "string") return null;
+  const match = value.match(/^(\D*)(-?\d+)(?:([.,])(\d+))?(\D*)$/);
+  if (!match) return null;
+  const [, prefix, intPart, sep, decPart, suffix] = match;
+  const normalized = decPart != null ? `${intPart}.${decPart}` : intPart;
+  const num = Number(normalized);
+  if (!Number.isFinite(num)) return null;
+  return {
+    target: num,
+    decimals: decPart ? decPart.length : 0,
+    prefix,
+    suffix,
+    decimalSep: sep === "," ? "," : ".",
+  };
+}
+
+function formatAnimatedNumber(value: number, decimals: number, sep: "." | ","): string {
+  const fixed = value.toFixed(decimals);
+  return sep === "," ? fixed.replace(".", ",") : fixed;
+}
+
+function AnimatedStatValue({ spec }: { spec: Animatable }) {
+  const current = useCountUp(spec.target);
+  return (
+    <>
+      {spec.prefix}
+      {formatAnimatedNumber(current, spec.decimals, spec.decimalSep)}
+      {spec.suffix}
+    </>
+  );
+}
+
 /** label + value + icon. sub ignorée (rétrocompat). labelHint = texte d’aide au survol du « ? » à côté du libellé. */
 export function StatCard({
   label,
@@ -292,13 +348,16 @@ export function StatCard({
   sub?: unknown;
   labelHint?: string;
 }) {
+  const animatable = useMemo(() => parseAnimatable(value), [value]);
   return (
     <div className="stat-stat-al">
       <div className="stat-stat-al__bubble">
         <StatIcon name={icon} />
       </div>
       <div className="stat-stat-al__text">
-        <div className="stat-stat-al__value" style={{ color: C.accent }}>{value}</div>
+        <div className="stat-stat-al__value" style={{ color: C.accent }}>
+          {animatable ? <AnimatedStatValue spec={animatable} /> : value}
+        </div>
         <div className={`stat-stat-al__label${labelHint ? " stat-stat-al__label--with-hint" : ""}`}>
           <span className="stat-stat-al__label-text">{label}</span>
           {labelHint ? <StatLabelHint text={labelHint} /> : null}

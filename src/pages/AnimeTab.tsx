@@ -28,6 +28,8 @@ import {
   MediaOriginFlagSvg,
   mediaCountryOriginMeta,
   mediaFormatShortLabel,
+  SectionTitle,
+  EmptyState,
 } from "../components/AppUi";
 import { StatLabelHint } from "../components/appUi/StatPrimitives";
 import { RecordCard } from "../components/appUi/RecordCard";
@@ -342,7 +344,6 @@ export function AnimeTab({
             labelHint="Écart-type (σ) de vos écarts (votre note − moyenne AniList) sur la période, en points sur 10. C'est l'amplitude typique d'un écart, sans considérer son sens : 0 = vos notes collent à la moyenne du site, plus la valeur monte plus vos notes sont tranchées (au-dessus comme au-dessous). Pour savoir si vous sur- ou sous-notez en moyenne, regardez le graphique « Ta note vs note AniList » plus bas."
           />
         </div>
-        <hr className="overview-stats-divider" />
       </div>
 
       <AnimeRecordsSection records={animeRecords} />
@@ -370,9 +371,9 @@ export function AnimeTab({
       >
         <div className="list-tab-distribution">
           <div className="list-tab-distribution__col">
-            <h2 id="anime-par-statut-title" className="overview-block-title">
+            <SectionTitle size="lg" id="anime-par-statut-title">
               Par statut
-            </h2>
+            </SectionTitle>
             <div className="list-tab-distro-row">
               {animeStatusEntriesOrdered.map(([s, c]) => (
                 <div key={s} className="list-tab-status-pill">
@@ -385,9 +386,9 @@ export function AnimeTab({
             </div>
           </div>
           <div className="list-tab-distribution__col">
-            <h2 id="anime-par-pays-title" className="overview-block-title">
+            <SectionTitle size="lg" id="anime-par-pays-title">
               Par pays d’origine
-            </h2>
+            </SectionTitle>
             <div className="list-tab-distro-row">
                 {animeCountryEntriesOrdered.map(([code, c]) => {
                 const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code);
@@ -420,9 +421,9 @@ export function AnimeTab({
             </div>
           </div>
           <div className="list-tab-distribution__col">
-            <h2 id="anime-par-format-title" className="overview-block-title">
+            <SectionTitle size="lg" id="anime-par-format-title">
               Par format
-            </h2>
+            </SectionTitle>
             <div className="list-tab-distro-row">
               {fmtData.map(({ name, value: fv }) => (
                 <div key={name} className="list-tab-status-pill">
@@ -447,6 +448,8 @@ export function AnimeTab({
               <div className="list-tab-anime-grid-toolbar__search-shell">
                 <input
                   type="search"
+                  id="anime-grid-search"
+                  name="anime-grid-search"
                   className="list-tab-anime-grid-toolbar__input"
                   value={animeSearchQuery}
                   onChange={(ev) => setAnimeSearchQuery(ev.target.value)}
@@ -496,6 +499,8 @@ export function AnimeTab({
               </span>
               <div className="list-tab-anime-grid-toolbar__select-shell">
                 <select
+                  id="anime-grid-sort"
+                  name="anime-grid-sort"
                   className="list-tab-anime-grid-toolbar__select"
                   value={animeSortKey}
                   onChange={(ev) => setAnimeSortKey(ev.target.value as AnimeGridSortKey)}
@@ -515,24 +520,28 @@ export function AnimeTab({
           </div>
         </div>
         {animeTabEntries.length > 0 && animeGridFiltered.length === 0 ? (
-          <div className="list-tab-anime-grid-empty-filters">
-            <p className="list-tab-anime-grid-empty-filters__text">Aucun titre ne correspond aux filtres.</p>
-            <button
-              type="button"
-              className="list-tab-empty-cta"
-              onClick={() => {
-                setAnimeSearchQuery("");
-                setAnimeFilterScoredOnly(false);
-                setAnimeFilterCompletedOnly(false);
-              }}
-            >
-              Réinitialiser filtres
-            </button>
-          </div>
+          <EmptyState
+            compact
+            icon="flag"
+            title="Aucun titre ne correspond aux filtres."
+            cta={
+              <button
+                type="button"
+                className="list-tab-empty-cta"
+                onClick={() => {
+                  setAnimeSearchQuery("");
+                  setAnimeFilterScoredOnly(false);
+                  setAnimeFilterCompletedOnly(false);
+                }}
+              >
+                Réinitialiser filtres
+              </button>
+            }
+          />
         ) : null}
         <div
           ref={animeMediaGridRef}
-          className="list-tab-media-grid"
+          className="list-tab-media-grid stagger-reveal"
           style={
             {
               "--anime-grid-cols": animeListGridColumns,
@@ -654,10 +663,11 @@ export function AnimeTab({
               </RechartsWhenVisible>
             </div>
           ) : (
-            <div className="list-tab-anime-charts__empty list-tab-anime-charts__empty--with-cta">
-              <span style={{ color: C.textMuted }}>Aucun score sur les anime de cette période.</span>
-              {viewFullYearCta}
-            </div>
+            <EmptyState
+              icon="star"
+              title="Aucun score sur les anime de cette période."
+              cta={viewFullYearCta}
+            />
           )}
         </ChartCard>
         </CollapsibleChartBlock>
@@ -687,10 +697,11 @@ export function AnimeTab({
                 </ResponsiveContainer>
               </RechartsWhenVisible>
             ) : (
-              <div className="list-tab-anime-charts__empty list-tab-anime-charts__empty--with-cta">
-                <span style={{ color: C.textMuted }}>Aucun genre renseigné pour les anime de cette période.</span>
-                {viewFullYearCta}
-              </div>
+              <EmptyState
+                icon="stack"
+                title="Aucun genre renseigné pour les anime de cette période."
+                cta={viewFullYearCta}
+              />
             )}
           </ChartCard>
           </CollapsibleChartBlock>
@@ -788,10 +799,11 @@ export function AnimeTab({
                 </ResponsiveContainer>
               </RechartsWhenVisible>
             ) : (
-              <div className="list-tab-anime-charts__empty list-tab-anime-charts__empty--with-cta">
-                <span style={{ color: C.textMuted }}>Aucune année de sortie renseignée sur ces titres.</span>
-                {viewFullYearCta}
-              </div>
+              <EmptyState
+                icon="calendar"
+                title="Aucune année de sortie renseignée sur ces titres."
+                cta={viewFullYearCta}
+              />
             )}
           </ChartCard>
           </CollapsibleChartBlock>
@@ -848,10 +860,11 @@ export function AnimeTab({
                   </RechartsWhenVisible>
                 </div>
               ) : (
-                <div className="list-tab-anime-charts__empty list-tab-anime-charts__empty--with-cta">
-                  <span style={{ color: C.textMuted }}>Aucune saison à afficher pour cette sélection.</span>
-                  {viewFullYearCta}
-                </div>
+                <EmptyState
+                  icon="calendar"
+                  title="Aucune saison à afficher pour cette sélection."
+                  cta={viewFullYearCta}
+                />
               )}
             </ChartCard>
           </CollapsibleChartBlock>
@@ -925,25 +938,31 @@ export function AnimeTab({
         aria-labelledby="anime-studios-title"
         aria-describedby={animeTopStudios.length > 0 && !animeStudiosCollapse.collapsed ? "anime-studios-summary" : undefined}
       >
-        <div className="chart-card__title-row list-tab-anime-chart-block__title-row list-tab-studios-section__title-row">
-          <h2 id="anime-studios-title" className="chart-card__title">
-            Studios
-          </h2>
-          <ChartCollapseToggle
-            collapsed={animeStudiosCollapse.collapsed}
-            onToggle={animeStudiosCollapse.toggle}
-            chartTitle="Studios"
-            controlsId="anime-studios-body"
-          />
-        </div>
-        {animeStudiosCollapse.collapsed ? null : (
-        <div id="anime-studios-body">
+        <SectionTitle
+          id="anime-studios-title"
+          rowClassName="list-tab-anime-chart-block__title-row list-tab-studios-section__title-row"
+          aside={
+            <ChartCollapseToggle
+              collapsed={animeStudiosCollapse.collapsed}
+              onToggle={animeStudiosCollapse.toggle}
+              chartTitle="Studios"
+              controlsId="anime-studios-body"
+            />
+          }
+        >
+          Studios
+        </SectionTitle>
+        <div
+          className={`collapsible-chart-animator${animeStudiosCollapse.collapsed ? " collapsible-chart-animator--collapsed" : ""}`}
+          aria-hidden={animeStudiosCollapse.collapsed}
+        >
+        <div id="anime-studios-body" className="collapsible-chart-animator__inner">
         {animeTopStudios.length > 0 ? (
           <>
             <p id="anime-studios-summary" className="chart-card__sr-only">
               Studios d&apos;animation AniList sur la période (hors producteurs), avec aperçu des titres.
             </p>
-            <div className="list-tab-studios-grid">
+            <div className="list-tab-studios-grid stagger-reveal">
               {studiosVisibleRows.map((studio) => {
                 const periodRank = studioPeriodRankByName.get(studio.name) ?? 0;
                 return (
@@ -1077,15 +1096,14 @@ export function AnimeTab({
             ) : null}
           </>
         ) : (
-          <div className="list-tab-anime-charts__empty list-tab-anime-charts__empty--with-cta">
-            <span style={{ color: C.textMuted }}>
-              Aucun studio d&apos;animation listé par l&apos;API pour cette sélection.
-            </span>
-            {viewFullYearCta}
-          </div>
+          <EmptyState
+            icon="tv"
+            title="Aucun studio d'animation listé par l'API pour cette sélection."
+            cta={viewFullYearCta}
+          />
         )}
         </div>
-        )}
+        </div>
       </section>
     </div>
   );

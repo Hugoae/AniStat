@@ -2,14 +2,73 @@
 
 /* Jetons DA : cartes, contrôles, ombres et survols alignés partout */
 :root {
+  /* ——— Surfaces / couleurs de fond ——— */
   --surface-bg: #151f2e;
   --surface-border: #1f2d3d;
   --surface-inner: #0f1824;
+  --surface-bg-elevated: #1a2636;
+  --surface-overlay: rgba(11, 22, 34, 0.72);
+
+  /* ——— Couleurs sémantiques (miroir de src/config/constants.ts) ——— */
+  --color-bg: #0b1622;
+  --color-accent: #3DB4F2;
+  --color-accent-hover: #5bc4f7;
+  --color-accent-soft: rgba(61, 180, 242, 0.15);
+  --color-accent-ring: rgba(61, 180, 242, 0.32);
+  --color-text: #edf1f5;
+  --color-text-muted: #8ba0b2;
+  --color-text-dim: #516170;
+  --color-success: #4CAF50;
+  --color-warning: #F27C3D;
+  --color-danger: #F23D58;
+  --color-info: #3DB4F2;
+  --color-yellow: #F2D73D;
+  --color-purple: #A78BFA;
+  --color-pink: #F472B6;
+  --color-teal: #2DD4BF;
+  --color-indigo: #6366F1;
+
+  /* ——— Échelle typo ——— */
+  --font-size-2xs: 11px;
+  --font-size-xs: 12px;
+  --font-size-sm: 13px;
+  --font-size-base: 14px;
+  --font-size-md: 15px;
+  --font-size-lg: 17px;
+  --font-size-xl: 20px;
+  --font-size-2xl: 24px;
+  --font-size-3xl: 30px;
+  --font-size-4xl: 36px;
+  --font-weight-regular: 400;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-extrabold: 800;
+  --font-weight-black: 900;
+  --line-height-tight: 1.2;
+  --line-height-snug: 1.35;
+  --line-height-normal: 1.5;
+
+  /* ——— Échelle de spacing (base 4px) ——— */
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ——— Rayons ——— */
   --radius-card: 14px;
   --radius-control: 8px;
   --radius-chip: 6px;
   --radius-swatch: 3px;
   --radius-full: 9999px;
+
+  /* ——— Ombres ——— */
   --shadow-card:
     0 1px 3px rgba(0, 0, 0, 0.08),
     0 6px 20px rgba(0, 0, 0, 0.09);
@@ -26,8 +85,138 @@
   --shadow-control-hover:
     0 2px 6px rgba(0, 0, 0, 0.1),
     0 6px 16px rgba(0, 0, 0, 0.11);
-  --transition-surface: box-shadow 0.2s ease, transform 0.2s ease;
+
+  /* ——— Motion (durées + easings) ——— */
+  --duration-instant: 80ms;
+  --duration-fast: 140ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --duration-slower: 480ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* legacy conservé pour compat */
+  --transition-surface:
+    box-shadow var(--duration-base) var(--ease-out),
+    transform var(--duration-base) var(--ease-out);
+  --transition-color:
+    color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
   --lift-hover: translateY(-3px);
+  --lift-hover-sm: translateY(-2px);
+
+  /* ——— Focus ring ———
+   *
+   * `--focus-ring` : anneau principal avec un spacer couleur fond pour bien
+   * détacher l'élément focus de son environnement (cards, boutons pleins,
+   * jaquettes…). À utiliser dès qu'il y a de l'espace autour.
+   * `--focus-ring-inline` : version resserrée d'un seul anneau, pour les
+   * liens texte en ligne, pilules et boutons compacts où un double anneau
+   * déborderait. */
+  --focus-ring: 0 0 0 2px var(--color-bg), 0 0 0 4px var(--color-accent-ring);
+  --focus-ring-inline: 0 0 0 2px var(--color-accent-ring);
+
+  /* ——— Scrollbars ———
+   *
+   * Système unifié pour les barres de défilement (WebKit + Firefox). Trois
+   * tailles pour s'adapter à l'échelle du conteneur :
+   *   - `sm` (6 px) : défaut pour le scroll principal et les carrousels.
+   *   - `md` (8 px) : zones larges (heatmap) où l'utilisateur doit pouvoir
+   *     attraper la barre facilement.
+   *   - `xs` (4 px) : rangées de pilules très compactes.
+   * Les thumbs sont systématiquement en forme de pilule (`--scrollbar-radius`).
+   * La variante `--scrollbar-thumb-accent` teinte le thumb avec l'accent, à
+   * réserver aux sliders « signature » (ex. heatmap d'activité) pour ne pas
+   * rendre le motif trop criard à grande échelle. */
+  --scrollbar-size-sm: 6px;
+  --scrollbar-size-md: 8px;
+  --scrollbar-size-xs: 4px;
+  --scrollbar-radius: 999px;
+  --scrollbar-track: rgba(10, 16, 26, 0.55);
+  --scrollbar-thumb: rgba(74, 93, 110, 0.65);
+  --scrollbar-thumb-hover: rgba(90, 112, 132, 0.85);
+  --scrollbar-thumb-accent: rgba(61, 180, 242, 0.45);
+  --scrollbar-thumb-accent-hover: rgba(61, 180, 242, 0.65);
+
+  /* ——— Glow d'accent (signature) ———
+   * Halo doux autour d'un élément pour le désigner comme « point d'ancrage »
+   * identitaire (ex. avatar du profil). Deux paliers : repos et respiration.
+   * Appliqué via la classe `.accent-glow-breath` ou directement sur des
+   * sélecteurs ciblés. */
+  --glow-accent:
+    0 0 0 1px rgba(61, 180, 242, 0.12),
+    0 0 12px 2px rgba(61, 180, 242, 0.22);
+  --glow-accent-strong:
+    0 0 0 1px rgba(61, 180, 242, 0.22),
+    0 0 20px 4px rgba(61, 180, 242, 0.38);
+
+  /* ——— Séparateurs de sections ———
+   * Gradient très discret, symétrique, utilisé entre sections de haut niveau.
+   * La version « accent » ajoute une pointe de --color-accent-soft pour les
+   * contextes plus marqués (ex. dessous du cluster stats). */
+  --section-divider:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(139, 160, 178, 0.04) 12%,
+      rgba(139, 160, 178, 0.18) 50%,
+      rgba(139, 160, 178, 0.04) 88%,
+      transparent 100%
+    );
+  --section-divider-accent:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(61, 180, 242, 0.14) 50%,
+      transparent 100%
+    );
+
+  /* ——— Z-index ——— */
+  --z-sticky: 10;
+  --z-dropdown: 100;
+  --z-overlay: 500;
+  --z-tooltip: 1000;
+  --z-modal: 2000;
+}
+
+/* ——— prefers-reduced-motion : filet de sécurité global ———
+ *
+ * Trois niveaux complémentaires :
+ *  1. Les tokens (`--duration-*`) passent à `0ms` → toutes les transitions/
+ *     animations qui utilisent le design system s'annulent proprement.
+ *  2. `--lift-hover` et `--lift-hover-sm` deviennent `none` → plus de hover
+ *     qui fait « sauter » les cartes.
+ *  3. Règle universelle `*`/pseudo-elements avec `!important` : rattrape les
+ *     `transition: 0.15s ease` codés en dur dans des coins plus anciens, ainsi
+ *     que toutes les animations nommées (spin, fadeIn, pulse, etc.). La durée
+ *     de 0.01ms — et non 0 — est volontaire : elle laisse les gestionnaires
+ *     `transitionend` / `animationend` se déclencher, évitant de casser des
+ *     interactions JS qui attendraient la fin d'une transition.
+ *
+ * Cette stratégie est la recommandation WCAG 2.3.3 : une seule media query,
+ * un seul « kill switch » pour toutes les animations décoratives.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-instant: 0ms;
+    --duration-fast: 0ms;
+    --duration-base: 0ms;
+    --duration-slow: 0ms;
+    --duration-slower: 0ms;
+    --lift-hover: none;
+    --lift-hover-sm: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -35,14 +224,44 @@ html {
   scroll-behavior: smooth;
 }
 html, body, #root { height: 100%; }
-body { background: #0b1622; font-family: 'Overpass', -apple-system, BlinkMacSystemFont, sans-serif; }
-::-webkit-scrollbar { height: 6px; width: 6px; }
-::-webkit-scrollbar-track { background: #0b1622; }
-::-webkit-scrollbar-thumb { background: #1f2d3d; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #516170; }
-input:focus { outline: none; border-color: #3db4f2 !important; }
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: 'Overpass', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+.app-root {
+  background: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100vh;
+  font-family: 'Overpass', sans-serif;
+}
+/* Scrollbar par défaut (toute la page) : pilule discrète, s'harmonise avec
+ * les variantes locales qui utilisent les mêmes tokens. */
+::-webkit-scrollbar { height: var(--scrollbar-size-sm); width: var(--scrollbar-size-sm); }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: var(--scrollbar-radius);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+* { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
+input:focus { outline: none; border-color: var(--color-accent) !important; }
 button { cursor: pointer; }
 button:hover { opacity: 0.9; }
+/* Focus visible global : anneau unifié sur toute surface interactive.
+ * Les composants qui ont besoin d'un anneau plus compact (pilule, lien inline)
+ * surchargent avec `box-shadow: var(--focus-ring-inline)`. */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
 
 /* Stats type AniList : pas de carte pleine, icône en bulle + valeur + libellé */
 .stat-stat-al-row--overview {
@@ -237,6 +456,9 @@ button:hover { opacity: 0.9; }
   font-weight: 800;
   line-height: 1.1;
   letter-spacing: -0.02em;
+  /* Stabilise la largeur des chiffres pendant l'animation de count-up
+     (sinon le compteur sautille à chaque incrément). */
+  font-variant-numeric: tabular-nums;
 }
 .stat-stat-al__label {
   font-size: 12px;
@@ -320,22 +542,22 @@ button:hover { opacity: 0.9; }
   margin-bottom: -4px;
   scroll-snap-type: x proximity;
   scrollbar-width: thin;
-  scrollbar-color: rgba(74, 93, 110, 0.65) rgba(14, 22, 34, 0.55);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   -webkit-overflow-scrolling: touch;
 }
 .list-tab-records-carousel::-webkit-scrollbar {
-  height: 6px;
+  height: var(--scrollbar-size-sm);
 }
 .list-tab-records-carousel::-webkit-scrollbar-track {
-  background: rgba(10, 16, 26, 0.65);
-  border-radius: 999px;
+  background: var(--scrollbar-track);
+  border-radius: var(--scrollbar-radius);
 }
 .list-tab-records-carousel::-webkit-scrollbar-thumb {
-  background: rgba(74, 93, 110, 0.75);
-  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+  border-radius: var(--scrollbar-radius);
 }
 .list-tab-records-carousel::-webkit-scrollbar-thumb:hover {
-  background: rgba(90, 112, 132, 0.85);
+  background: var(--scrollbar-thumb-hover);
 }
 .record-card {
   position: relative;
@@ -351,6 +573,12 @@ button:hover { opacity: 0.9; }
   width: 300px;
   min-width: 0;
   scroll-snap-align: start;
+  transition: var(--transition-surface);
+}
+.record-card:hover {
+  transform: var(--lift-hover);
+  box-shadow: var(--shadow-hover);
+  border-color: var(--color-accent-ring);
 }
 .record-card__top {
   display: flex;
@@ -515,22 +743,22 @@ button:hover { opacity: 0.9; }
   padding-bottom: 6px;
   margin-bottom: -2px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(74, 93, 110, 0.65) rgba(14, 22, 34, 0.55);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   -webkit-overflow-scrolling: touch;
 }
 .list-tab-distro-row::-webkit-scrollbar {
-  height: 5px;
+  height: var(--scrollbar-size-sm);
 }
 .list-tab-distro-row::-webkit-scrollbar-track {
-  background: rgba(10, 16, 26, 0.65);
-  border-radius: 999px;
+  background: var(--scrollbar-track);
+  border-radius: var(--scrollbar-radius);
 }
 .list-tab-distro-row::-webkit-scrollbar-thumb {
-  background: rgba(74, 93, 110, 0.75);
-  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+  border-radius: var(--scrollbar-radius);
 }
 .list-tab-distro-row::-webkit-scrollbar-thumb:hover {
-  background: rgba(90, 112, 132, 0.85);
+  background: var(--scrollbar-thumb-hover);
 }
 .list-tab-status-pill {
   background: rgba(15, 24, 36, 0.72);
@@ -870,8 +1098,8 @@ button:hover { opacity: 0.9; }
   opacity: 0.82;
 }
 .list-tab-anime-grid-toolbar__toggle:focus-visible {
-  outline: 2px solid rgba(61, 180, 242, 0.65);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--focus-ring-inline);
 }
 @media (max-width: 720px) {
   .list-tab-anime-grid-toolbar__inner {
@@ -894,15 +1122,6 @@ button:hover { opacity: 0.9; }
     width: 100%;
   }
 }
-.list-tab-anime-grid-empty-filters {
-  text-align: center;
-  padding: 8px 12px 4px;
-}
-.list-tab-anime-grid-empty-filters__text {
-  margin: 0 0 12px;
-  font-size: 14px;
-  color: rgba(139, 160, 178, 0.95);
-}
 .list-tab-studio-card__name-link {
   color: inherit;
   text-decoration: none;
@@ -912,9 +1131,9 @@ button:hover { opacity: 0.9; }
   text-decoration: underline;
 }
 .list-tab-studio-card__name-link:focus-visible {
-  outline: 1px solid rgba(61, 180, 242, 0.65);
-  outline-offset: 2px;
+  outline: none;
   border-radius: 2px;
+  box-shadow: var(--focus-ring-inline);
 }
 .list-tab-anime-more-btn {
   display: inline-flex;
@@ -949,8 +1168,8 @@ button:hover { opacity: 0.9; }
   transform: scale(0.99);
 }
 .list-tab-anime-more-btn:focus-visible {
-  outline: 1px solid rgba(139, 160, 178, 0.45);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--focus-ring-inline);
 }
 .list-tab-anime-more-btn__icon {
   flex-shrink: 0;
@@ -961,6 +1180,35 @@ button:hover { opacity: 0.9; }
 }
 .list-tab-anchor {
   scroll-margin-top: 72px;
+}
+
+/* Séparateur subtil entre sections majeures d'un onglet.
+ *
+ * Le parent `.list-tab-page` utilise `display: flex; flex-direction: column;
+ * gap: 24px;`. On pose un trait fin centré dans l'espace de gap, via un
+ * `::before` positionné à -12px (moitié du gap) du haut de la section
+ * suivante. Insets latéraux (10%) → le trait s'estompe élégamment au lieu de
+ * toucher les bords. Le selector `+` garantit qu'aucun séparateur n'apparaît
+ * au-dessus de la toute première section. */
+.list-tab-anchor + .list-tab-anchor {
+  position: relative;
+}
+.list-tab-anchor + .list-tab-anchor::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: var(--section-divider);
+  pointer-events: none;
+}
+@media (max-width: 640px) {
+  /* Sur mobile, on resserre les insets pour compenser la largeur réduite. */
+  .list-tab-anchor + .list-tab-anchor::before {
+    left: 6%;
+    right: 6%;
+  }
 }
 .list-tab-anime-charts-section {
   display: flex;
@@ -1059,6 +1307,12 @@ button:hover { opacity: 0.9; }
   display: flex;
   flex-direction: column;
   padding: 0;
+  transition: var(--transition-surface);
+}
+.list-tab-studio-card:hover {
+  transform: var(--lift-hover);
+  box-shadow: var(--shadow-hover);
+  border-color: var(--color-accent-ring);
 }
 .list-tab-studio-card__top {
   padding: 14px 14px 12px;
@@ -1191,6 +1445,8 @@ button:hover { opacity: 0.9; }
   background: rgba(8, 14, 22, 0.72);
   align-items: stretch;
   min-height: 124px;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 14px;
 }
 .list-tab-studio-card__carousel-item {
   width: 76px;
@@ -1199,6 +1455,7 @@ button:hover { opacity: 0.9; }
   overflow: hidden;
   flex-shrink: 0;
   border: 1px solid rgba(139, 160, 178, 0.18);
+  scroll-snap-align: start;
 }
 .list-tab-studio-card__carousel-link {
   display: block;
@@ -1212,8 +1469,8 @@ button:hover { opacity: 0.9; }
   box-shadow: 0 0 0 1px rgba(61, 180, 242, 0.2);
 }
 .list-tab-studio-card__carousel-link:focus-visible {
-  outline: 2px solid #3db4f2;
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /*
@@ -1264,6 +1521,12 @@ button:hover { opacity: 0.9; }
   display: flex;
   flex-direction: column;
   padding: 0;
+  transition: var(--transition-surface);
+}
+.list-tab-author-card:hover {
+  transform: var(--lift-hover);
+  box-shadow: var(--shadow-hover);
+  border-color: var(--color-accent-ring);
 }
 .list-tab-author-card__top {
   padding: 14px 14px 12px;
@@ -1363,9 +1626,9 @@ button:hover { opacity: 0.9; }
   text-decoration: underline;
 }
 .list-tab-author-card__name-link:focus-visible {
-  outline: 1px solid rgba(61, 180, 242, 0.65);
-  outline-offset: 2px;
+  outline: none;
   border-radius: 2px;
+  box-shadow: var(--focus-ring-inline);
 }
 .list-tab-author-card__role {
   color: rgba(139, 160, 178, 0.92);
@@ -1422,6 +1685,8 @@ button:hover { opacity: 0.9; }
   background: rgba(8, 14, 22, 0.72);
   align-items: stretch;
   min-height: 124px;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 14px;
 }
 .list-tab-author-card__carousel-item {
   width: 76px;
@@ -1430,6 +1695,7 @@ button:hover { opacity: 0.9; }
   overflow: hidden;
   flex-shrink: 0;
   border: 1px solid rgba(139, 160, 178, 0.18);
+  scroll-snap-align: start;
 }
 .list-tab-author-card__carousel-link {
   display: block;
@@ -1443,8 +1709,8 @@ button:hover { opacity: 0.9; }
   box-shadow: 0 0 0 1px rgba(61, 180, 242, 0.2);
 }
 .list-tab-author-card__carousel-link:focus-visible {
-  outline: 2px solid #3db4f2;
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 @media (max-width: 900px) {
   .list-tab-pie-pair {
@@ -1492,8 +1758,8 @@ button:hover { opacity: 0.9; }
   box-shadow: inset 0 0 0 1px rgba(61, 180, 242, 0.42);
 }
 .list-tab-pie-card__mode-toggle-btn:focus-visible {
-  outline: 2px solid rgba(61, 180, 242, 0.6);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--focus-ring-inline);
 }
 .list-tab-pie-card__body {
   display: flex;
@@ -1664,8 +1930,8 @@ button:hover { opacity: 0.9; }
   border-color: rgba(61, 180, 242, 0.45);
 }
 .chart-collapse-toggle:focus-visible {
-  outline: 2px solid rgba(61, 180, 242, 0.55);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--focus-ring-inline);
 }
 .chart-collapse-toggle__icon {
   display: block;
@@ -1734,10 +2000,6 @@ button:hover { opacity: 0.9; }
   .list-tab-anime-viz-reveal {
     animation: none;
   }
-}
-.list-tab-anime-charts__empty--with-cta {
-  flex-direction: column;
-  gap: 14px;
 }
 .list-tab-empty-cta {
   align-self: center;
@@ -1815,27 +2077,84 @@ button:hover { opacity: 0.9; }
 .score-scatter__footnote strong {
   font-weight: 600;
 }
-.list-tab-anime-charts__empty {
+/* ——— Empty state unifié ———
+ *
+ * Remplace les blocs « aucune donnée » ad-hoc par une présentation cohérente
+ * avec icône stylisée, titre et description. La version standard remplit un
+ * emplacement de graphique (≥ 220px). La version compacte (`.empty-state--
+ * compact`) s'insère dans des zones plus étroites (≥ 120px). */
+.empty-state {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 14px;
   min-height: 220px;
-  padding: 24px 16px;
+  padding: 28px 20px;
   text-align: center;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.45;
+  color: var(--color-text-dim);
+}
+.empty-state--compact {
+  min-height: 120px;
+  padding: 18px 16px;
+  gap: 10px;
+}
+.empty-state__icon {
+  width: 56px;
+  height: 56px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  background: rgba(139, 160, 178, 0.06);
+  border: 1px solid rgba(139, 160, 178, 0.14);
+  border-radius: var(--radius-full);
+  /* Léger halo sombre pour poser l'icône sur les fonds variés. */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+.empty-state__icon > svg {
+  width: 28px;
+  height: 28px;
+  opacity: 0.85;
+}
+.empty-state--compact .empty-state__icon {
+  width: 40px;
+  height: 40px;
+}
+.empty-state--compact .empty-state__icon > svg {
+  width: 20px;
+  height: 20px;
+}
+.empty-state__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 48ch;
+}
+.empty-state__title {
+  margin: 0;
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-muted);
+  line-height: 1.4;
+}
+.empty-state--compact .empty-state__title {
+  font-size: var(--font-size-sm);
+}
+.empty-state__description {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+  line-height: 1.5;
+}
+.empty-state__cta {
+  margin-top: 4px;
 }
 .overview-stats-divider {
   height: 1px;
   margin: 0;
   border: none;
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(61, 180, 242, 0.14) 50%,
-    transparent 100%
-  );
+  background: var(--section-divider-accent);
 }
 .overview-period-body {
   animation: overviewPeriodTransition 0.38s ease-out;
@@ -1874,8 +2193,110 @@ button:hover { opacity: 0.9; }
   gap: 20px;
   margin-bottom: 12px;
   align-items: center;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+.period-compare-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.period-compare-legend__swatch {
+  width: 20px;
+  height: 3px;
+  border-radius: 1px;
+}
+.period-compare-legend__swatch--current {
+  background: var(--color-accent);
+}
+.period-compare-legend__swatch--compare {
+  background: rgba(74, 93, 110, 0.42);
+}
+.period-compare-legend__label--current { color: var(--color-text); }
+.period-compare-legend__label--compare { color: var(--color-text-dim); }
+
+.chart-tooltip {
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--shadow-tooltip);
+  color: var(--color-text);
+}
+.chart-tooltip--basic {
+  border-radius: var(--radius-control);
+  padding: 10px 14px;
+  font-size: var(--font-size-sm);
+}
+.chart-tooltip--compare {
+  border-radius: var(--radius-card);
+  padding: 12px 14px;
+}
+.chart-tooltip__label {
+  color: var(--color-text);
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: 4px;
+}
+.chart-tooltip__title {
+  color: var(--color-text);
+  font-weight: var(--font-weight-bold);
+  margin-bottom: 10px;
+  font-size: var(--font-size-base);
+}
+.chart-tooltip__compare-row {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+.chart-tooltip__compare-current {
+  color: var(--color-accent);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-extrabold);
+  line-height: 1;
+}
+.chart-tooltip__compare-compare {
+  color: rgba(74, 93, 110, 0.78);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+}
+.chart-tooltip--scatter {
+  border-radius: var(--radius-control);
+  padding: 10px 12px;
+  font-size: var(--font-size-xs);
+  max-width: 280px;
+}
+.chart-tooltip--pie {
+  border-radius: var(--radius-control);
+  padding: 10px 14px;
+  font-size: var(--font-size-sm);
+}
+.chart-tooltip__title--compact {
+  font-weight: var(--font-weight-semibold);
+  margin-bottom: 6px;
+  line-height: 1.3;
+  font-size: inherit;
+}
+.chart-tooltip__value { color: var(--color-text); }
+.chart-tooltip__scatter-body {
+  color: var(--color-text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.chart-tooltip__scatter-hint { opacity: 0.7; }
+.chart-tooltip__pie-label {
+  color: var(--color-text);
+  font-weight: var(--font-weight-semibold);
+}
+.chart-tooltip__pie-meta {
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+.chart-tooltip__pie-extra {
+  margin-top: 2px;
+  color: var(--color-text-muted);
+}
+.chart-tooltip__pie-dot {
+  padding: 0 0.2em;
+  opacity: 0.92;
 }
 @media (max-width: 720px) and (min-width: 561px) {
   .period-compare-legend {
@@ -1935,6 +2356,11 @@ button:hover { opacity: 0.9; }
 .media-card:hover {
   transform: var(--lift-hover);
   box-shadow: var(--shadow-hover);
+  border-color: var(--color-accent-ring);
+}
+.media-card-link:hover .media-card,
+.media-card-link:focus-visible .media-card {
+  border-color: var(--color-accent-ring);
 }
 .media-card-link {
   display: block;
@@ -1943,13 +2369,108 @@ button:hover { opacity: 0.9; }
   border-radius: var(--radius-card);
 }
 .media-card-link:focus-visible {
-  outline: 2px solid #3db4f2;
-  outline-offset: 3px;
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 .media-card-link:focus-visible .media-card,
 .media-card-link:hover .media-card {
   transform: var(--lift-hover);
   box-shadow: var(--shadow-hover);
+}
+.media-card-cover {
+  position: relative;
+  width: 100%;
+  height: 210px;
+  overflow: hidden;
+}
+.media-card-cover__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.media-card-cover__placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(140deg, rgba(30, 44, 62, 0.55) 0%, rgba(15, 22, 34, 0.85) 100%);
+}
+.media-card-pills-top {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  z-index: 1;
+}
+.media-card-pills-bottom {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: calc(100% - 16px);
+}
+.media-card-pill {
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  padding: 3px 8px;
+  border-radius: var(--radius-chip);
+  letter-spacing: 0.5px;
+}
+.media-card-pill--status {
+  flex-shrink: 0;
+  color: #fff;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.88), 0 0 10px rgba(0, 0, 0, 0.35);
+}
+.media-card-pill--origin {
+  flex-shrink: 0;
+  padding: 2px 3px;
+  background: rgba(11, 22, 34, 0.88);
+  border: 1px solid rgba(139, 160, 178, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+  line-height: 0;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+.media-card-pill--format {
+  background: rgba(11, 22, 34, 0.88);
+  border: 1px solid rgba(139, 160, 178, 0.42);
+  color: #d8e4ef;
+  text-transform: uppercase;
+}
+.media-card-pill--score {
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  color: var(--color-yellow);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-bold);
+}
+.media-card-body {
+  padding: 10px 10px 12px;
+}
+.media-card-title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.3;
+  min-height: 34px;
+}
+.media-card-progress {
+  font-size: var(--font-size-2xs);
+  color: var(--color-text-muted);
+  margin-top: 6px;
 }
 .media-origin-flag-svg {
   display: block;
@@ -2016,24 +2537,211 @@ button:hover { opacity: 0.9; }
   scrollbar-gutter: stable;
   overflow-anchor: none;
 }
-.overview-top-empty {
-  min-height: 120px;
-  display: flex;
-  align-items: center;
-  padding: 16px 18px;
-  border: 1px dashed rgba(81, 97, 112, 0.45);
-  border-radius: var(--radius-control);
-  background: rgba(15, 24, 36, 0.45);
-  box-sizing: border-box;
+.overview-compare-hint {
+  font-size: var(--font-size-xs);
+  margin-bottom: 8px;
+  color: var(--color-warning);
+}
+.overview-compare-hint--loading {
+  color: var(--color-text-muted);
 }
 
 .tab-btn {
-  background: none; border: none; padding: 12px 20px; font-size: 14px;
-  font-weight: 600; font-family: inherit; transition: all 0.15s;
-  border-bottom: 2px solid transparent; color: #8ba0b2;
+  background: none; border: none; padding: 12px 20px; font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold); font-family: inherit;
+  transition: color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+  border-bottom: 2px solid transparent; color: var(--color-text-muted);
 }
-.tab-btn:hover { color: #edf1f5; }
-.tab-btn.active { color: #3db4f2; border-bottom-color: #3db4f2; }
+.tab-btn:hover { color: var(--color-text); }
+.tab-btn.active { color: var(--color-accent); border-bottom-color: var(--color-accent); }
+
+/* ——————————————————————————————————————————————
+   Utilitaires partagés (profil, banners, spinners, boutons)
+   —————————————————————————————————————————————— */
+
+.profile-view-main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 var(--space-6) 60px;
+}
+
+.loading-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-10);
+  min-height: min(60vh, 480px);
+  text-align: center;
+}
+/* Conservé pour compat : quelques écrans utilisent encore un label statique. */
+.loading-block__label {
+  color: var(--color-text-muted);
+  margin-top: var(--space-4);
+  font-size: var(--font-size-base);
+}
+/* Wrapper hauteur fixe qui empêche la page de "sauter" lors des changements
+ * de message cyclique (certains sont plus longs que d'autres). */
+.loading-block__message-wrap {
+  margin-top: var(--space-5);
+  min-height: calc(var(--font-size-lg) * 1.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  max-width: 32ch;
+}
+/* Message principal narratif. Animé à chaque changement grâce au `key`
+ * remonté : fade + petit glissement vertical pour insuffler du mouvement. */
+.loading-block__message {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+  line-height: 1.45;
+  animation: loadingMessageFade var(--duration-slow) var(--ease-out);
+}
+@keyframes loadingMessageFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* Caption : libellé statique (moins important) sous les messages tournants. */
+.loading-block__caption {
+  margin-top: var(--space-2);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+  letter-spacing: 0.02em;
+}
+.loading-block__footer {
+  margin-top: var(--space-5);
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-block__message {
+    animation: none;
+  }
+}
+
+.spinner {
+  display: inline-block;
+  border-radius: 50%;
+  border: 3px solid var(--surface-border);
+  border-top-color: var(--color-accent);
+  animation: spin 0.8s linear infinite;
+}
+.spinner--lg { width: 48px; height: 48px; }
+.spinner--sm { width: 14px; height: 14px; border-width: 2px; }
+
+.error-banner {
+  background: rgba(242, 61, 88, 0.1);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-card);
+  padding: var(--space-4) var(--space-5);
+  margin-top: var(--space-6);
+  color: var(--color-danger);
+  font-size: var(--font-size-base);
+  box-shadow: var(--shadow-card);
+}
+
+.activity-loading-line {
+  margin-top: var(--space-6);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.activity-warning-row {
+  margin-top: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.activity-warning-row__message {
+  color: var(--color-warning);
+  font-size: var(--font-size-xs);
+}
+
+.btn-outline {
+  background: transparent;
+  border-radius: var(--radius-control);
+  padding: 6px 10px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  cursor: pointer;
+  font-family: inherit;
+  transition: var(--transition-color), box-shadow var(--duration-fast) var(--ease-out);
+}
+.btn-outline--accent {
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+}
+.btn-outline--accent:hover {
+  background: var(--color-accent-soft);
+  opacity: 1;
+}
+.btn-outline--neutral {
+  color: var(--color-text);
+  border: 1px solid var(--surface-border);
+  font-weight: var(--font-weight-semibold);
+}
+.btn-outline--neutral:hover {
+  border-color: var(--color-accent);
+  opacity: 1;
+}
+.btn-outline--compact {
+  padding: 4px 8px;
+  font-size: var(--font-size-2xs);
+  border-radius: var(--radius-chip);
+}
+
+.profile-tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: var(--space-6);
+  margin-bottom: var(--space-6);
+  border-bottom: 1px solid var(--surface-border);
+  overflow-x: auto;
+}
+
+.dev-panel {
+  margin-top: var(--space-3);
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--color-text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  box-shadow: var(--shadow-card);
+}
+.dev-panel__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: baseline;
+}
+.dev-panel__row--secondary {
+  font-size: var(--font-size-2xs);
+  opacity: 0.92;
+}
+.dev-panel__heading {
+  width: 100%;
+  font-size: var(--font-size-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text);
+  font-weight: var(--font-weight-bold);
+}
+.dev-panel__heading--dim { color: var(--color-text-dim); }
+.dev-panel__value { color: var(--color-text); }
+.dev-panel__value--success { color: var(--color-success); }
+.dev-panel__value--warning { color: var(--color-warning); }
+.dev-panel__reset {
+  align-self: flex-end;
+}
 
 @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 @keyframes activityLoadingMessagePulse {
@@ -2049,6 +2757,170 @@ button:hover { opacity: 0.9; }
 .fade-in-delay-2 { animation-delay: 0.1s; opacity: 0; }
 .fade-in-delay-3 { animation-delay: 0.15s; opacity: 0; }
 .fade-in-delay-4 { animation-delay: 0.2s; opacity: 0; }
+
+/* ——— Transitions d'onglet ———
+ *
+ * Un wrapper keyed (`key={tab}`) enveloppe le contenu d'onglet : un changement
+ * de valeur de la prop `tab` remonte le wrapper, ce qui relance l'animation
+ * `tabEnter` côté CSS. La sortie (onglet courant) est supprimée instantanément,
+ * l'entrée (onglet suivant) s'animation en fade-up rapide — on garde le rendu
+ * nerveux, sans superposition visible entre deux vues.
+ *
+ * L'animation est volontairement courte (220 ms, translate 6px) pour ne pas
+ * rivaliser avec les `fade-in` / `stagger-reveal` internes qui prennent ensuite
+ * le relais pour révéler le détail du contenu.
+ */
+.tab-transition-wrapper {
+  animation: tabEnter var(--duration-base) var(--ease-out) both;
+  /* `isolation: isolate` évite que le wrapper ne crée un contexte de stacking
+   * qui interférerait avec les tooltips portaled. */
+  transform-origin: top center;
+}
+@keyframes tabEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ——— Boutons de navigation pour carrousels horizontaux ———
+   Positionnés en absolu par-dessus le wrapper du carrousel (qui doit avoir
+   `position: relative`). Disparaissent quand il n'y a plus rien à scroller
+   grâce à `disabled` + `aria-hidden`. */
+.carousel-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(139, 160, 178, 0.32);
+  background: rgba(11, 22, 34, 0.82);
+  color: var(--color-text);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.32);
+  opacity: 0.85;
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.carousel-nav-btn:hover:not(:disabled) {
+  background: rgba(61, 180, 242, 0.92);
+  color: #0b1622;
+  border-color: var(--color-accent);
+  box-shadow: 0 6px 18px rgba(61, 180, 242, 0.28);
+  opacity: 1;
+  transform: translateY(-50%) scale(1.06);
+}
+.carousel-nav-btn:active:not(:disabled) {
+  transform: translateY(-50%) scale(0.96);
+}
+.carousel-nav-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring), 0 4px 14px rgba(0, 0, 0, 0.32);
+}
+.carousel-nav-btn:disabled {
+  opacity: 0;
+  pointer-events: none;
+}
+.carousel-nav-btn--prev { left: 6px; }
+.carousel-nav-btn--next { right: 6px; }
+.carousel-nav-btn__icon {
+  display: block;
+}
+@media (pointer: coarse) {
+  /* Sur écrans tactiles, les boutons sont moins utiles (swipe natif) : on les
+     rend plus discrets mais toujours accessibles pour la navigation clavier. */
+  .carousel-nav-btn { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .carousel-nav-btn,
+  .carousel-nav-btn:hover:not(:disabled),
+  .carousel-nav-btn:active:not(:disabled) {
+    transition: none;
+    transform: translateY(-50%);
+  }
+}
+
+/* ——— Collapse/Expand animator (grid-rows trick) ———
+   Usage : wrap les enfants dans .collapsible-chart-animator. Quand l'état est
+   « collapsed », on passe à grid-template-rows: 0fr, ce qui anime la hauteur
+   en douceur sans mesurer la taille en JS. L'inner porte overflow:hidden et
+   min-height:0 pour permettre l'animation. */
+.collapsible-chart-animator {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows var(--duration-slow) var(--ease-out),
+    opacity var(--duration-base) var(--ease-out);
+  opacity: 1;
+}
+.collapsible-chart-animator__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+.collapsible-chart-animator--collapsed {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .collapsible-chart-animator {
+    transition: none;
+  }
+}
+
+/* ——— Stagger reveal pour listes/grilles ———
+   Chaque enfant apparaît en cascade ; le délai est défini par :nth-child
+   pour les 20 premiers (suffisant visuellement) puis capé pour les suivants. */
+@keyframes staggerRevealIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.stagger-reveal > * {
+  animation: staggerRevealIn var(--duration-slow) var(--ease-out) both;
+}
+.stagger-reveal > *:nth-child(1)  { animation-delay: 0ms; }
+.stagger-reveal > *:nth-child(2)  { animation-delay: 30ms; }
+.stagger-reveal > *:nth-child(3)  { animation-delay: 60ms; }
+.stagger-reveal > *:nth-child(4)  { animation-delay: 90ms; }
+.stagger-reveal > *:nth-child(5)  { animation-delay: 120ms; }
+.stagger-reveal > *:nth-child(6)  { animation-delay: 150ms; }
+.stagger-reveal > *:nth-child(7)  { animation-delay: 180ms; }
+.stagger-reveal > *:nth-child(8)  { animation-delay: 210ms; }
+.stagger-reveal > *:nth-child(9)  { animation-delay: 240ms; }
+.stagger-reveal > *:nth-child(10) { animation-delay: 270ms; }
+.stagger-reveal > *:nth-child(11) { animation-delay: 300ms; }
+.stagger-reveal > *:nth-child(12) { animation-delay: 330ms; }
+.stagger-reveal > *:nth-child(13) { animation-delay: 360ms; }
+.stagger-reveal > *:nth-child(14) { animation-delay: 390ms; }
+.stagger-reveal > *:nth-child(15) { animation-delay: 420ms; }
+.stagger-reveal > *:nth-child(16) { animation-delay: 450ms; }
+.stagger-reveal > *:nth-child(17) { animation-delay: 480ms; }
+.stagger-reveal > *:nth-child(18) { animation-delay: 510ms; }
+.stagger-reveal > *:nth-child(19) { animation-delay: 540ms; }
+.stagger-reveal > *:nth-child(n+20) { animation-delay: 570ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .stagger-reveal > * {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
 
 .year-btn {
   background: var(--surface-bg);
@@ -2108,16 +2980,20 @@ button:hover { opacity: 0.9; }
   padding-bottom: 2px;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
-  scrollbar-color: #1f2d3d transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 .period-pills--years::-webkit-scrollbar,
 .period-pills--months::-webkit-scrollbar {
-  height: 4px;
+  height: var(--scrollbar-size-xs);
 }
 .period-pills--years::-webkit-scrollbar-thumb,
 .period-pills--months::-webkit-scrollbar-thumb {
-  background: #1f2d3d;
-  border-radius: 3px;
+  background: var(--scrollbar-thumb);
+  border-radius: var(--scrollbar-radius);
+}
+.period-pills--years::-webkit-scrollbar-thumb:hover,
+.period-pills--months::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }
 @media (min-width: 900px) {
   .period-pills--years {
@@ -2201,7 +3077,8 @@ button:hover { opacity: 0.9; }
   color: #3db4f2;
 }
 .header-brand--home:focus-visible {
-  outline: 2px solid #3db4f2;
+  outline: none;
+  box-shadow: var(--focus-ring-inline);
 }
 .header-home-link {
   flex-shrink: 0;
@@ -2218,8 +3095,8 @@ button:hover { opacity: 0.9; }
   background: rgba(61, 180, 242, 0.1);
 }
 .header-home-link:focus-visible {
-  outline: 2px solid #3db4f2;
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--focus-ring-inline);
 }
 .header-brand-mark {
   display: inline-block;
@@ -2232,8 +3109,95 @@ button:hover { opacity: 0.9; }
 .header-brand-a {
   color: #fff;
 }
+.header-brand-s {
+  color: var(--color-accent);
+}
+.header-container {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.header-search-input {
+  flex: 1;
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  border-right: none;
+  border-radius: var(--radius-control) 0 0 var(--radius-control);
+  padding: 10px 14px;
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+  font-family: inherit;
+}
+.header-search-submit {
+  background: var(--color-accent);
+  color: #fff;
+  border: 1px solid var(--color-accent);
+  border-left: none;
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  padding: 10px 14px;
+  min-width: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  transition: background var(--duration-fast) var(--ease-out);
+}
 .header-search-submit:not(:disabled) {
   cursor: pointer;
+}
+.header-search-submit:not(:disabled):hover {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  opacity: 1;
+}
+.header-api-badge {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-full);
+  padding: 6px 10px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+}
+.header-dev-toggle {
+  background: transparent;
+  border: 1px solid var(--surface-border);
+  color: var(--color-text-muted);
+  border-radius: var(--radius-control);
+  padding: 6px 10px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition-color);
+}
+.header-dev-toggle:hover {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+  opacity: 1;
+}
+.header-profile-avatar--accent {
+  border: 2px solid var(--color-accent);
+  /* Signature glow : halo qui respire lentement (3.8s) autour de l'avatar.
+   * Le `box-shadow` de base reste en place même sans animation (repli pour
+   * reduced-motion), donc l'anneau lumineux est toujours présent. */
+  box-shadow: var(--glow-accent);
+  animation: accentGlowBreath 3.8s var(--ease-in-out) infinite;
+}
+
+/* Utilitaire réutilisable : à appliquer sur n'importe quel élément pour lui
+ * donner la même signature lumineuse (ex. bouton CTA clé, indicateur live…). */
+.accent-glow-breath {
+  box-shadow: var(--glow-accent);
+  animation: accentGlowBreath 3.8s var(--ease-in-out) infinite;
+}
+
+@keyframes accentGlowBreath {
+  0%,
+  100% {
+    box-shadow: var(--glow-accent);
+  }
+  50% {
+    box-shadow: var(--glow-accent-strong);
+  }
 }
 .header-search-wrap {
   position: relative;
@@ -2372,7 +3336,7 @@ button:hover { opacity: 0.9; }
 .header-profile-name-link:focus-visible {
   outline: none;
   border-radius: 4px;
-  box-shadow: 0 0 0 2px #0b1622, 0 0 0 4px #3db4f2;
+  box-shadow: var(--focus-ring);
 }
 .header-profile-avatar {
   width: 64px;
@@ -2544,9 +3508,24 @@ button:hover { opacity: 0.9; }
   margin: 12px 0 0;
   width: 100%;
   text-align: center;
-  font-size: 12px;
-  color: #516170;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
   letter-spacing: 0.02em;
+}
+.home-landing__search-input {
+  flex: 1;
+  background: rgba(15, 24, 36, 0.92);
+  border: 1px solid var(--surface-border);
+  border-right: none;
+  border-radius: var(--radius-control) 0 0 var(--radius-control);
+  padding: 14px 18px;
+  color: var(--color-text);
+  font-size: var(--font-size-md);
+  font-family: inherit;
+}
+.home-landing__search-submit {
+  padding: 14px 18px;
+  min-width: 52px;
 }
 
 /* Retour en haut (après scroll) */
@@ -2575,15 +3554,15 @@ button:hover { opacity: 0.9; }
     color 0.15s ease;
 }
 .back-to-top-btn:hover {
-  background: rgba(61, 180, 242, 0.12);
-  border-color: #3db4f2;
-  color: #3db4f2;
-  transform: translateY(-2px);
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  transform: var(--lift-hover-sm);
   box-shadow: var(--shadow-hover);
 }
 .back-to-top-btn:focus-visible {
-  outline: 2px solid #3db4f2;
-  outline-offset: 3px;
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 /* Module Top tags AniList (anime + manga) */
@@ -2627,12 +3606,12 @@ button:hover { opacity: 0.9; }
   background: rgba(61, 180, 242, 0.16);
   border-color: rgba(61, 180, 242, 0.85);
   color: #f3f7fb;
-  transform: translateY(-1px);
+  transform: var(--lift-hover-sm);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
 }
 .top-tags__pill:focus-visible {
-  outline: 2px solid rgba(61, 180, 242, 0.65);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--focus-ring-inline);
 }
 .top-tags__pill-name {
   white-space: nowrap;
@@ -2683,8 +3662,8 @@ button:hover { opacity: 0.9; }
   border-color: rgba(61, 180, 242, 0.5);
 }
 .top-tags__more-btn:focus-visible {
-  outline: 2px solid rgba(61, 180, 242, 0.55);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--focus-ring-inline);
 }
 
 /* Heatmap d'activité (overview, anime, manga) */
@@ -2709,21 +3688,26 @@ button:hover { opacity: 0.9; }
   position: relative;
   overflow-x: auto;
   overflow-y: hidden;
-  /* Scroll horizontal subtil sur petits écrans */
+  /* Scroll horizontal subtil sur petits écrans. Variante « accent » assumée :
+   * la heatmap est un élément phare, teinter son thumb en bleu renforce
+   * l'identité sans polluer les autres scrollbars de l'app. */
   scrollbar-width: thin;
-  scrollbar-color: rgba(61, 180, 242, 0.45) rgba(20, 32, 48, 0.4);
+  scrollbar-color: var(--scrollbar-thumb-accent) var(--scrollbar-track);
   padding-bottom: 4px;
 }
 .activity-heatmap__scroll::-webkit-scrollbar {
-  height: 8px;
+  height: var(--scrollbar-size-md);
 }
 .activity-heatmap__scroll::-webkit-scrollbar-track {
-  background: rgba(20, 32, 48, 0.4);
-  border-radius: 4px;
+  background: var(--scrollbar-track);
+  border-radius: var(--scrollbar-radius);
 }
 .activity-heatmap__scroll::-webkit-scrollbar-thumb {
-  background: rgba(61, 180, 242, 0.45);
-  border-radius: 4px;
+  background: var(--scrollbar-thumb-accent);
+  border-radius: var(--scrollbar-radius);
+}
+.activity-heatmap__scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-accent-hover);
 }
 .activity-heatmap__svg {
   display: block;

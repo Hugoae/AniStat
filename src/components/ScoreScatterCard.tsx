@@ -11,7 +11,7 @@ import {
   YAxis,
   ZAxis,
 } from "recharts";
-import { ChartCard } from "./AppUi";
+import { ChartCard, EmptyState, SectionTitle } from "./AppUi";
 import { RechartsWhenVisible } from "./RechartsWhenVisible";
 import { ChartCollapseToggle } from "./appUi/ChartCollapseToggle";
 import { useCollapsedChart } from "../hooks/useCollapsedChart";
@@ -75,24 +75,14 @@ function ScatterTooltip({
   const deltaColor = colorForDelta(p.delta);
   const noun = kind === "manga" ? "manga" : "anime";
   return (
-    <div
-      style={{
-        background: C.cardBg,
-        border: `1px solid ${C.border}`,
-        borderRadius: "var(--radius-control)",
-        padding: "10px 12px",
-        fontSize: 12,
-        boxShadow: "var(--shadow-tooltip)",
-        maxWidth: 280,
-      }}
-    >
-      <div style={{ color: C.text, fontWeight: 600, marginBottom: 6, lineHeight: 1.3 }}>{p.title}</div>
-      <div style={{ color: C.textMuted, display: "flex", flexDirection: "column", gap: 2 }}>
+    <div className="chart-tooltip chart-tooltip--scatter">
+      <div className="chart-tooltip__title chart-tooltip__title--compact">{p.title}</div>
+      <div className="chart-tooltip__scatter-body">
         <span>
-          Ta note&nbsp;: <strong style={{ color: C.text }}>{p.user.toFixed(1)} / 10</strong>
+          Ta note&nbsp;: <strong className="chart-tooltip__value">{p.user.toFixed(1)} / 10</strong>
         </span>
         <span>
-          Moyenne AniList&nbsp;: <strong style={{ color: C.text }}>{p.site.toFixed(1)} / 10</strong>
+          Moyenne AniList&nbsp;: <strong className="chart-tooltip__value">{p.site.toFixed(1)} / 10</strong>
         </span>
         <span>
           Écart&nbsp;:{" "}
@@ -100,7 +90,7 @@ function ScatterTooltip({
             {sign}
             {Math.abs(p.delta).toFixed(2)}
           </strong>{" "}
-          <span style={{ opacity: 0.7 }}>
+          <span className="chart-tooltip__scatter-hint">
             ({p.delta > 0 ? `tu sur-notes ce ${noun}` : p.delta < 0 ? `tu sous-notes ce ${noun}` : "note alignée"})
           </span>
         </span>
@@ -162,30 +152,37 @@ export function ScoreScatterCard({ entries, kind, emptyExtra, className, collaps
 
   return (
     <div className={`list-tab-anime-chart-block${className ? ` ${className}` : ""}`}>
-      <div className="chart-card__title-row list-tab-anime-chart-block__title-row">
-        <h2 className="chart-card__title">Ta note vs note AniList</h2>
-        {collapseId ? (
-          <ChartCollapseToggle
-            collapsed={collapsed}
-            onToggle={collapseState.toggle}
-            chartTitle="Ta note vs note AniList"
-            controlsId={bodyId}
-          />
-        ) : null}
-      </div>
-      {collapsed ? null : (
-      <div id={collapseId ? bodyId : undefined}>
+      <SectionTitle
+        rowClassName="list-tab-anime-chart-block__title-row"
+        aside={
+          collapseId ? (
+            <ChartCollapseToggle
+              collapsed={collapsed}
+              onToggle={collapseState.toggle}
+              chartTitle="Ta note vs note AniList"
+              controlsId={bodyId}
+            />
+          ) : null
+        }
+      >
+        Ta note vs note AniList
+      </SectionTitle>
+      <div
+        className={`collapsible-chart-animator${collapsed ? " collapsible-chart-animator--collapsed" : ""}`}
+        aria-hidden={collapsed}
+      >
+      <div id={collapseId ? bodyId : undefined} className="collapsible-chart-animator__inner">
       <ChartCard
         noTitle
         screenReaderSummary={`Nuage de points : ta note (axe vertical) en fonction de la note moyenne AniList (axe horizontal). ${points.length} ${kind === "manga" ? "manga" : "anime"} affichés.`}
       >
         {points.length === 0 ? (
-          <div className={`list-tab-anime-charts__empty${emptyExtra ? " list-tab-anime-charts__empty--with-cta" : ""}`}>
-            <span style={{ color: C.textMuted }}>
-              Pas assez de notes attribuées sur cette période pour comparer.
-            </span>
-            {emptyExtra}
-          </div>
+          <EmptyState
+            icon="star"
+            title="Pas assez de notes attribuées sur cette période pour comparer."
+            description="Notez vos titres sur AniList pour débloquer ce graphique."
+            cta={emptyExtra}
+          />
         ) : (
           <div className="score-scatter">
             <RechartsWhenVisible height={320} className="list-tab-anime-recharts-mount">
@@ -296,7 +293,7 @@ export function ScoreScatterCard({ entries, kind, emptyExtra, className, collaps
         )}
       </ChartCard>
       </div>
-      )}
+      </div>
     </div>
   );
 }

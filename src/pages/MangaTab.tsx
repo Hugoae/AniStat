@@ -27,6 +27,8 @@ import {
   MediaOriginFlagSvg,
   mediaCountryOriginMeta,
   mediaFormatShortLabel,
+  SectionTitle,
+  EmptyState,
 } from "../components/AppUi";
 import { StatLabelHint } from "../components/appUi/StatPrimitives";
 import { RecordCard } from "../components/appUi/RecordCard";
@@ -320,7 +322,6 @@ export function MangaTab({
             labelHint="Écart-type (σ) de vos écarts (votre note − moyenne AniList) sur la période, en points sur 10. C'est l'amplitude typique d'un écart, sans considérer son sens : 0 = vos notes collent à la moyenne du site, plus la valeur monte plus vos notes sont tranchées (au-dessus comme au-dessous). Pour savoir si vous sur- ou sous-notez en moyenne, regardez le graphique « Ta note vs note AniList » plus bas."
           />
         </div>
-        <hr className="overview-stats-divider" />
       </div>
 
       <MangaRecordsSection records={mangaRecords} />
@@ -348,9 +349,9 @@ export function MangaTab({
       >
         <div className="list-tab-distribution">
           <div className="list-tab-distribution__col">
-            <h2 id="manga-par-statut-title" className="overview-block-title">
+            <SectionTitle size="lg" id="manga-par-statut-title">
               Par statut
-            </h2>
+            </SectionTitle>
             <div className="list-tab-distro-row">
               {mangaStatusEntriesOrdered.map(([s, c]) => (
                 <div key={s} className="list-tab-status-pill">
@@ -363,9 +364,9 @@ export function MangaTab({
             </div>
           </div>
           <div className="list-tab-distribution__col">
-            <h2 id="manga-par-pays-title" className="overview-block-title">
+            <SectionTitle size="lg" id="manga-par-pays-title">
               Par pays d’origine
-            </h2>
+            </SectionTitle>
             <div className="list-tab-distro-row">
               {mangaCountryEntriesOrdered.map(([code, c]) => {
                 const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code);
@@ -398,9 +399,9 @@ export function MangaTab({
             </div>
           </div>
           <div className="list-tab-distribution__col">
-            <h2 id="manga-par-format-title" className="overview-block-title">
+            <SectionTitle size="lg" id="manga-par-format-title">
               Par format
-            </h2>
+            </SectionTitle>
             <div className="list-tab-distro-row">
               {mangaFmtData.map(({ name, value: fv }) => (
                 <div key={name} className="list-tab-status-pill">
@@ -425,6 +426,8 @@ export function MangaTab({
               <div className="list-tab-anime-grid-toolbar__search-shell">
                 <input
                   type="search"
+                  id="manga-grid-search"
+                  name="manga-grid-search"
                   className="list-tab-anime-grid-toolbar__input"
                   value={mangaSearchQuery}
                   onChange={(ev) => setMangaSearchQuery(ev.target.value)}
@@ -474,6 +477,8 @@ export function MangaTab({
               </span>
               <div className="list-tab-anime-grid-toolbar__select-shell">
                 <select
+                  id="manga-grid-sort"
+                  name="manga-grid-sort"
                   className="list-tab-anime-grid-toolbar__select"
                   value={mangaSortKey}
                   onChange={(ev) => setMangaSortKey(ev.target.value as AnimeGridSortKey)}
@@ -493,24 +498,28 @@ export function MangaTab({
           </div>
         </div>
         {mangaTabEntries.length > 0 && mangaGridFiltered.length === 0 ? (
-          <div className="list-tab-anime-grid-empty-filters">
-            <p className="list-tab-anime-grid-empty-filters__text">Aucun titre ne correspond aux filtres.</p>
-            <button
-              type="button"
-              className="list-tab-empty-cta"
-              onClick={() => {
-                setMangaSearchQuery("");
-                setMangaFilterScoredOnly(false);
-                setMangaFilterCompletedOnly(false);
-              }}
-            >
-              Réinitialiser filtres
-            </button>
-          </div>
+          <EmptyState
+            compact
+            icon="flag"
+            title="Aucun titre ne correspond aux filtres."
+            cta={
+              <button
+                type="button"
+                className="list-tab-empty-cta"
+                onClick={() => {
+                  setMangaSearchQuery("");
+                  setMangaFilterScoredOnly(false);
+                  setMangaFilterCompletedOnly(false);
+                }}
+              >
+                Réinitialiser filtres
+              </button>
+            }
+          />
         ) : null}
         <div
           ref={mangaMediaGridRef}
-          className="list-tab-media-grid"
+          className="list-tab-media-grid stagger-reveal"
           style={
             {
               "--anime-grid-cols": mangaListGridColumns,
@@ -632,10 +641,11 @@ export function MangaTab({
                     </RechartsWhenVisible>
                   </div>
                 ) : (
-                  <div className="list-tab-anime-charts__empty list-tab-anime-charts__empty--with-cta">
-                    <span style={{ color: C.textMuted }}>Aucun score sur les manga de cette période.</span>
-                    {viewFullYearCta}
-                  </div>
+                  <EmptyState
+                    icon="star"
+                    title="Aucun score sur les manga de cette période."
+                    cta={viewFullYearCta}
+                  />
                 )}
               </ChartCard>
             </CollapsibleChartBlock>
@@ -665,10 +675,11 @@ export function MangaTab({
                     </ResponsiveContainer>
                   </RechartsWhenVisible>
                 ) : (
-                  <div className="list-tab-anime-charts__empty list-tab-anime-charts__empty--with-cta">
-                    <span style={{ color: C.textMuted }}>Aucun genre renseigné pour les manga de cette période.</span>
-                    {viewFullYearCta}
-                  </div>
+                  <EmptyState
+                    icon="stack"
+                    title="Aucun genre renseigné pour les manga de cette période."
+                    cta={viewFullYearCta}
+                  />
                 )}
               </ChartCard>
             </CollapsibleChartBlock>
@@ -766,10 +777,11 @@ export function MangaTab({
                     </ResponsiveContainer>
                   </RechartsWhenVisible>
                 ) : (
-                  <div className="list-tab-anime-charts__empty list-tab-anime-charts__empty--with-cta">
-                    <span style={{ color: C.textMuted }}>Aucune année de sortie renseignée sur ces titres.</span>
-                    {viewFullYearCta}
-                  </div>
+                  <EmptyState
+                    icon="calendar"
+                    title="Aucune année de sortie renseignée sur ces titres."
+                    cta={viewFullYearCta}
+                  />
                 )}
               </ChartCard>
             </CollapsibleChartBlock>
@@ -842,26 +854,34 @@ export function MangaTab({
         aria-labelledby="manga-authors-title"
         aria-describedby={mangaTopAuthors.length > 0 && !mangaAuthorsCollapse.collapsed ? "manga-authors-summary" : undefined}
       >
-        <div className="chart-card__title-row list-tab-anime-chart-block__title-row list-tab-authors-section__title-row">
-          <h2 id="manga-authors-title" className="chart-card__title">
-            Auteurs
-          </h2>
-          <ChartCollapseToggle
-            collapsed={mangaAuthorsCollapse.collapsed}
-            onToggle={mangaAuthorsCollapse.toggle}
-            chartTitle="Auteurs"
-            controlsId="manga-authors-body"
-          />
-          <StatLabelHint text="Auteurs créditeurs des manga de la période (mangakas, scénaristes, illustrateurs, créateurs originaux). Les rôles secondaires comme la traduction ou l'édition sont exclus. Les chapitres lus sont calculés sur la période sélectionnée à partir des activités AniList." />
-        </div>
-        {mangaAuthorsCollapse.collapsed ? null : (
-          <div id="manga-authors-body">
+        <SectionTitle
+          id="manga-authors-title"
+          rowClassName="list-tab-anime-chart-block__title-row list-tab-authors-section__title-row"
+          aside={
+            <>
+              <ChartCollapseToggle
+                collapsed={mangaAuthorsCollapse.collapsed}
+                onToggle={mangaAuthorsCollapse.toggle}
+                chartTitle="Auteurs"
+                controlsId="manga-authors-body"
+              />
+              <StatLabelHint text="Auteurs créditeurs des manga de la période (mangakas, scénaristes, illustrateurs, créateurs originaux). Les rôles secondaires comme la traduction ou l'édition sont exclus. Les chapitres lus sont calculés sur la période sélectionnée à partir des activités AniList." />
+            </>
+          }
+        >
+          Auteurs
+        </SectionTitle>
+        <div
+          className={`collapsible-chart-animator${mangaAuthorsCollapse.collapsed ? " collapsible-chart-animator--collapsed" : ""}`}
+          aria-hidden={mangaAuthorsCollapse.collapsed}
+        >
+          <div id="manga-authors-body" className="collapsible-chart-animator__inner">
             {mangaTopAuthors.length > 0 ? (
               <>
                 <p id="manga-authors-summary" className="chart-card__sr-only">
                   Auteurs AniList sur la période, avec leur rôle dominant et un aperçu des titres.
                 </p>
-                <div className="list-tab-authors-grid">
+                <div className="list-tab-authors-grid stagger-reveal">
                   {authorsVisibleRows.map((author) => {
                     const periodRank = authorPeriodRankById.get(author.id) ?? 0;
                     return (
@@ -1009,15 +1029,14 @@ export function MangaTab({
                 ) : null}
               </>
             ) : (
-              <div className="list-tab-anime-charts__empty list-tab-anime-charts__empty--with-cta">
-                <span style={{ color: C.textMuted }}>
-                  Aucun auteur listé par l&apos;API pour cette sélection.
-                </span>
-                {viewFullYearCta}
-              </div>
+              <EmptyState
+                icon="book"
+                title="Aucun auteur listé par l'API pour cette sélection."
+                cta={viewFullYearCta}
+              />
             )}
           </div>
-        )}
+        </div>
       </section>
     </div>
   );

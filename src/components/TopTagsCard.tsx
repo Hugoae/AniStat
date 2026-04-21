@@ -1,10 +1,8 @@
 import { useId, useMemo, useState, type ReactNode } from "react";
-import { ChartCard } from "./AppUi";
+import { ChartCard, EmptyState, SectionTitle } from "./AppUi";
 import { ChartCollapseToggle } from "./appUi/ChartCollapseToggle";
 import { StatLabelHint } from "./appUi/StatPrimitives";
 import { useCollapsedChart } from "../hooks/useCollapsedChart";
-import { C } from "../config/constants";
-
 export type TopTagsRow = {
   name: string;
   count: number;
@@ -72,33 +70,39 @@ export function TopTagsCard({
 
   return (
     <div className={`list-tab-anime-chart-block${className ? ` ${className}` : ""}`}>
-      <div className="chart-card__title-row list-tab-anime-chart-block__title-row">
-        <h2 className="chart-card__title">Top tags</h2>
-        {collapseId ? (
-          <ChartCollapseToggle
-            collapsed={collapsed}
-            onToggle={collapseState.toggle}
-            chartTitle="Top tags"
-            controlsId={bodyId}
-          />
-        ) : null}
-        <StatLabelHint text={titleHint} />
-      </div>
-      {collapsed ? null : (
-        <div id={collapseId ? bodyId : undefined}>
+      <SectionTitle
+        rowClassName="list-tab-anime-chart-block__title-row"
+        aside={
+          <>
+            {collapseId ? (
+              <ChartCollapseToggle
+                collapsed={collapsed}
+                onToggle={collapseState.toggle}
+                chartTitle="Top tags"
+                controlsId={bodyId}
+              />
+            ) : null}
+            <StatLabelHint text={titleHint} />
+          </>
+        }
+      >
+        Top tags
+      </SectionTitle>
+      <div
+        className={`collapsible-chart-animator${collapsed ? " collapsible-chart-animator--collapsed" : ""}`}
+        aria-hidden={collapsed}
+      >
+        <div id={collapseId ? bodyId : undefined} className="collapsible-chart-animator__inner">
           <ChartCard
             noTitle
             screenReaderSummary={`Top tags AniList sur la période. ${tags.length} tags distincts identifiés sur les ${noun} de cette période.`}
           >
             {tags.length === 0 ? (
-              <div
-                className={`list-tab-anime-charts__empty${emptyExtra ? " list-tab-anime-charts__empty--with-cta" : ""}`}
-              >
-                <span style={{ color: C.textMuted }}>
-                  Aucun tag AniList disponible pour les {noun} de cette période.
-                </span>
-                {emptyExtra}
-              </div>
+              <EmptyState
+                icon="bolt"
+                title={`Aucun tag AniList disponible pour les ${noun} de cette période.`}
+                cta={emptyExtra}
+              />
             ) : (
               <div className="top-tags">
                 <ul className="top-tags__list">
@@ -147,7 +151,7 @@ export function TopTagsCard({
             )}
           </ChartCard>
         </div>
-      )}
+      </div>
     </div>
   );
 }

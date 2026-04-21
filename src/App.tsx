@@ -698,18 +698,29 @@ function App() {
       const other = new Map<string, number>();
       for (const edge of edges || []) {
         const node = edge?.node;
-        if (!node || node.isAnimationStudio !== true) continue;
+        if (!node) continue;
         const name = String(node.name || "").trim();
         if (!name) continue;
         const id = Number(node.id);
         if (!Number.isFinite(id)) continue;
-        const bucket = edge?.isMain === true ? main : other;
-        if (!bucket.has(name)) bucket.set(name, id);
+        const isMainEdge = edge?.isMain === true;
+        /*
+         * AniList taggue parfois à tort le studio principal d'un anime avec
+         * `isAnimationStudio: false` (ex. Lapin Track sur "Seihantai na Kimi to
+         * Boku"). On accorde la confiance à `isMain: true` quoi qu'il arrive :
+         * par convention AniList, le main studio d'un anime est le studio
+         * d'animation principal. Les autres edges restent filtrés strictement
+         * pour ne pas remonter des producteurs (Dentsu, Shueisha, AbemaTV…).
+         */
+        if (isMainEdge) {
+          if (!main.has(name)) main.set(name, id);
+        } else if (node.isAnimationStudio === true) {
+          if (!other.has(name)) other.set(name, id);
+        }
       }
       /*
-       * AniList met parfois des producteurs dans `studios` avec isAnimationStudio true.
-       * Le studio d’animation réel a en général isMain sur l’edge ; les autres entrées
-       * (ex. Studio Pierrot vs PIERROT FILMS) sont exclues dès qu’au moins un main existe.
+       * Si au moins un main existe, on l'utilise seul ; sinon, on retombe sur
+       * les autres studios d'animation déclarés comme tels par AniList.
        */
       return new Map(main.size > 0 ? main : other);
     }
@@ -1443,7 +1454,7 @@ function App() {
   );
 
   return (
-    <div style={{background:C.bg, minHeight:"100vh", color:C.text, fontFamily:"'Overpass',sans-serif"}}>
+    <div className="app-root">
 
       {isLandingHome ? (
         <HomePage
@@ -1514,6 +1525,7 @@ function App() {
         tab={tab}
         setTab={setTab}
       >
+            <div key={tab} className="tab-transition-wrapper">
             {tab === "overview" && (
               <OverviewTab
                 year={year}
@@ -1597,6 +1609,7 @@ function App() {
                 mangaListLayoutActive={tab === "manga" && loaded}
               />
             )}
+            </div>
 
             <PeriodEmptyBanner
               year={year}

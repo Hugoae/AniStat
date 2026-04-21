@@ -1,11 +1,9 @@
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { ChartCard } from "./appUi/ChartCard";
-import { MediaOriginFlagSvg } from "./AppUi";
+import { EmptyState, MediaOriginFlagSvg, SectionTitle } from "./AppUi";
 import { ChartCollapseToggle } from "./appUi/ChartCollapseToggle";
 import { useCollapsedChart } from "../hooks/useCollapsedChart";
-import { C } from "../config/constants";
-
 export type AnimePieSlice = {
   key: string;
   label: string;
@@ -51,29 +49,20 @@ function pieTooltipContent(unitSingular: string, unitPlural: string) {
     if (!p) return null;
     const noun = p.value > 1 ? unitPlural : unitSingular;
     return (
-      <div
-        style={{
-          background: C.cardBg,
-          border: `1px solid ${C.border}`,
-          borderRadius: "var(--radius-control)",
-          padding: "10px 14px",
-          fontSize: 13,
-          boxShadow: "var(--shadow-tooltip)",
-        }}
-      >
-        <div style={{ color: C.text, fontWeight: 600 }}>{p.label}</div>
-        <div style={{ color: C.textMuted, marginTop: 4 }}>
+      <div className="chart-tooltip chart-tooltip--pie">
+        <div className="chart-tooltip__pie-label">{p.label}</div>
+        <div className="chart-tooltip__pie-meta">
           {p.label}
           {p.extraInfo ? (
             <>
               {"\u00A0"}
-              <span style={{ padding: "0 0.2em", opacity: 0.92 }}>·</span>
+              <span className="chart-tooltip__pie-dot">·</span>
               {"\u00A0"}
               {p.extraInfo}
             </>
           ) : null}
         </div>
-        <div style={{ color: C.textMuted, marginTop: 2 }}>
+        <div className="chart-tooltip__pie-extra">
           {p.value} {noun}
           {typeof p.percent === "number" ? ` · ${p.percent}%` : ""}
         </div>
@@ -125,51 +114,55 @@ export function AnimePieDistributionCard({
 
   return (
     <div className="list-tab-anime-chart-block">
-      <div className="chart-card__title-row list-tab-anime-chart-block__title-row list-tab-pie-card__title-row">
-        <h2 className="chart-card__title">{title}</h2>
-        {collapseId ? (
-          <ChartCollapseToggle
-            collapsed={collapsed}
-            onToggle={collapseState.toggle}
-            chartTitle={title}
-            controlsId={bodyId}
-          />
-        ) : null}
-        {safeModes.length > 1 ? (
-          <div
-            className="list-tab-pie-card__mode-toggle"
-            role="radiogroup"
-            aria-label={`Métrique du graphique « ${title} »`}
-          >
-            {safeModes.map((m) => {
-              const isActive = m.key === activeMode?.key;
-              return (
-                <button
-                  key={m.key}
-                  type="button"
-                  role="radio"
-                  aria-checked={isActive}
-                  className={`list-tab-pie-card__mode-toggle-btn${isActive ? " is-active" : ""}`}
-                  onClick={() => setActiveKey(m.key)}
-                  id={`${groupId}-${m.key}`}
-                >
-                  {m.label}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
-      {collapsed ? null : (
-      <div id={collapseId ? bodyId : undefined}>
+      <SectionTitle
+        rowClassName="list-tab-anime-chart-block__title-row list-tab-pie-card__title-row"
+        aside={
+          <>
+            {collapseId ? (
+              <ChartCollapseToggle
+                collapsed={collapsed}
+                onToggle={collapseState.toggle}
+                chartTitle={title}
+                controlsId={bodyId}
+              />
+            ) : null}
+            {safeModes.length > 1 ? (
+              <div
+                className="list-tab-pie-card__mode-toggle"
+                role="radiogroup"
+                aria-label={`Métrique du graphique « ${title} »`}
+              >
+                {safeModes.map((m) => {
+                  const isActive = m.key === activeMode?.key;
+                  return (
+                    <button
+                      key={m.key}
+                      type="button"
+                      role="radio"
+                      aria-checked={isActive}
+                      className={`list-tab-pie-card__mode-toggle-btn${isActive ? " is-active" : ""}`}
+                      onClick={() => setActiveKey(m.key)}
+                      id={`${groupId}-${m.key}`}
+                    >
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </>
+        }
+      >
+        {title}
+      </SectionTitle>
+      <div
+        className={`collapsible-chart-animator${collapsed ? " collapsible-chart-animator--collapsed" : ""}`}
+        aria-hidden={collapsed}
+      >
+      <div id={collapseId ? bodyId : undefined} className="collapsible-chart-animator__inner">
       <ChartCard noTitle screenReaderSummary={screenReaderSummary} className="list-tab-pie-card">
         {withPct.length === 0 || total === 0 ? (
-          <div
-            className={`list-tab-anime-charts__empty${emptyExtra ? " list-tab-anime-charts__empty--with-cta" : ""}`}
-          >
-            <span style={{ color: C.textMuted }}>{emptyLabel}</span>
-            {emptyExtra}
-          </div>
+          <EmptyState icon="stack" title={emptyLabel} cta={emptyExtra} />
         ) : (
           <>
             <div className="list-tab-pie-card__body">
@@ -187,6 +180,7 @@ export function AnimePieDistributionCard({
                       paddingAngle={0}
                       stroke="none"
                       strokeWidth={0}
+                      isAnimationActive={false}
                     >
                       {withPct.map((s) => (
                         <Cell key={s.key} fill={s.fill} />
@@ -229,7 +223,7 @@ export function AnimePieDistributionCard({
         )}
       </ChartCard>
       </div>
-      )}
+      </div>
     </div>
   );
 }

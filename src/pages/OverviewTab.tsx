@@ -1,8 +1,9 @@
 import type { RefObject } from "react";
 import { C } from "../config/constants";
-import { StatCard, ChartCard, MediaCard, PeriodCompareLegend } from "../components/AppUi";
+import { StatCard, ChartCard, MediaCard, PeriodCompareLegend, SectionTitle, EmptyState } from "../components/AppUi";
 import { OverviewActivityLineChart } from "../components/OverviewActivityLineChart";
 import { ActivityHeatmap, type DailyTotalsByIso } from "../components/ActivityHeatmap";
+import { CarouselNavButtons } from "../components/appUi/CarouselNavButtons";
 import type { AniListEntry } from "../types/domain";
 
 export type CompareAvailability = {
@@ -121,7 +122,7 @@ export function OverviewTab({
           <div className="overview-section fade-in fade-in-delay-1">
             <div className="overview-section__inner">
               <div className="chart-section">
-                <h2 className="overview-block-title">Chapitres lus</h2>
+                <SectionTitle size="lg">Chapitres lus</SectionTitle>
                 <ChartCard noTitle className="chart-card--overview-line">
                   <PeriodCompareLegend
                     legendCurrent={chartPeriodLegend.legendCurrent}
@@ -129,11 +130,7 @@ export function OverviewTab({
                   />
                   {compareAvailability.missing && (
                     <div
-                      style={{
-                        color: compareAvailability.loadingComparison ? C.textMuted : C.orange,
-                        fontSize: 12,
-                        marginBottom: 8,
-                      }}
+                      className={`overview-compare-hint${compareAvailability.loadingComparison ? " overview-compare-hint--loading" : ""}`}
                     >
                       {compareAvailability.loadingComparison
                         ? compareAvailability.loadingLabel
@@ -150,9 +147,9 @@ export function OverviewTab({
               </div>
 
               <div className="fade-in fade-in-delay-2">
-                <h3 className="overview-block-title">
+                <SectionTitle as="h3" size="lg">
                   Ton top {overviewTopCount} manga {overviewTopPeriodTitle}
-                </h3>
+                </SectionTitle>
                 {overviewTopManga.length > 0 ? (
                   <div
                     className={[
@@ -163,19 +160,24 @@ export function OverviewTab({
                       .filter(Boolean)
                       .join(" ")}
                   >
-                    <div ref={overviewMangaTopScrollRef} className="overview-top-scroll__track">
+                    <div ref={overviewMangaTopScrollRef} className="overview-top-scroll__track stagger-reveal">
                       {overviewTopManga.map((e) => (
                         <MediaCard key={e.id} entry={e} type="MANGA" />
                       ))}
                     </div>
+                    <CarouselNavButtons
+                      scrollRef={overviewMangaTopScrollRef}
+                      canScrollLeft={overviewMangaTopFades.left}
+                      canScrollRight={overviewMangaTopFades.right}
+                      ariaLabelBase={`Top manga ${overviewTopPeriodTitle}`}
+                    />
                   </div>
                 ) : (
-                  <div
-                    className="overview-top-empty"
-                    style={{ color: C.textDim, fontSize: 17, fontWeight: 600, lineHeight: 1.45 }}
-                  >
-                    Aucun manga à afficher pour cette période.
-                  </div>
+                  <EmptyState
+                    compact
+                    icon="book"
+                    title="Aucun manga à afficher pour cette période."
+                  />
                 )}
               </div>
             </div>
@@ -184,7 +186,7 @@ export function OverviewTab({
           <div className="overview-section fade-in fade-in-delay-3">
             <div className="overview-section__inner">
               <div className="chart-section">
-                <h2 className="overview-block-title">Épisodes vus</h2>
+                <SectionTitle size="lg">Épisodes vus</SectionTitle>
                 <ChartCard noTitle className="chart-card--overview-line">
                   <PeriodCompareLegend
                     legendCurrent={chartPeriodLegend.legendCurrent}
@@ -192,11 +194,7 @@ export function OverviewTab({
                   />
                   {compareAvailability.missing && (
                     <div
-                      style={{
-                        color: compareAvailability.loadingComparison ? C.textMuted : C.orange,
-                        fontSize: 12,
-                        marginBottom: 8,
-                      }}
+                      className={`overview-compare-hint${compareAvailability.loadingComparison ? " overview-compare-hint--loading" : ""}`}
                     >
                       {compareAvailability.loadingComparison
                         ? compareAvailability.loadingLabel
@@ -213,9 +211,9 @@ export function OverviewTab({
               </div>
 
               <div className="fade-in fade-in-delay-4">
-                <h3 className="overview-block-title">
+                <SectionTitle as="h3" size="lg">
                   Ton top {overviewTopCount} anime {overviewTopPeriodTitle}
-                </h3>
+                </SectionTitle>
                 {overviewTopAnime.length > 0 ? (
                   <div
                     className={[
@@ -226,19 +224,24 @@ export function OverviewTab({
                       .filter(Boolean)
                       .join(" ")}
                   >
-                    <div ref={overviewAnimeTopScrollRef} className="overview-top-scroll__track">
+                    <div ref={overviewAnimeTopScrollRef} className="overview-top-scroll__track stagger-reveal">
                       {overviewTopAnime.map((e) => (
                         <MediaCard key={e.id} entry={e} type="ANIME" />
                       ))}
                     </div>
+                    <CarouselNavButtons
+                      scrollRef={overviewAnimeTopScrollRef}
+                      canScrollLeft={overviewAnimeTopFades.left}
+                      canScrollRight={overviewAnimeTopFades.right}
+                      ariaLabelBase={`Top anime ${overviewTopPeriodTitle}`}
+                    />
                   </div>
                 ) : (
-                  <div
-                    className="overview-top-empty"
-                    style={{ color: C.textDim, fontSize: 17, fontWeight: 600, lineHeight: 1.45 }}
-                  >
-                    Aucun anime à afficher pour cette période.
-                  </div>
+                  <EmptyState
+                    compact
+                    icon="tv"
+                    title="Aucun anime à afficher pour cette période."
+                  />
                 )}
               </div>
             </div>

@@ -6,25 +6,26 @@ export const C = {
   textMuted: "#8ba0b2",
   textDim: "#516170",
   border: "#1f2d3d",
-  green: "#4caf50",
+  green: "#4CAF50",
   orange: "#F27C3D",
-  pink: "#F23D58",
-  purple: "#F27C3D",
+  pink: "#F472B6",
+  purple: "#A78BFA",
   yellow: "#F2D73D",
   red: "#F23D58",
+  teal: "#2DD4BF",
+  indigo: "#6366F1",
 } as const;
 
 export const PIE_COLORS = [
   C.accent,
-  C.red,
-  C.yellow,
   C.orange,
   C.green,
-  C.accent,
-  C.red,
+  C.purple,
   C.yellow,
-  C.orange,
-  C.green,
+  C.pink,
+  C.teal,
+  C.red,
+  C.indigo,
 ];
 
 export const MONTHS = ["Jan", "Fev", "Mar", "Avr", "Mai", "Jun", "Jul", "Aou", "Sep", "Oct", "Nov", "Dec"] as const;

@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { useHorizontalScrollFades } from "../../hooks/useHorizontalScrollFades";
 import { useCollapsedChart } from "../../hooks/useCollapsedChart";
 import { ChartCollapseToggle } from "./ChartCollapseToggle";
+import { CarouselNavButtons } from "./CarouselNavButtons";
+import { SectionTitle } from "./SectionTitle";
 
 export type RecordsCarouselSectionProps = {
   sectionId: string;
@@ -42,32 +44,45 @@ export function RecordsCarouselSection({
       className="fade-in list-tab-records-section list-tab-anchor"
       aria-labelledby={titleId}
     >
-      <div className="list-tab-records-section__title-row">
-        <h2 id={titleId} className="overview-block-title">
-          {title}
-        </h2>
-        {collapseId ? (
-          <ChartCollapseToggle
-            collapsed={collapsed}
-            onToggle={collapseState.toggle}
-            chartTitle={title}
-            controlsId={bodyId}
-          />
-        ) : null}
-      </div>
-      {collapsed ? null : (
-        <div id={collapseId ? bodyId : undefined}>
+      <SectionTitle
+        size="lg"
+        id={titleId}
+        rowClassName="list-tab-records-section__title-row"
+        aside={
+          collapseId ? (
+            <ChartCollapseToggle
+              collapsed={collapsed}
+              onToggle={collapseState.toggle}
+              chartTitle={title}
+              controlsId={bodyId}
+            />
+          ) : null
+        }
+      >
+        {title}
+      </SectionTitle>
+      <div
+        className={`collapsible-chart-animator${collapsed ? " collapsible-chart-animator--collapsed" : ""}`}
+        aria-hidden={collapsed}
+      >
+        <div id={collapseId ? bodyId : undefined} className="collapsible-chart-animator__inner">
           {cards.length > 0 ? (
             <div className={wrapClasses}>
-              <div ref={scrollRef} className="list-tab-records-carousel" role="list">
+              <div ref={scrollRef} className="list-tab-records-carousel stagger-reveal" role="list">
                 {cards}
               </div>
+              <CarouselNavButtons
+                scrollRef={scrollRef}
+                canScrollLeft={fades.left}
+                canScrollRight={fades.right}
+                ariaLabelBase={title}
+              />
             </div>
           ) : (
             <div className="list-tab-records-empty">{emptyMessage}</div>
           )}
         </div>
-      )}
+      </div>
     </section>
   );
 }

@@ -57,7 +57,7 @@ export function HomeLanding({
         <div className="home-landing__brand-row">
           <span className="home-landing__brand-mark" aria-hidden>
             <span className="header-brand-a">A</span>
-            <span className="header-brand-s" style={{ color: C.accent }}>S</span>
+            <span className="header-brand-s">S</span>
           </span>
           <span className="home-landing__brand-text">AniList Stat</span>
         </div>
@@ -74,6 +74,9 @@ export function HomeLanding({
             <div className="header-search-group">
               <input
                 ref={headerSearchInputRef}
+                id="landing-anilist-username"
+                name="anilist-username"
+                type="search"
                 value={inputVal}
                 onChange={(e) => setInputVal(e.target.value)}
                 onFocus={() => setHeaderSearchFocused(true)}
@@ -93,41 +96,18 @@ export function HomeLanding({
                 }}
                 placeholder="Rechercher un pseudo AniList…"
                 autoComplete="off"
+                aria-label="Rechercher un pseudo AniList"
                 aria-autocomplete="list"
                 aria-expanded={showHeaderQuickPicks}
                 aria-controls="landing-quick-picks"
                 className="home-landing__search-input"
-                style={{
-                  flex: 1,
-                  background: "rgba(15, 24, 36, 0.92)",
-                  border: `1px solid ${C.border}`,
-                  borderRight: "none",
-                  borderRadius: "var(--radius-control) 0 0 var(--radius-control)",
-                  padding: "14px 18px",
-                  color: C.text,
-                  fontSize: 15,
-                  fontFamily: "inherit",
-                }}
               />
               <button
                 type="button"
-                className="header-search-submit"
+                className="header-search-submit home-landing__search-submit"
                 aria-label="Rechercher ce profil"
                 disabled={!inputVal.trim()}
                 onClick={handleSubmit}
-                style={{
-                  background: C.accent,
-                  color: "#fff",
-                  border: `1px solid ${C.accent}`,
-                  borderLeft: "none",
-                  borderRadius: "0 var(--radius-control) var(--radius-control) 0",
-                  padding: "14px 18px",
-                  minWidth: 52,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontFamily: "inherit",
-                }}
               >
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <circle cx="11" cy="11" r="7" />
