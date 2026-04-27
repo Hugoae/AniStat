@@ -14,7 +14,7 @@ import {
  *  - État en direct du rate-limit (limite observée, intervalle dynamique,
  *    file d'attente du scheduler, blocages).
  *  - Volume de données actuellement chargées en mémoire.
- *  - Efficacité du cache local (SWR / localStorage) et du cache proxy
+ *  - Efficacité du cache Supabase / mémoire et du cache proxy
  *    (Vercel / Upstash).
  *  - Journal détaillé des dernières requêtes : durée, taille du payload,
  *    statut HTTP, cache HIT/MISS, variables passées.
@@ -415,13 +415,13 @@ export function DevPanel({
         </dl>
       </section>
 
-      {/* Section 3 : cache local SWR */}
+      {/* Section 3 : cache applicatif */}
       <section className="dev-panel__section">
-        <h4 className="dev-panel__section-title">Cache local (localStorage + SWR)</h4>
+        <h4 className="dev-panel__section-title">Cache Supabase / mémoire</h4>
         <dl className="dev-panel__grid">
           <div
             className="dev-panel__kv"
-            title="Nombre de fois où on a servi une donnée profil depuis le cache local sans faire de requête réseau immédiate."
+            title="Nombre d'accès servis depuis Supabase ou la mémoire de session, de miss nécessitant AniList, et d'écritures vers la source de vérité."
           >
             <dt>Hit / Miss / Write</dt>
             <dd>

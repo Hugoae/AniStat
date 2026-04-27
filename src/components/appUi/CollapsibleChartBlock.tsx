@@ -4,7 +4,7 @@ import { SectionTitle } from "./SectionTitle";
 import { useCollapsedChart } from "../../hooks/useCollapsedChart";
 
 export type CollapsibleChartBlockProps = {
-  /** Identifiant stable utilisé pour mémoriser l'état « masqué » dans localStorage. */
+  /** Identifiant stable utilisé pour mémoriser l'état « masqué » en mémoire de session. */
   id: string;
   title: string;
   /** Élément(s) optionnels affichés dans la ligne de titre, à droite du titre (ex. StatLabelHint). */

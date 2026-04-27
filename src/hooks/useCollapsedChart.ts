@@ -2,37 +2,16 @@ import { useCallback, useEffect, useState } from "react";
 
 /**
  * Hook minimaliste pour gérer l'état « graphique masqué / affiché » d'un bloc identifié par `id`.
- * État partagé en mémoire (singleton) pour que plusieurs hooks pour le même id restent synchronisés,
- * et persisté en localStorage pour survivre aux rechargements / changements d'onglet.
+ * État partagé en mémoire (singleton) pour que plusieurs hooks pour le même id restent synchronisés
+ * pendant que l'onglet est ouvert.
  */
-const STORAGE_KEY = "anilistat:chart-collapsed:v1";
-
 let memCache: Record<string, boolean> | null = null;
 const subscribers = new Set<() => void>();
 
 function safeRead(): Record<string, boolean> {
   if (memCache) return memCache;
-  if (typeof window === "undefined") {
-    memCache = {};
-    return memCache;
-  }
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    memCache = parsed && typeof parsed === "object" ? (parsed as Record<string, boolean>) : {};
-  } catch {
-    memCache = {};
-  }
+  memCache = {};
   return memCache;
-}
-
-function safeWrite() {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(memCache || {}));
-  } catch {
-    /* quota / private mode : silencieux */
-  }
 }
 
 function notify() {
@@ -49,7 +28,6 @@ function setCollapsedExternal(id: string, value: boolean) {
   const cache = safeRead();
   if (!!cache[id] === !!value) return;
   cache[id] = !!value;
-  safeWrite();
   notify();
 }
 

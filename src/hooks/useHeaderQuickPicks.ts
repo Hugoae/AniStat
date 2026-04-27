@@ -3,12 +3,8 @@ import type { Dispatch, SetStateAction } from "react";
 import { fetchUsersAvatarsBatch } from "../api/anilistClient";
 import { PROFILE_QUICK_SUGGESTIONS } from "../config/constants";
 import {
-  QUICKPICK_AVATAR_TTL_MS,
   filterQuickProfileSuggestions,
   normalizeName,
-  quickPickAvatarCacheKey,
-  readQuickPickAvatarStored,
-  safeWriteCache,
 } from "../lib/profileLocalCache";
 import type { AniListUser } from "../types/domain";
 
@@ -26,7 +22,7 @@ type Params = {
   inputVal: string;
   /** `true` quand l'input de recherche a le focus (pilote la visibilité de la liste). */
   headerSearchFocused: boolean;
-  /** Cache in-memory des avatars résolus par le hook (plus rapide que localStorage). */
+  /** Cache in-memory des avatars résolus pendant la session courante. */
   quickPickResolvedAvatars: QuickPickState;
   setQuickPickResolvedAvatars: Dispatch<SetStateAction<QuickPickState>>;
 };
@@ -45,9 +41,8 @@ type Params = {
  *    enrichit chaque ligne avec un `displayAvatar` résolu dans cet ordre :
  *      1. avatar explicite fourni dans la liste,
  *      2. avatar du profil courant s'il correspond,
- *      3. cache localStorage (TTL 7 jours),
- *      4. cache in-memory (résolu dans la session courante),
- *      5. null (fallback vers un placeholder avec initiale).
+ *      3. cache in-memory (résolu dans la session courante),
+ *      4. null (fallback vers un placeholder avec initiale).
  *  - **Résolution paresseuse des avatars** : quand la liste devient visible,
  *    on fetch en UNE SEULE requête GraphQL (via alias `u0: User(...)`,
  *    `u1: User(...)`, …) tous les avatars manquants. Plus rapide et plus doux
@@ -70,9 +65,7 @@ export function useHeaderQuickPicks({
   );
 
   const pendingAvatarUrl = transitionActive
-    ? readQuickPickAvatarStored(pendingProfileName) ||
-      quickPickResolvedAvatars[normalizeName(pendingProfileName)] ||
-      null
+    ? quickPickResolvedAvatars[normalizeName(pendingProfileName)] || null
     : null;
 
   const headerUser = transitionActive
@@ -92,7 +85,6 @@ export function useHeaderQuickPicks({
         displayAvatar:
           p.avatarUrl ||
           (appUser && normalizeName(appUser.name) === key ? appUser.avatar?.large || appUser.avatar?.medium : null) ||
-          readQuickPickAvatarStored(p.userName) ||
           quickPickResolvedAvatars[key] ||
           null,
       };
@@ -108,7 +100,6 @@ export function useHeaderQuickPicks({
       if (p.avatarUrl) return false;
       const key = normalizeName(p.userName);
       if (appUser && normalizeName(appUser.name) === key) return false;
-      if (readQuickPickAvatarStored(p.userName)) return false;
       if (quickPickResolvedAvatars[key]) return false;
       return true;
     });
@@ -130,7 +121,6 @@ export function useHeaderQuickPicks({
           const url = avatar?.large || avatar?.medium || null;
           if (!url) continue;
           const k = normalizeName(name);
-          safeWriteCache(quickPickAvatarCacheKey(k), url, QUICKPICK_AVATAR_TTL_MS);
           nextResolved[k] = url;
         }
         if (Object.keys(nextResolved).length > 0) {

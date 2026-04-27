@@ -129,7 +129,6 @@ export function ProfileViewMain({
   loaded,
   loading,
   primaryProfileLoader,
-  awaitingPrimaryYearActivities,
   awaitingAllTimeActivities = false,
   hasProvisionalAllTimeActivities = false,
   loadingActivities,
@@ -166,8 +165,8 @@ export function ProfileViewMain({
   children,
 }: ProfileViewMainProps) {
   /**
-   * Stats historiques (persistées en localStorage) des derniers fetchs
-   * profil complets. Sert à projeter un ETA « reste ~Xs » dans le loader
+   * Stats de session des derniers fetchs profil complets.
+   * Sert à projeter un ETA « reste ~Xs » dans le loader
    * principal. On s'abonne aux mises à jour pour capturer le premier fetch
    * de la session sans avoir à remonter.
    */
@@ -226,7 +225,7 @@ export function ProfileViewMain({
         </div>
       )}
 
-      {loaded && !loading && !awaitingPrimaryYearActivities && loadingActivities && (
+      {loaded && !loading && loadingActivities && (
         <div className="activity-loading-line">
           <span className="activity-loading-message-blink">
             {hasProvisionalAllTimeActivities
@@ -243,7 +242,7 @@ export function ProfileViewMain({
         </div>
       )}
 
-      {loaded && !loading && !awaitingPrimaryYearActivities && activityWarning && !loadingActivities && (
+      {loaded && !loading && activityWarning && !loadingActivities && (
         <div className="activity-warning-row">
           <div className="activity-warning-row__message">{activityWarning}</div>
           <button
@@ -266,7 +265,7 @@ export function ProfileViewMain({
         </div>
       )}
 
-      {loaded && !loading && !awaitingPrimaryYearActivities && isDevLocal && showDevPanel && (
+      {loaded && !loading && isDevLocal && showDevPanel && (
         <DevPanel
           rateLimitState={rateLimitState}
           proxyCacheStats={proxyCacheStats}
@@ -287,7 +286,7 @@ export function ProfileViewMain({
         />
       )}
 
-      {loaded && !loading && !awaitingPrimaryYearActivities && (
+      {loaded && !loading && (
         <>
           <div className="profile-tabs">
             {tabs.map((t) => (

@@ -873,7 +873,11 @@ const getStartEndTsForYear = (y: number) => {
   return { start, end };
 };
 
-export type FetchActivitiesOptions = { signal?: AbortSignal; pageMaxRetries?: number };
+export type FetchActivitiesOptions = {
+  signal?: AbortSignal;
+  pageMaxRetries?: number;
+  sinceId?: number | null;
+};
 
 export async function fetchListActivitiesForYear(
   userId: number,
@@ -881,7 +885,8 @@ export async function fetchListActivitiesForYear(
   year: number,
   options: FetchActivitiesOptions = {}
 ): Promise<ListActivityItem[]> {
-  const { signal, pageMaxRetries = 2 } = options;
+  const { signal, pageMaxRetries = 2, sinceId = null } = options;
+  const stopAtId = Number(sinceId || 0);
   const allTime = year === 0;
   const { start } = allTime ? { start: 0 } : getStartEndTsForYear(year);
   const perPage = 50;
@@ -899,8 +904,15 @@ export async function fetchListActivitiesForYear(
     const items = (block?.activities || []).filter(
       (it): it is ListActivityItem => it != null
     );
-    all.push(...items);
+    const freshItems =
+      stopAtId > 0
+        ? items.filter((item) => !("id" in item) || Number(item.id || 0) > stopAtId)
+        : items;
+    all.push(...freshItems);
     hasNextPage = Boolean(block?.pageInfo?.hasNextPage);
+    if (stopAtId > 0 && items.some((item) => "id" in item && Number(item.id || 0) <= stopAtId)) {
+      break;
+    }
     const oldestInPage = items.reduce(
       (minTs: number, item) =>
         Math.min(

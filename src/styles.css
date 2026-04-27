@@ -3891,6 +3891,56 @@ a:focus-visible,
 .header-profile-meta {
   margin-top: 0;
 }
+.header-sync-row {
+  margin-top: 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-muted);
+}
+.header-sync-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(139, 160, 178, 0.22);
+  background: rgba(15, 24, 36, 0.42);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.header-sync-row--refreshing .header-sync-badge {
+  color: var(--color-accent);
+  border-color: rgba(61, 180, 242, 0.34);
+  background: rgba(61, 180, 242, 0.08);
+}
+.header-sync-refresh-btn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(139, 160, 178, 0.22);
+  border-radius: var(--radius-full);
+  background: rgba(15, 24, 36, 0.32);
+  color: rgba(232, 238, 244, 0.78);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+.header-sync-refresh-btn:hover:not(:disabled) {
+  color: var(--color-accent);
+  border-color: rgba(61, 180, 242, 0.42);
+  background: rgba(61, 180, 242, 0.1);
+}
+.header-sync-refresh-btn:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+.header-sync-refresh-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
 
 /* Page d’accueil (landing) — fond décoratif, titre et recherche */
 .home-landing {

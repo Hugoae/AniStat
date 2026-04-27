@@ -63,8 +63,6 @@ import { MangaTab } from "./pages/MangaTab";
 import { PeriodEmptyBanner } from "./pages/PeriodEmptyBanner";
 import {
   IS_DEV_LOCAL,
-  devLog,
-  runCacheMigrationOnce,
 } from "./lib/profileLocalCache";
 import {
   parseRouteFromHash,
@@ -127,6 +125,20 @@ function entryProgressTotal(entry: AniListEntry, kind: "anime" | "manga"): numbe
   if (entry.status !== "COMPLETED") return 0;
   const fallback = kind === "anime" ? Number(entry.media?.episodes || 0) : Number(entry.media?.chapters || 0);
   return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
+}
+
+function formatSyncRelativeTime(iso: string | null): string | null {
+  if (!iso) return null;
+  const ts = new Date(iso).getTime();
+  if (!Number.isFinite(ts)) return null;
+  const diffMs = Math.max(0, Date.now() - ts);
+  const minutes = Math.floor(diffMs / 60_000);
+  if (minutes < 1) return "Synchronisé à l'instant";
+  if (minutes < 60) return `Synchronisé il y a ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Synchronisé il y a ${hours} h`;
+  const days = Math.floor(hours / 24);
+  return `Synchronisé il y a ${days} j`;
 }
 
 /**
@@ -228,10 +240,6 @@ function App() {
   }, []);
 
   useEffect(() => {
-    runCacheMigrationOnce();
-  }, []);
-
-  useEffect(() => {
     const threshold = 420;
     const onScroll = () => {
       const y = window.scrollY ?? document.documentElement?.scrollTop ?? 0;
@@ -242,16 +250,6 @@ function App() {
     window.addEventListener("scroll", onScroll, scrollOpts);
     return () => window.removeEventListener("scroll", onScroll, scrollOpts);
   }, []);
-
-  useEffect(() => {
-    if (!IS_DEV_LOCAL) return;
-    const entries = Object.entries(resourceStatus);
-    if (entries.length === 0) return;
-    const last = entries[entries.length - 1];
-    if (!last) return;
-    const [key, meta] = last as [string, { status?: string; error?: string }];
-    devLog("resource", key, meta.status, meta.error || "");
-  }, [resourceStatus]);
 
   const metricInc = useCallback((field, amount = 1) => {
     metricsRef.current[field] = (metricsRef.current[field] || 0) + amount;
@@ -332,6 +330,9 @@ function App() {
     setAnimeActivities,
     setMangaActivities,
     pendingProfileName,
+    lastSupabaseSyncAt,
+    backgroundRefreshing,
+    refreshCurrentProfile,
   } = profile;
 
   const appUser = user as AniListUser | null;
@@ -457,6 +458,10 @@ function App() {
     return { label: "API OK", color: C.green };
   }, [rateLimitState]);
   const showApiBadge = IS_DEV_LOCAL || (rateLimitState?.blockedForMs || 0) > 0;
+  const syncStatusLabel = useMemo(
+    () => formatSyncRelativeTime(lastSupabaseSyncAt),
+    [lastSupabaseSyncAt]
+  );
 
   useEffect(() => {
     if (!IS_DEV_LOCAL || !showDevPanel) return undefined;
@@ -571,7 +576,7 @@ function App() {
     ? { id: appUser.id, name: appUser.name }
     : null;
 
-  const { retryYearNow, handleRetryComparisonNow } = useActivityYearsLoader({
+  const { retryYearNow, handleRetryComparisonNow, refreshCurrentActivities } = useActivityYearsLoader({
     loaded,
     user: activityUserForLoader,
     year,
@@ -591,6 +596,10 @@ function App() {
     metricInc,
     refs: activityLoaderRefs,
   });
+  const handleManualRefreshProfile = useCallback(() => {
+    refreshCurrentProfile();
+    refreshCurrentActivities();
+  }, [refreshCurrentActivities, refreshCurrentProfile]);
 
   /* ─── Calculs dérivés de la période courante ──────────────────────────
    * Tout ce qui suit est recalculé quand `year`, `month`, ou les caches
@@ -1871,7 +1880,9 @@ function App() {
     };
   }, [animeActivityCache, chartPeriodLegend, loadingActivities, mangaActivityCache]);
 
-  /** Tant que l’année sélectionnée n’a pas ses listes d’activités (anime + manga), on garde l’écran de chargement principal. */
+  const hasDashboardData = Boolean(loaded && appUser?.id && Array.isArray(allAnime) && Array.isArray(allManga));
+  const displayProfileLoading = loading && !hasDashboardData;
+
   const awaitingPrimaryYearActivities = useMemo(() => {
     if (!loaded || loading || !appUser?.id) return false;
     if (error) return false;
@@ -1942,13 +1953,12 @@ function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const isLandingHome = useMemo(() => parseRouteFromHash().type === "home", [hashTick]);
 
-  /** Évite l’écran vide (gris) en dev : Strict Mode peut couper un fetch sans erreur, laissant loading=false avant le 2e essai. */
+  /** Le loader global ne doit bloquer que tant que le profil de base n'est pas affichable. */
   const primaryProfileLoader = useMemo(
     () =>
-      loading ||
-      awaitingPrimaryYearActivities ||
-      (!isLandingHome && !loaded && error == null),
-    [loading, awaitingPrimaryYearActivities, isLandingHome, loaded, error]
+      displayProfileLoading ||
+      (!isLandingHome && !hasDashboardData && error == null),
+    [displayProfileLoading, hasDashboardData, isLandingHome, error]
   );
 
   return (
@@ -1986,12 +1996,15 @@ function App() {
         headerUser={headerUser}
         transitionActive={transitionActive}
         anilistProfileUrl={anilistProfileUrl}
+        syncStatusLabel={syncStatusLabel}
+        syncRefreshing={backgroundRefreshing}
+        onRefreshProfile={handleManualRefreshProfile}
       />
 
       <ProfileViewMain
         C={C}
         loaded={loaded}
-        loading={loading}
+        loading={displayProfileLoading}
         primaryProfileLoader={primaryProfileLoader}
         awaitingPrimaryYearActivities={awaitingPrimaryYearActivities}
         awaitingAllTimeActivities={awaitingAllTimeActivities}

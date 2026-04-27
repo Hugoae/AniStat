@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import {
   fetchAL,
@@ -8,21 +8,8 @@ import {
   AniListApiDisabledError,
 } from "../api/anilistClient";
 import {
-  PROFILE_USER_TTL_MS,
-  PROFILE_LIST_TTL_MS,
-  PROFILE_SWR_STALE_MS,
   devLog,
-  safeReadCacheMeta,
-  safeReadCache,
-  safeWriteCache,
   normalizeName,
-  profileUserCacheKey,
-  profileAnimeCacheKey,
-  profileMangaCacheKey,
-  legacyProfileCacheKey,
-  rememberLastProfileSearch,
-  readLastProfileSearchInput,
-  readActivityCachesForUserFromLocalStorage,
 } from "../lib/profileLocalCache";
 import {
   parseRouteFromHash,
@@ -35,6 +22,11 @@ import type {
   MediaListMangaQuery,
   UserProfileQuery,
 } from "../types/anilistGraphql";
+import {
+  getUserAndLists,
+  saveMediaListSnapshot,
+  upsertUser,
+} from "../services/supabaseService";
 
 type FetchDataOptions = { forceNetwork?: boolean; background?: boolean };
 
@@ -64,18 +56,58 @@ export type ProfileLoaderCrossSetters = {
   setResource: (key: string, status: string, error?: string | null) => void;
 };
 
-function hydrateActivityCachesFromLocalStorage(
-  userId: number | null | undefined,
+function resetActivityCaches(
   cross: Pick<ProfileLoaderCrossSetters, "setAnimeActivityCache" | "setMangaActivityCache">
 ) {
-  if (userId != null && userId > 0) {
-    const { anime, manga } = readActivityCachesForUserFromLocalStorage(userId);
-    cross.setAnimeActivityCache(anime);
-    cross.setMangaActivityCache(manga);
-  } else {
-    cross.setAnimeActivityCache({});
-    cross.setMangaActivityCache({});
-  }
+  cross.setAnimeActivityCache({});
+  cross.setMangaActivityCache({});
+}
+
+function archiveUserToSupabase(user: AniListUser | null | undefined) {
+  if (!user?.id) return;
+  void (async () => {
+    try {
+      await upsertUser(user);
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      devLog("supabase user archive failed", e?.message || err);
+    }
+  })();
+}
+
+function archiveMediaListsToSupabase(
+  userId: number | null | undefined,
+  animeEntries: AniListEntry[],
+  mangaEntries: AniListEntry[]
+) {
+  if (!userId) return;
+  void (async () => {
+    try {
+      await Promise.all([
+        saveMediaListSnapshot(userId, "ANIME", animeEntries),
+        saveMediaListSnapshot(userId, "MANGA", mangaEntries),
+      ]);
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      devLog("supabase media list archive failed", e?.message || err);
+    }
+  })();
+}
+
+function beginBackgroundRefresh(
+  countRef: MutableRefObject<number>,
+  setRefreshing: (value: boolean) => void
+) {
+  countRef.current += 1;
+  setRefreshing(true);
+}
+
+function endBackgroundRefresh(
+  countRef: MutableRefObject<number>,
+  setRefreshing: (value: boolean) => void
+) {
+  countRef.current = Math.max(0, countRef.current - 1);
+  if (countRef.current === 0) setRefreshing(false);
 }
 
 /**
@@ -88,18 +120,18 @@ function hydrateActivityCachesFromLocalStorage(
  *  2. **Fetch du profil** — requête `USER_QUERY` puis pagination anime/manga
  *     (`MEDIA_LIST_QUERY`, `MEDIA_LIST_QUERY_MANGA`). Exposé via
  *     `{ user, allAnime, allManga }`.
- *  3. **Cache local (SWR)** — `safeReadCache`/`safeWriteCache` gèrent la
- *     rehydratation immédiate depuis `localStorage` + un refresh réseau
- *     silencieux quand les données dépassent `PROFILE_SWR_STALE_MS`. Cela
- *     donne un rendu instantané quand on revient sur un profil déjà visité.
- *  4. **Dédoublonnage des requêtes** — `profileInFlightRef` évite deux fetchs
+ *  3. **Primary cache Supabase** — lecture immédiate depuis la base, puis
+ *     refresh AniList silencieux pour mettre à jour la source de vérité.
+ *  4. **Mode invité** — si Supabase ne connaît pas encore le profil, AniList
+ *     reste le fallback bloquant initial, puis le résultat est archivé.
+ *  5. **Dédoublonnage des requêtes** — `profileInFlightRef` évite deux fetchs
  *     concurrents pour le même pseudo. Les changements de profil annulent
  *     l'ancien via `AbortController`.
- *  5. **Coordination avec `useActivityYearsLoader`** — au changement de
+ *  6. **Coordination avec `useActivityYearsLoader`** — au changement de
  *     profil, le cache d'activités et ses files internes sont réinitialisés
- *     via les setters/refs passés en paramètres. On réhydrate ensuite depuis
- *     `localStorage` pour remettre en place les années déjà en cache.
- *  6. **Ciblage UI avant résolution** — `pendingProfileName` permet à la
+ *     via les setters/refs passés en paramètres. Les activités sont ensuite
+ *     relues depuis Supabase par `useActivityYearsLoader`.
+ *  7. **Ciblage UI avant résolution** — `pendingProfileName` permet à la
  *     barre de header de montrer « tu vas arriver sur X » pendant le fetch,
  *     même si `user` est encore l'ancien profil.
  *
@@ -114,9 +146,7 @@ export function useProfileLoader(
   metricInc: (field: string, amount?: number) => void,
   metricProfileFetchDuration: (ms: number) => void
 ) {
-  const [inputVal, setInputVal] = useState(() =>
-    parseRouteFromHash().type === "home" ? "" : readLastProfileSearchInput()
-  );
+  const [inputVal, setInputVal] = useState("");
   const [hashTick, setHashTick] = useState(0);
   const [loading, setLoading] = useState(initialLoadingFromHash);
   const [error, setError] = useState<unknown>(null);
@@ -134,6 +164,9 @@ export function useProfileLoader(
   const [animeActivities, setAnimeActivities] = useState<ActivityItem[]>([]);
   const [mangaActivities, setMangaActivities] = useState<ActivityItem[]>([]);
   const [pendingProfileName, setPendingProfileName] = useState<string | null>(null);
+  const [lastSupabaseSyncAt, setLastSupabaseSyncAt] = useState<string | null>(null);
+  const [backgroundRefreshing, setBackgroundRefreshing] = useState(false);
+  const backgroundRefreshCountRef = useRef(0);
 
   const {
     profileInFlightRef,
@@ -176,6 +209,9 @@ export function useProfileLoader(
     setAllManga([]);
     setAnimeActivities([]);
     setMangaActivities([]);
+    setLastSupabaseSyncAt(null);
+    setBackgroundRefreshing(false);
+    backgroundRefreshCountRef.current = 0;
     cross.setAnimeActivityCache({});
     cross.setMangaActivityCache({});
     cross.setLoadingActivities(false);
@@ -243,55 +279,47 @@ export function useProfileLoader(
         cross.setActivityWarning(null);
         cross.setLoadingActivities(false);
       }
-      const cachedUserMeta = safeReadCacheMeta(profileUserCacheKey(normalized), PROFILE_SWR_STALE_MS);
-      const cachedAnimeMeta = safeReadCacheMeta(profileAnimeCacheKey(normalized), PROFILE_SWR_STALE_MS);
-      const cachedMangaMeta = safeReadCacheMeta(profileMangaCacheKey(normalized), PROFILE_SWR_STALE_MS);
-      const legacyProfile = safeReadCache(legacyProfileCacheKey(normalized), PROFILE_SWR_STALE_MS);
-      const isProfileStale = Boolean(
-        cachedUserMeta?.isStale || cachedAnimeMeta?.isStale || cachedMangaMeta?.isStale
-      );
-      const cachedProfile =
-        cachedUserMeta?.value && cachedAnimeMeta?.value && cachedMangaMeta?.value
-          ? {
-              user: cachedUserMeta.value,
-              allAnime: cachedAnimeMeta.value,
-              allManga: cachedMangaMeta.value,
-            }
-          : legacyProfile;
 
-      if (cachedProfile && !forceNetwork) {
-        devLog("profile hit", normalized);
-        metricInc("cacheHit");
-        cross.setResource(profileKey, "success");
-        setError(null);
-        setLoaded(false);
-        const cp = cachedProfile as { user?: AniListUser; allAnime?: unknown; allManga?: unknown };
-        latestUserIdRef.current = cp.user?.id ?? null;
-        setUser(cp.user || null);
-        setAllAnime(Array.isArray(cp.allAnime) ? cp.allAnime : []);
-        setAllManga(Array.isArray(cp.allManga) ? cp.allManga : []);
-        if (!background) {
-          setAnimeActivities([]);
-          setMangaActivities([]);
-          hydrateActivityCachesFromLocalStorage(cp.user?.id, cross);
+      if (!forceNetwork && !background) {
+        try {
+          const supabaseProfile = await getUserAndLists(name);
+          if (supabaseProfile && activeProfileIntentRef.current === profileKey) {
+            devLog("profile supabase hit", normalized);
+            metricInc("cacheHit");
+            cross.setResource(profileKey, "success");
+            setError(null);
+            setApiDisabled(false);
+            latestUserIdRef.current = supabaseProfile.user.id;
+            setUser(supabaseProfile.user);
+            setAllAnime(supabaseProfile.allAnime);
+            setAllManga(supabaseProfile.allManga);
+            setLastSupabaseSyncAt(supabaseProfile.syncedAt);
+            setAnimeActivities([]);
+            setMangaActivities([]);
+            cross.setAnimeActivityCache({});
+            cross.setMangaActivityCache({});
+            cross.setLoadingActivities(false);
+            setLoaded(true);
+            setLoading(false);
+            setPendingProfileName(null);
+            setInputVal("");
+            lastForegroundProfileKeyRef.current = profileKey;
+            void fetchData(name, { forceNetwork: true, background: true });
+            return;
+          }
+        } catch (err: unknown) {
+          const e = err as { message?: string };
+          devLog("profile supabase read failed", e?.message || err);
         }
-        setLoaded(true);
-        setLoading(false);
-        if (!background) {
-          rememberLastProfileSearch(String(name).trim());
-          setInputVal("");
-        }
-        if (isProfileStale && !background) {
-          devLog("profile stale -> background refresh", normalized);
-          fetchData(name, { forceNetwork: true, background: true });
-        }
-        if (!background) lastForegroundProfileKeyRef.current = profileKey;
-        return;
       }
 
-      devLog("profile miss", normalized);
-      metricInc("cacheMiss");
-      cross.setResource(profileKey, "loading");
+      if (background) {
+        devLog("profile background refresh", normalized);
+      } else {
+        devLog("profile miss", normalized);
+        metricInc("cacheMiss");
+        cross.setResource(profileKey, "loading");
+      }
       const existingReq = profileInFlightRef.current.get(profileKey);
       if (existingReq) {
         devLog("profile dedup", normalized);
@@ -308,6 +336,7 @@ export function useProfileLoader(
           }
           latestUserIdRef.current = ud.User?.id ?? null;
           setUser(ud.User);
+          archiveUserToSupabase(ud.User);
           const aa = (ad.MediaListCollection?.lists || []).flatMap((l: { entries?: AniListEntry[]; name?: string; status?: string }) =>
             (l.entries || []).map((e) => ({ ...e, listName: l.name, listStatus: l.status }))
           );
@@ -316,15 +345,16 @@ export function useProfileLoader(
           );
           setAllAnime(aa);
           setAllManga(am);
+          setLastSupabaseSyncAt(new Date().toISOString());
+          archiveMediaListsToSupabase(ud.User?.id, aa, am);
           if (!background) {
             setAnimeActivities([]);
             setMangaActivities([]);
-            hydrateActivityCachesFromLocalStorage(ud.User?.id, cross);
+            resetActivityCaches(cross);
           }
           setLoaded(true);
           cross.setResource(profileKey, "success");
           if (!background) {
-            rememberLastProfileSearch(String(name).trim());
             setPendingProfileName(null);
             setInputVal("");
           }
@@ -353,6 +383,7 @@ export function useProfileLoader(
       } else {
         setError(null);
         setApiDisabled(false);
+        beginBackgroundRefresh(backgroundRefreshCountRef, setBackgroundRefreshing);
       }
       const startedAt = performance.now();
       try {
@@ -379,7 +410,9 @@ export function useProfileLoader(
             // Les types AniList (codegen) et le domaine applicatif partagent
             // la même forme ; on cast vers le type domaine qui est le contrat
             // stable utilisé dans le reste de l'app.
-            setUser(ud.User as unknown as AniListUser);
+            const fetchedUser = ud.User as unknown as AniListUser;
+            setUser(fetchedUser);
+            archiveUserToSupabase(fetchedUser);
             setPendingProfileName(null);
           }
           const [ad, md] = await Promise.all([
@@ -421,22 +454,19 @@ export function useProfileLoader(
         );
         setAllAnime(aa);
         setAllManga(am);
+        setLastSupabaseSyncAt(new Date().toISOString());
+        if (background) archiveUserToSupabase(userObj);
+        archiveMediaListsToSupabase(userObj?.id, aa, am);
         if (!background) {
           setAnimeActivities([]);
           setMangaActivities([]);
-          hydrateActivityCachesFromLocalStorage(userObj?.id, cross);
+          resetActivityCaches(cross);
         }
         setLoaded(true);
         if (!background) {
-          rememberLastProfileSearch(String(name).trim());
           setInputVal("");
         }
         if (!background) lastForegroundProfileKeyRef.current = profileKey;
-        safeWriteCache(profileUserCacheKey(normalized), userObj, PROFILE_USER_TTL_MS);
-        safeWriteCache(profileAnimeCacheKey(normalized), aa, PROFILE_LIST_TTL_MS);
-        safeWriteCache(profileMangaCacheKey(normalized), am, PROFILE_LIST_TTL_MS);
-        metricInc("cacheWrite", 3);
-        devLog("profile write", normalized);
         cross.setResource(profileKey, "success");
         if (!background) setPendingProfileName(null);
       } catch (err: unknown) {
@@ -449,8 +479,10 @@ export function useProfileLoader(
           if (err instanceof AniListApiDisabledError) setApiDisabled(true);
           setError(e.message || "Erreur lors du chargement");
           setPendingProfileName(null);
+          cross.setResource(profileKey, "error", e.message || "Erreur profil");
+        } else {
+          devLog("profile background refresh failed", normalized, e.message || err);
         }
-        cross.setResource(profileKey, "error", e.message || "Erreur profil");
       } finally {
         metricProfileFetchDuration(performance.now() - startedAt);
         if (profileAbortRef.current === abortController) {
@@ -459,6 +491,7 @@ export function useProfileLoader(
         }
         profileInFlightRef.current.delete(profileKey);
         if (!background) setLoading(false);
+        else endBackgroundRefresh(backgroundRefreshCountRef, setBackgroundRefreshing);
       }
     },
     /* Mêmes considérations que pour le reset plus haut : on liste les
@@ -526,6 +559,13 @@ export function useProfileLoader(
     [profileAbortRef]
   );
 
+  const refreshCurrentProfile = useCallback(() => {
+    const name = user?.name || pendingProfileName || inputVal;
+    const trimmed = String(name || "").trim();
+    if (!trimmed) return;
+    void fetchData(trimmed, { forceNetwork: true, background: true });
+  }, [fetchData, inputVal, pendingProfileName, user?.name]);
+
   return {
     inputVal,
     setInputVal,
@@ -544,6 +584,9 @@ export function useProfileLoader(
     setAnimeActivities,
     setMangaActivities,
     pendingProfileName,
+    lastSupabaseSyncAt,
+    backgroundRefreshing,
+    refreshCurrentProfile,
     fetchData,
     resetToHomeLanding,
   };

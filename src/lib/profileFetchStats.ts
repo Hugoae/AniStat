@@ -1,18 +1,14 @@
 /**
- * Mémoire persistée des derniers chargements complets de profil AniList.
+ * Mémoire de session des derniers chargements complets de profil AniList.
  *
  * Objectif : alimenter un ETA fiable pour le « loader principal »
  * (`LoadingBlock` avec la narration « Connexion à AniList… »), basé sur
  * ce que prend **réellement** un fetch complet (profil + listes
  * anime/manga) pour CE profil / CET appareil.
  *
- * Les durées sont conservées dans `localStorage` (5 derniers échantillons
- * glissants) pour qu'une information pertinente survive au rechargement
- * de page. En l'absence de `localStorage` disponible (mode privé, iframe
- * restreinte), on retombe silencieusement sur une mémoire in-memory.
+ * Les durées restent uniquement en mémoire pendant que l'onglet est ouvert.
  */
 
-const STORAGE_KEY = "als:profileFetchStats:v1";
 const MAX_SAMPLES = 5;
 /** En-dessous de ce seuil, on considère qu'on a servi principalement du cache
  *  et on n'enregistre pas — ce serait sous-estimer un vrai premier fetch. */
@@ -23,46 +19,10 @@ type StoredState = {
 };
 
 const inMemory: StoredState = { samples: [] };
-let loaded = false;
 const listeners = new Set<() => void>();
 
-function safeStorage(): Storage | null {
-  try {
-    if (typeof window === "undefined") return null;
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
 function load(): StoredState {
-  if (loaded) return inMemory;
-  loaded = true;
-  const storage = safeStorage();
-  if (!storage) return inMemory;
-  try {
-    const raw = storage.getItem(STORAGE_KEY);
-    if (!raw) return inMemory;
-    const parsed = JSON.parse(raw) as Partial<StoredState>;
-    if (Array.isArray(parsed.samples)) {
-      inMemory.samples = parsed.samples.filter(
-        (n): n is number => typeof n === "number" && Number.isFinite(n) && n > 0
-      );
-    }
-  } catch {
-    /* lecture corrompue : on repart sur un état vide */
-  }
   return inMemory;
-}
-
-function persist(): void {
-  const storage = safeStorage();
-  if (!storage) return;
-  try {
-    storage.setItem(STORAGE_KEY, JSON.stringify(inMemory));
-  } catch {
-    /* quota atteint ou autre : on accepte la perte silencieuse */
-  }
 }
 
 function notify(): void {
@@ -101,7 +61,6 @@ export function recordProfileFetch(durationMs: number): void {
   if (state.samples.length > MAX_SAMPLES) {
     state.samples.splice(0, state.samples.length - MAX_SAMPLES);
   }
-  persist();
   notify();
 }
 
@@ -130,6 +89,5 @@ export function subscribeProfileFetchStats(listener: () => void): () => void {
 export function resetProfileFetchStats(): void {
   load();
   inMemory.samples = [];
-  persist();
   notify();
 }

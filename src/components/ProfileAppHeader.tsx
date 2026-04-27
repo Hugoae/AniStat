@@ -31,6 +31,9 @@ export type ProfileAppHeaderProps = {
   headerUser: HeaderProfileUser | null;
   transitionActive: boolean;
   anilistProfileUrl: string | null;
+  syncStatusLabel: string | null;
+  syncRefreshing: boolean;
+  onRefreshProfile: () => void;
 };
 
 export function ProfileAppHeader({
@@ -52,6 +55,9 @@ export function ProfileAppHeader({
   headerUser,
   transitionActive,
   anilistProfileUrl,
+  syncStatusLabel,
+  syncRefreshing,
+  onRefreshProfile,
 }: ProfileAppHeaderProps) {
   return (
     <div
@@ -211,6 +217,39 @@ export function ProfileAppHeader({
               {transitionActive ? (
                 <div className="header-profile-meta header-profile-meta--pending">
                   Chargement du profil…
+                </div>
+              ) : null}
+              {syncStatusLabel ? (
+                <div className={`header-sync-row${syncRefreshing ? " header-sync-row--refreshing" : ""}`}>
+                  <span className="header-sync-badge">
+                    {syncRefreshing ? <span className="spinner spinner--sm" aria-hidden /> : null}
+                    <span>{syncRefreshing ? "Mise à jour en fond…" : syncStatusLabel}</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="header-sync-refresh-btn"
+                    onClick={onRefreshProfile}
+                    disabled={syncRefreshing}
+                    aria-label="Rafraîchir les données AniList"
+                    title="Rafraîchir les données AniList"
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.25"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <path d="M21 12a9 9 0 0 1-15.4 6.36" />
+                      <path d="M3 12A9 9 0 0 1 18.4 5.64" />
+                      <path d="M18 2v4h-4" />
+                      <path d="M6 22v-4h4" />
+                    </svg>
+                  </button>
                 </div>
               ) : null}
             </div>
