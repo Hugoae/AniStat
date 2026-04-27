@@ -159,7 +159,7 @@ export function readActivityCachesForUserFromLocalStorage(userId: number): {
       if (uid !== userId) continue;
       const type = parts[4];
       const year = Number(parts[5]);
-      if (!Number.isFinite(year) || year < 1970) continue;
+      if (!Number.isFinite(year) || (year !== 0 && year < 1970)) continue;
       const rows = safeReadCache(key, null);
       if (!Array.isArray(rows)) continue;
       if (type === "ANIME_LIST") anime[year] = rows;

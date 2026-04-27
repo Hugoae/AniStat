@@ -14,6 +14,8 @@ export type PeriodFloatingChipProps = {
   setMonth: (m: number) => void;
 };
 
+const ALL_TIME_YEAR = 0;
+
 /** Passe la première lettre d'une chaîne en majuscule (sans toucher à la casse du reste). */
 function capitalize(label: string): string {
   return label.length > 0 ? label.charAt(0).toUpperCase() + label.slice(1) : label;
@@ -52,26 +54,28 @@ export function PeriodFloatingChip({
   const sortedYears = useMemo(() => [...years].sort((a, b) => a - b), [years]);
   const minYear = sortedYears[0] ?? year;
   const maxYear = sortedYears[sortedYears.length - 1] ?? year;
+  const isAllTime = year === ALL_TIME_YEAR;
 
   const monthLabel = useMemo(() => {
+    if (isAllTime) return "";
     if (month === 0) return "Toute l'année";
     const name = MONTHS_FULL[month - 1] ?? MONTHS[month - 1] ?? "";
     return capitalize(name);
-  }, [month]);
+  }, [isAllTime, month]);
 
   /* Navigation verticale = année uniquement (▲ = +1 année, ▼ = -1 année). */
-  const canGoPrevYear = year > minYear;
-  const canGoNextYear = year < maxYear;
+  const canGoPrevYear = isAllTime || year > minYear;
+  const canGoNextYear = !isAllTime;
 
   const goPrevYear = useCallback(() => {
     if (!canGoPrevYear) return;
-    changeYear(year - 1);
-  }, [canGoPrevYear, year, changeYear]);
+    changeYear(isAllTime ? maxYear : year - 1);
+  }, [canGoPrevYear, changeYear, isAllTime, maxYear, year]);
 
   const goNextYear = useCallback(() => {
     if (!canGoNextYear) return;
-    changeYear(year + 1);
-  }, [canGoNextYear, year, changeYear]);
+    changeYear(year === maxYear ? ALL_TIME_YEAR : year + 1);
+  }, [canGoNextYear, maxYear, year, changeYear]);
 
   /*
    * Navigation horizontale = séquence [Toute l'année, Jan, Fév … Déc] de l'année
@@ -79,8 +83,8 @@ export function PeriodFloatingChip({
    * désactivé ; ▶ va à janvier. Inversement, ▶ est désactivé sur décembre.
    * Les passages entre années se font via les chevrons verticaux (▲ / ▼).
    */
-  const canGoPrevMonth = month > 0;
-  const canGoNextMonth = month < 12;
+  const canGoPrevMonth = !isAllTime && month > 0;
+  const canGoNextMonth = !isAllTime && month < 12;
 
   const goPrevMonth = useCallback(() => {
     if (!canGoPrevMonth) return;
@@ -148,52 +152,56 @@ export function PeriodFloatingChip({
         </svg>
       </button>
       <div className="period-floating-chip__value-row">
-        <button
-          type="button"
-          className="period-floating-chip__nav-btn-side period-floating-chip__nav-btn-side--left"
-          onClick={goPrevMonth}
-          disabled={!canGoPrevMonth}
-          aria-label="Mois précédent"
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
+        {!isAllTime ? (
+          <button
+            type="button"
+            className="period-floating-chip__nav-btn-side period-floating-chip__nav-btn-side--left"
+            onClick={goPrevMonth}
+            disabled={!canGoPrevMonth}
+            aria-label="Mois précédent"
           >
-            <path d="M15 6l-6 6 6 6" />
-          </svg>
-        </button>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M15 6l-6 6 6 6" />
+            </svg>
+          </button>
+        ) : null}
         <div className="period-floating-chip__value" aria-live="polite">
-          <span className="period-floating-chip__year">{year}</span>
-          <span className="period-floating-chip__month">{monthLabel}</span>
+          <span className="period-floating-chip__year">{isAllTime ? "All Time" : year}</span>
+          {monthLabel ? <span className="period-floating-chip__month">{monthLabel}</span> : null}
         </div>
-        <button
-          type="button"
-          className="period-floating-chip__nav-btn-side period-floating-chip__nav-btn-side--right"
-          onClick={goNextMonth}
-          disabled={!canGoNextMonth}
-          aria-label="Mois suivant"
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden
+        {!isAllTime ? (
+          <button
+            type="button"
+            className="period-floating-chip__nav-btn-side period-floating-chip__nav-btn-side--right"
+            onClick={goNextMonth}
+            disabled={!canGoNextMonth}
+            aria-label="Mois suivant"
           >
-            <path d="M9 6l6 6-6 6" />
-          </svg>
-        </button>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M9 6l6 6-6 6" />
+            </svg>
+          </button>
+        ) : null}
       </div>
       <button
         type="button"
@@ -237,6 +245,13 @@ export function PeriodFloatingChip({
         >
           <div className="period-panel-title">Période d'analyse</div>
           <div className="period-pills period-pills--years">
+            <button
+              type="button"
+              className={`period-pill period-pill--wide ${isAllTime ? "active" : ""}`}
+              onClick={() => changeYear(ALL_TIME_YEAR)}
+            >
+              All Time
+            </button>
             {sortedYears.map((y) => (
               <button
                 key={y}
@@ -248,26 +263,30 @@ export function PeriodFloatingChip({
               </button>
             ))}
           </div>
-          <div className="period-divider" />
-          <div className="period-pills period-pills--months">
-            <button
-              type="button"
-              className={`period-pill period-pill--wide ${month === 0 ? "active" : ""}`}
-              onClick={() => setMonth(0)}
-            >
-              Toute l'année
-            </button>
-            {MONTHS.map((m, idx) => (
-              <button
-                key={m}
-                type="button"
-                className={`period-pill ${month === idx + 1 ? "active" : ""}`}
-                onClick={() => setMonth(idx + 1)}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
+          {!isAllTime ? (
+            <>
+              <div className="period-divider" />
+              <div className="period-pills period-pills--months">
+                <button
+                  type="button"
+                  className={`period-pill period-pill--wide ${month === 0 ? "active" : ""}`}
+                  onClick={() => setMonth(0)}
+                >
+                  Toute l'année
+                </button>
+                {MONTHS.map((m, idx) => (
+                  <button
+                    key={m}
+                    type="button"
+                    className={`period-pill ${month === idx + 1 ? "active" : ""}`}
+                    onClick={() => setMonth(idx + 1)}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : null}
         </div>
       )}
     </aside>

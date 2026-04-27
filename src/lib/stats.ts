@@ -2,13 +2,13 @@ import { MONTHS } from '../config/constants';
 
   const NOW_UNIX = () => Math.floor(Date.now() / 1000);
 
-  const isInYear = (e, y) => e.updatedAt && new Date(e.updatedAt * 1000).getFullYear() === y;
+  const isInYear = (e, y) => y === 0 ? Boolean(e.updatedAt) : e.updatedAt && new Date(e.updatedAt * 1000).getFullYear() === y;
   const isInMonth = (e, m) => {
     if (!e.updatedAt) return false;
     return new Date(e.updatedAt * 1000).getMonth() + 1 === m;
   };
-  const completedInYear = (e, y) => e.completedAt?.year === y;
-  const startedInYear = (e, y) => e.startedAt?.year === y;
+  const completedInYear = (e, y) => y === 0 ? Boolean(e.completedAt?.year) : e.completedAt?.year === y;
+  const startedInYear = (e, y) => y === 0 ? Boolean(e.startedAt?.year) : e.startedAt?.year === y;
   const completedInMonth = (e, y, m) => e.completedAt?.year === y && e.completedAt?.month === m;
   const startedInMonth = (e, y, m) => e.startedAt?.year === y && e.startedAt?.month === m;
 
@@ -231,6 +231,7 @@ import { MONTHS } from '../config/constants';
 
   function isTsInPeriod(ts, year, month) {
     if (!ts) return false;
+    if (year === 0) return true;
     const d = new Date(ts * 1000);
     const inYear = d.getFullYear() === year;
     if (!inYear) return false;
@@ -242,6 +243,13 @@ import { MONTHS } from '../config/constants';
     const addTs = (ts) => {
       if (!ts) return;
       const d = new Date(ts * 1000);
+      if (selYear === 0) {
+        const y = d.getFullYear();
+        const mo = d.getMonth() + 1;
+        const day = d.getDate();
+        set.add(`${y}-${String(mo).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+        return;
+      }
       if (d.getFullYear() !== selYear) return;
       if (selMonth !== 0 && d.getMonth() + 1 !== selMonth) return;
       const mo = d.getMonth() + 1;
@@ -250,6 +258,10 @@ import { MONTHS } from '../config/constants';
     };
     const addYmd = (y, mo, day) => {
       if (!y || !mo || !day) return;
+      if (selYear === 0) {
+        set.add(`${y}-${String(mo).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+        return;
+      }
       if (y !== selYear) return;
       if (selMonth !== 0 && mo !== selMonth) return;
       set.add(`${y}-${String(mo).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
@@ -265,6 +277,7 @@ import { MONTHS } from '../config/constants';
   }
 
   function getPeriodDayTotal(year, month) {
+    if (year === 0) return 0;
     if (month === 0) {
       const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
       return leap ? 366 : 365;
@@ -637,6 +650,14 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
   }
 
   function getComparisonPeriodMeta(year, month) {
+    if (year === 0) {
+      return {
+        compareY: null,
+        compareM: null,
+        legendCurrent: "All Time",
+        legendCompare: "",
+      };
+    }
     if (month === 0) {
       return {
         compareY: year - 1,
@@ -758,6 +779,7 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
 
   function fuzzyDateInPeriod(date, year, month) {
     if (!date?.year || !date?.month || !date?.day) return false;
+    if (year === 0) return true;
     if (date.year !== year) return false;
     return month === 0 ? true : date.month === month;
   }
@@ -773,7 +795,7 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
     let bestCount = -1;
     for (const e of entries) {
       if (e?.status !== "COMPLETED") continue;
-      if (!fuzzyDateInPeriod(e?.completedAt, year, month)) continue;
+      if (year !== 0 && !fuzzyDateInPeriod(e?.completedAt, year, month)) continue;
       const total =
         kind === "manga"
           ? Number(e?.media?.chapters || e?.progress || 0)
@@ -925,6 +947,7 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
   }
 
   function mergeActivitiesForDelta(anchorYear, cache) {
+    if (anchorYear === 0) return [...(cache[0] || [])].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     const list = [...(cache[anchorYear - 1] || []), ...(cache[anchorYear] || [])];
     const seen = new Set();
     const out = [];

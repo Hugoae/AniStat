@@ -22,6 +22,15 @@ const PRIMARY_LOADING_MESSAGES = [
   "Préparation du tableau de bord…",
 ];
 
+const ALL_TIME_LOADING_MESSAGES = [
+  "Connexion à AniList…",
+  "Chargement complet de ton historique…",
+  "On parcourt toutes tes activités anime…",
+  "On parcourt toutes tes activités manga…",
+  "Compilation des statistiques All Time…",
+  "Préparation du tableau de bord…",
+];
+
 type ActivityLoadDebug = {
   yearsTotal: number;
   yearsComplete: number;
@@ -67,6 +76,8 @@ export type ProfileViewMainProps = {
   /** Spinner principal : chargement profil, activités année, ou zone morte (ex. Strict Mode). */
   primaryProfileLoader: boolean;
   awaitingPrimaryYearActivities: boolean;
+  awaitingAllTimeActivities?: boolean;
+  hasProvisionalAllTimeActivities?: boolean;
   loadingActivities: boolean;
   error: string | null;
   /**
@@ -119,6 +130,8 @@ export function ProfileViewMain({
   loading,
   primaryProfileLoader,
   awaitingPrimaryYearActivities,
+  awaitingAllTimeActivities = false,
+  hasProvisionalAllTimeActivities = false,
   loadingActivities,
   error,
   apiDisabled = false,
@@ -183,8 +196,12 @@ export function ProfileViewMain({
     <div className="profile-view-main">
       {primaryProfileLoader && (
         <LoadingBlock
-          messages={PRIMARY_LOADING_MESSAGES}
-          caption="Première requête un peu longue ? AniList envoie toutes tes données d'un coup."
+          messages={awaitingAllTimeActivities ? ALL_TIME_LOADING_MESSAGES : PRIMARY_LOADING_MESSAGES}
+          caption={
+            awaitingAllTimeActivities
+              ? "All Time peut être long : AniList envoie tout l'historique d'activités."
+              : "Première requête un peu longue ? AniList envoie toutes tes données d'un coup."
+          }
           estimatedMs={primaryLoaderEstimateMs}
         />
       )}
@@ -212,7 +229,9 @@ export function ProfileViewMain({
       {loaded && !loading && !awaitingPrimaryYearActivities && loadingActivities && (
         <div className="activity-loading-line">
           <span className="activity-loading-message-blink">
-            {displayActivityLoadingMessage || activityLoadingMessage}
+            {hasProvisionalAllTimeActivities
+              ? "All Time provisoire affiche : AniList consolide encore l'historique complet en arriere-plan"
+              : displayActivityLoadingMessage || activityLoadingMessage}
             {activityEtaLabel
               ? ` · reste ~${activityEtaLabel}`
               : activityEtaSeconds === 0

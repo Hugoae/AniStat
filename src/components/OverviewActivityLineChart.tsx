@@ -58,9 +58,10 @@ export function OverviewActivityLineChart({
   year: number;
   fillGradientId: string;
 }) {
+  const showCompare = year !== 0;
   return (
     <ResponsiveContainer width="100%" height={240}>
-      <LineChart data={data} margin={{ top: 24, right: 12, left: 0, bottom: 6 }}>
+      <LineChart data={data} margin={{ top: 24, right: 34, left: 8, bottom: 6 }}>
         <defs>
           <linearGradient id={fillGradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={C.accent} stopOpacity={0.5} />
@@ -76,6 +77,7 @@ export function OverviewActivityLineChart({
           axisLine={false}
           tickLine={false}
           interval={month === 0 ? 0 : "preserveStartEnd"}
+          padding={{ left: 12, right: 28 }}
           dy={4}
         />
         <YAxis
@@ -114,16 +116,18 @@ export function OverviewActivityLineChart({
             formatter={(v) => (v != null && Number(v) > 0 ? String(v) : "")}
           />
         </Line>
-        <Line
-          type="monotone"
-          dataKey="compare"
-          stroke="#4a5d6e"
-          strokeOpacity={0.42}
-          strokeWidth={2}
-          dot={false}
-          activeDot={{ r: 4, fill: "rgba(74, 93, 110, 0.68)" }}
-          isAnimationActive={false}
-        />
+        {showCompare ? (
+          <Line
+            type="monotone"
+            dataKey="compare"
+            stroke="#4a5d6e"
+            strokeOpacity={0.42}
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 4, fill: "rgba(74, 93, 110, 0.68)" }}
+            isAnimationActive={false}
+          />
+        ) : null}
       </LineChart>
     </ResponsiveContainer>
   );

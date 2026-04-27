@@ -175,6 +175,16 @@ export function ScoreScatterCard({ entries, kind, emptyExtra, className, collaps
       <ChartCard
         noTitle
         screenReaderSummary={`Nuage de points : ta note (axe vertical) en fonction de la note moyenne AniList (axe horizontal). ${points.length} ${kind === "manga" ? "manga" : "anime"} affichés.`}
+        dataTable={{
+          caption: `Ta note vs note AniList (${kind === "manga" ? "manga" : "anime"})`,
+          columns: ["Titre", "Ta note", "Moyenne AniList", "Écart"],
+          rows: points.map((point) => [
+            point.title,
+            point.user.toFixed(1),
+            point.site.toFixed(1),
+            point.delta.toFixed(2),
+          ]),
+        }}
       >
         {points.length === 0 ? (
           <EmptyState

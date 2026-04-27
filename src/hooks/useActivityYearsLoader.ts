@@ -19,6 +19,10 @@ import {
 } from "../lib/activityEnrichment";
 import { recordActivityYearSample } from "../lib/activityFetchStats";
 
+const ALL_TIME_YEAR = 0;
+const isFetchableActivityYear = (value: number) => value === ALL_TIME_YEAR || value >= 1970;
+const activityYearLabel = (value: number) => (value === ALL_TIME_YEAR ? "All Time" : String(value));
+
 export type ActivityLoaderRefs = {
   latestUserIdRef: MutableRefObject<number | null>;
   activityInFlightRef: MutableRefObject<Map<string, Promise<ActivityItem[]>>>;
@@ -127,7 +131,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
   const prefetchYearActivities = useCallback(
     async (targetYear: number, ownerId: number) => {
       const uid = ownerId;
-      if (!uid || !targetYear || targetYear < 1970) return;
+      if (!uid || !isFetchableActivityYear(targetYear)) return;
       const aKey = `activity:${uid}:ANIME_LIST:${targetYear}`;
       const mKey = `activity:${uid}:MANGA_LIST:${targetYear}`;
       try {
@@ -184,7 +188,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
   const retryYearNow = useCallback(
     (targetYear: number) => {
       if (!user?.id) return;
-      if (!targetYear || targetYear < 1970) return;
+      if (!isFetchableActivityYear(targetYear)) return;
       const aKey = `activity:${user.id}:ANIME_LIST:${targetYear}`;
       const mKey = `activity:${user.id}:MANGA_LIST:${targetYear}`;
       activityCooldownRef.current.delete(aKey);
@@ -216,18 +220,19 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
   );
 
   const handleRetryComparisonNow = useCallback(() => {
+    if (year === ALL_TIME_YEAR) return;
     const compareYear = month === 0 || month === 1 ? year - 1 : null;
     if (!compareYear || compareYear < 1970) return;
     retryYearNow(compareYear);
   }, [month, retryYearNow, year]);
 
   useEffect(() => {
-    if (!loaded || !user?.id || !year) return;
+    if (!loaded || !user?.id) return;
     const ownerId = user.id;
 
     const yearsNeeded = new Set([year]);
-    if (month === 0 || month === 1) yearsNeeded.add(year - 1);
-    const scopeYears = [...yearsNeeded].filter((y) => y >= 1970);
+    if (year !== ALL_TIME_YEAR && (month === 0 || month === 1)) yearsNeeded.add(year - 1);
+    const scopeYears = [...yearsNeeded].filter(isFetchableActivityYear);
     scopeYears.forEach((y) => {
       if (animeActivityCache[y] && mangaActivityCache[y]) {
         activityYearsInFlightRef.current.delete(y);
@@ -239,7 +244,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     const staleYears = new Set<number>();
     let blockedByCooldown = 0;
     [...yearsNeeded].forEach((y) => {
-      if (y < 1970) return;
+      if (!isFetchableActivityYear(y)) return;
       const currentYear = new Date().getFullYear();
       // Current-year activities can change frequently during active reading/watching sessions.
       // Keep cache-as-fast-path, but force near-immediate background revalidation.
@@ -325,7 +330,10 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
         setLoadingActivities(false);
       } else {
         setLoadingActivities(true);
-        const inflightLabel = [...new Set(inFlightScopeYears)].sort((a, b) => b - a).join(", ");
+        const inflightLabel = [...new Set(inFlightScopeYears)]
+          .sort((a, b) => b - a)
+          .map(activityYearLabel)
+          .join(", ");
         setActivityLoadingMessage(`Chargement des activites ${inflightLabel}...`);
       }
       if (blockedByCooldown > 0) {
@@ -336,7 +344,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
         setActivityWarning(null);
       }
       if (staleYears.size > 0) {
-        const staleLabel = [...staleYears].sort((a, b) => b - a).join(", ");
+        const staleLabel = [...staleYears].sort((a, b) => b - a).map(activityYearLabel).join(", ");
         setActivityWarning(`Actualisation en arriere-plan des activites ${staleLabel}...`);
         const idle = window.requestIdleCallback
           ? window.requestIdleCallback
@@ -356,7 +364,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
 
     const actionableMissing = missing.filter((yy) => !activityYearsInFlightRef.current.has(yy));
     const yearsForMessage = actionableMissing.length > 0 ? actionableMissing : missing;
-    const compareYear = month === 0 || month === 1 ? year - 1 : null;
+    const compareYear = year === ALL_TIME_YEAR ? null : month === 0 || month === 1 ? year - 1 : null;
     const needsCurrent = missing.includes(year);
     const needsCompareOnly =
       !needsCurrent &&
@@ -366,9 +374,16 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     if (needsCompareOnly) {
       setActivityLoadingMessage(`Chargement de l'annee de comparaison ${compareYear}...`);
     } else {
-      const yearsLabel = [...new Set(yearsForMessage)].sort((a, b) => b - a).join(", ");
+      const yearsLabel = [...new Set(yearsForMessage)]
+        .sort((a, b) => b - a)
+        .map(activityYearLabel)
+        .join(", ");
       if (yearsLabel) {
-        setActivityLoadingMessage(`Chargement des activites ${yearsLabel}...`);
+        setActivityLoadingMessage(
+          year === ALL_TIME_YEAR
+            ? "Consolidation All Time : fetch complet de l'historique AniList..."
+            : `Chargement des activites ${yearsLabel}...`
+        );
       } else {
         setActivityLoadingMessage("Chargement des activites...");
       }
@@ -501,6 +516,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     user?.id,
     year,
     month,
+    years,
     animeActivityCache,
     mangaActivityCache,
     mediaBitsByIdRef,
@@ -535,6 +551,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
   useEffect(() => {
     if (!user?.id || !loaded) return undefined;
     const ownerId = user.id;
+    if (year === ALL_TIME_YEAR) return undefined;
     const candidates = [year - 1, year + 1].filter((y) => years.includes(y) && y >= 1970);
     if (candidates.length === 0) return undefined;
     const idle: (cb: () => void) => number = window.requestIdleCallback

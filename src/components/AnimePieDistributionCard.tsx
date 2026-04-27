@@ -25,6 +25,8 @@ export type AnimePieMode = {
   emptyLabel?: string;
 };
 
+type PieSliceWithPercent = AnimePieSlice & { percent: number };
+
 type AnimePieDistributionCardProps = {
   title: string;
   screenReaderSummary?: string;
@@ -42,7 +44,7 @@ function pieTooltipContent(unitSingular: string, unitPlural: string) {
     payload,
   }: {
     active?: boolean;
-    payload?: Array<{ payload?: AnimePieSlice & { percent?: number } }>;
+    payload?: Array<{ payload?: PieSliceWithPercent }>;
   }) {
     if (!active || !payload?.length) return null;
     const p = payload[0]?.payload;
@@ -51,24 +53,18 @@ function pieTooltipContent(unitSingular: string, unitPlural: string) {
     return (
       <div className="chart-tooltip chart-tooltip--pie">
         <div className="chart-tooltip__pie-label">{p.label}</div>
-        <div className="chart-tooltip__pie-meta">
-          {p.label}
-          {p.extraInfo ? (
-            <>
-              {"\u00A0"}
-              <span className="chart-tooltip__pie-dot">·</span>
-              {"\u00A0"}
-              {p.extraInfo}
-            </>
-          ) : null}
-        </div>
+        {p.extraInfo ? <div className="chart-tooltip__pie-meta">{p.extraInfo}</div> : null}
         <div className="chart-tooltip__pie-extra">
           {p.value} {noun}
-          {typeof p.percent === "number" ? ` · ${p.percent}%` : ""}
+          {` · ${p.percent}%`}
         </div>
       </div>
     );
   };
+}
+
+function formatDonutTotal(value: number): string {
+  return new Intl.NumberFormat("fr-FR").format(value);
 }
 
 export function AnimePieDistributionCard({
@@ -86,6 +82,7 @@ export function AnimePieDistributionCard({
       ? defaultModeKey
       : (modes[0]?.key ?? "");
   const [activeKey, setActiveKey] = useState<string>(initialKey);
+  const [focusedSliceKey, setFocusedSliceKey] = useState<string | null>(null);
 
   /** Si la liste des modes change (ex. nouvelle période sans données), garde un mode valide. */
   useEffect(() => {
@@ -103,7 +100,7 @@ export function AnimePieDistributionCard({
   const safeModes = modes;
 
   const total = slices.reduce((s, x) => s + x.value, 0);
-  const withPct = slices.map((sl) => ({
+  const withPct: PieSliceWithPercent[] = slices.map((sl) => ({
     ...sl,
     percent: total > 0 ? Math.round((sl.value / total) * 100) : 0,
   }));
@@ -160,7 +157,21 @@ export function AnimePieDistributionCard({
         aria-hidden={collapsed}
       >
       <div id={collapseId ? bodyId : undefined} className="collapsible-chart-animator__inner">
-      <ChartCard noTitle screenReaderSummary={screenReaderSummary} className="list-tab-pie-card">
+      <ChartCard
+        noTitle
+        screenReaderSummary={screenReaderSummary}
+        className="list-tab-pie-card"
+        dataTable={{
+          caption: screenReaderSummary || title,
+          columns: ["Catégorie", activeMode?.label ?? "Valeur", "Pourcentage", "Détail"],
+          rows: withPct.map((row) => [
+            row.label,
+            row.value,
+            `${row.percent}%`,
+            row.extraInfo ?? "",
+          ]),
+        }}
+      >
         {withPct.length === 0 || total === 0 ? (
           <EmptyState icon="stack" title={emptyLabel} cta={emptyExtra} />
         ) : (
@@ -176,23 +187,47 @@ export function AnimePieDistributionCard({
                       cx="50%"
                       cy="50%"
                       outerRadius={76}
-                      innerRadius={0}
-                      paddingAngle={0}
-                      stroke="none"
-                      strokeWidth={0}
+                      innerRadius={46}
+                      paddingAngle={2}
+                      cornerRadius={5}
+                      stroke="var(--surface-bg)"
+                      strokeWidth={3}
                       isAnimationActive={false}
                     >
                       {withPct.map((s) => (
-                        <Cell key={s.key} fill={s.fill} />
+                        <Cell
+                          key={s.key}
+                          fill={s.fill}
+                          opacity={focusedSliceKey && focusedSliceKey !== s.key ? 0.36 : 1}
+                          onMouseEnter={() => setFocusedSliceKey(s.key)}
+                          onMouseLeave={() => setFocusedSliceKey(null)}
+                        />
                       ))}
                     </Pie>
-                    <Tooltip content={TooltipContent} />
+                    <Tooltip
+                      content={TooltipContent}
+                      wrapperStyle={{
+                        zIndex: 1000,
+                        pointerEvents: "none",
+                      }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
+                <div className="list-tab-pie-card__center-label" aria-hidden>
+                  <span className="list-tab-pie-card__center-value">{formatDonutTotal(total)}</span>
+                  <span className="list-tab-pie-card__center-unit">{activeMode?.label ?? "Total"}</span>
+                </div>
               </div>
               <ul className="list-tab-pie-card__legend">
                 {withPct.map((row) => (
-                  <li key={row.key} className="list-tab-pie-legend-row">
+                  <li
+                    key={row.key}
+                    className={`list-tab-pie-legend-row${focusedSliceKey && focusedSliceKey !== row.key ? " is-dimmed" : ""}${focusedSliceKey === row.key ? " is-focused" : ""}`}
+                    onMouseEnter={() => setFocusedSliceKey(row.key)}
+                    onMouseLeave={() => setFocusedSliceKey(null)}
+                    onFocus={() => setFocusedSliceKey(row.key)}
+                    onBlur={() => setFocusedSliceKey(null)}
+                  >
                     <div className="list-tab-pie-legend-row__bar" style={{ background: row.fill }}>
                       <span className="list-tab-pie-legend-row__label">
                         <span className="list-tab-pie-legend-row__label-text">

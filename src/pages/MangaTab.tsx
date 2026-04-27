@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   BarChart,
@@ -29,6 +29,7 @@ import {
   mediaFormatShortLabel,
   SectionTitle,
   EmptyState,
+  ListTabSectionNav,
 } from "../components/AppUi";
 import { StatLabelHint } from "../components/appUi/StatPrimitives";
 import { RecordCard } from "../components/appUi/RecordCard";
@@ -69,6 +70,7 @@ export type MangaTabProps = {
   mangaCountryEntriesOrdered: [string, number][];
   mangaFmtData: { name: string; value: number }[];
   mangaTabEntries: AniListEntry[];
+  mangaPlanningEntries: AniListEntry[];
   mangaScoreHalfDistributionRows: { bucket: number; label: string; count: number }[];
   mangaGenrePeriodData: { name: string; count: number }[];
   mangaTopTagsData: TopTagsRow[];
@@ -112,6 +114,7 @@ export function MangaTab({
   mangaCountryEntriesOrdered,
   mangaFmtData,
   mangaTabEntries,
+  mangaPlanningEntries,
   mangaScoreHalfDistributionRows,
   mangaGenrePeriodData,
   mangaTopTagsData,
@@ -129,6 +132,8 @@ export function MangaTab({
         Voir toute l&apos;année {year}
       </button>
     ) : null;
+  const periodYearLabel = year === 0 ? "All Time" : String(year);
+  const isAllTime = year === 0;
 
   const mangaAuthorsCollapse = useCollapsedChart("manga.authors");
   const [authorsExpanded, setAuthorsExpanded] = useState(false);
@@ -230,6 +235,41 @@ export function MangaTab({
         };
       });
   }, [mangaChaptersByCountryData, mangaCountryEntriesOrdered]);
+  const statusPieSlices = useMemo(
+    () =>
+      mangaStatusEntriesOrdered.map(([status, value], i) => ({
+        key: status,
+        label: STATUS_LABELS[status] || status,
+        value,
+        fill: STATUS_COLORS[status] || PIE_COLORS[i % PIE_COLORS.length],
+        extraInfo: `${value} titre${value > 1 ? "s" : ""}`,
+      })),
+    [mangaStatusEntriesOrdered]
+  );
+  const mangaChapterVolumeBuckets = useMemo(() => {
+    const rows = [
+      { key: "1", label: "1", count: 0 },
+      { key: "2-10", label: "2-10", count: 0 },
+      { key: "11-25", label: "11-25", count: 0 },
+      { key: "26-50", label: "26-50", count: 0 },
+      { key: "51-100", label: "51-100", count: 0 },
+      { key: "101-200", label: "101-200", count: 0 },
+      { key: "200+", label: "200+", count: 0 },
+      { key: "unknown", label: "Inconnu", count: 0 },
+    ];
+    for (const entry of mangaTabEntries) {
+      const chapters = Number(entry.media?.chapters || 0);
+      if (chapters === 1) rows[0].count += 1;
+      else if (chapters >= 2 && chapters <= 10) rows[1].count += 1;
+      else if (chapters >= 11 && chapters <= 25) rows[2].count += 1;
+      else if (chapters >= 26 && chapters <= 50) rows[3].count += 1;
+      else if (chapters >= 51 && chapters <= 100) rows[4].count += 1;
+      else if (chapters >= 101 && chapters <= 200) rows[5].count += 1;
+      else if (chapters > 200) rows[6].count += 1;
+      else rows[7].count += 1;
+    }
+    return rows.filter((row) => row.count > 0);
+  }, [mangaTabEntries]);
   const mangaScoreHalfDistributionVisibleRows = useMemo(() => {
     if (mangaScoreHalfDistributionRows.length === 0) return [];
     const nonZeroIndices = mangaScoreHalfDistributionRows
@@ -248,23 +288,73 @@ export function MangaTab({
   const [mangaSortKey, setMangaSortKey] = useState<AnimeGridSortKey>(ANIME_GRID_SORT_DEFAULT);
   const [mangaFilterScoredOnly, setMangaFilterScoredOnly] = useState(false);
   const [mangaFilterCompletedOnly, setMangaFilterCompletedOnly] = useState(false);
+  const [mangaFilterCurrentOnly, setMangaFilterCurrentOnly] = useState(false);
+  const [mangaFilterDroppedOnly, setMangaFilterDroppedOnly] = useState(false);
+  const [mangaFilterPlanningOnly, setMangaFilterPlanningOnly] = useState(false);
+  const [mangaPlanningVisible, setMangaPlanningVisible] = useState(false);
 
   const mangaSearchNormalized = useMemo(
     () => normalizeAnimeSearchText(mangaSearchQuery),
     [mangaSearchQuery]
   );
-  const mangaGridFiltered = useMemo(
-    () =>
-      filterAnimeGridEntries(mangaTabEntries, {
+  const compareByAverageScoreDesc = useCallback((a: AniListEntry, b: AniListEntry) => {
+    const avgA = Number(a.media?.averageScore) || 0;
+    const avgB = Number(b.media?.averageScore) || 0;
+    if (avgB !== avgA) return avgB - avgA;
+    return compareAnimeGridEntries(a, b, "title-asc");
+  }, []);
+
+  const mangaGridSorted = useMemo(
+    () => {
+      const normalBase = filterAnimeGridEntries(mangaTabEntries, {
         normalizedSearch: mangaSearchNormalized,
         scoredOnly: mangaFilterScoredOnly,
-        completedOnly: mangaFilterCompletedOnly,
-      }),
-    [mangaTabEntries, mangaSearchNormalized, mangaFilterScoredOnly, mangaFilterCompletedOnly]
+        completedOnly: !isAllTime && mangaFilterCompletedOnly,
+      });
+      if (!isAllTime) return [...normalBase].sort((a, b) => compareAnimeGridEntries(a, b, mangaSortKey));
+      const planningBase = filterAnimeGridEntries(mangaPlanningEntries, {
+        normalizedSearch: mangaSearchNormalized,
+        scoredOnly: mangaFilterScoredOnly,
+        completedOnly: false,
+      }).sort(compareByAverageScoreDesc);
+      const statusFilters = [
+        mangaFilterCompletedOnly && "COMPLETED",
+        mangaFilterCurrentOnly && "CURRENT",
+        mangaFilterDroppedOnly && "DROPPED",
+        mangaFilterPlanningOnly && "PLANNING",
+      ].filter(Boolean);
+      if (statusFilters.length > 0) {
+        const selected = [...normalBase, ...planningBase].filter((entry) => statusFilters.includes(String(entry.status)));
+        if (statusFilters.length === 1 && statusFilters[0] === "PLANNING") return selected.sort(compareByAverageScoreDesc);
+        return selected.sort((a, b) => compareAnimeGridEntries(a, b, mangaSortKey));
+      }
+      const normalSorted = [...normalBase].sort((a, b) => compareAnimeGridEntries(a, b, mangaSortKey));
+      return mangaPlanningVisible ? [...normalSorted, ...planningBase] : normalSorted;
+    },
+    [
+      mangaTabEntries,
+      mangaPlanningEntries,
+      mangaSearchNormalized,
+      mangaFilterScoredOnly,
+      mangaFilterCompletedOnly,
+      mangaFilterCurrentOnly,
+      mangaFilterDroppedOnly,
+      mangaFilterPlanningOnly,
+      mangaPlanningVisible,
+      mangaSortKey,
+      compareByAverageScoreDesc,
+      isAllTime,
+    ]
   );
-  const mangaGridSorted = useMemo(
-    () => [...mangaGridFiltered].sort((a, b) => compareAnimeGridEntries(a, b, mangaSortKey)),
-    [mangaGridFiltered, mangaSortKey]
+
+  const mangaPlanningFilteredSorted = useMemo(
+    () =>
+      filterAnimeGridEntries(mangaPlanningEntries, {
+        normalizedSearch: mangaSearchNormalized,
+        scoredOnly: mangaFilterScoredOnly,
+        completedOnly: false,
+      }).sort(compareByAverageScoreDesc),
+    [mangaPlanningEntries, mangaSearchNormalized, mangaFilterScoredOnly, compareByAverageScoreDesc]
   );
 
   /** Colonnes = cartes 155px + gap 14px (aligné sur .list-tab-media-grid). */
@@ -275,11 +365,29 @@ export function MangaTab({
     return Math.max(1, Math.floor((w + LIST_TAB_ANIME_GRID_GAP) / cell));
   }, [mangaListGridWidth]);
   const mangaListCollapsedMax = mangaListGridColumns * LIST_TAB_ANIME_VISIBLE_ROWS;
-  const mangaListNeedsMoreLess = mangaGridSorted.length > mangaListCollapsedMax;
+  const mangaListHasStatusFilter =
+    mangaFilterCompletedOnly || mangaFilterCurrentOnly || mangaFilterDroppedOnly || mangaFilterPlanningOnly;
+  const mangaListNeedsMoreLess =
+    !mangaListHasStatusFilter && !mangaPlanningVisible && mangaGridSorted.length > mangaListCollapsedMax;
+  const mangaCanRevealPlanning =
+    isAllTime &&
+    !mangaListHasStatusFilter &&
+    !mangaPlanningVisible &&
+    mangaPlanningFilteredSorted.length > 0 &&
+    (!mangaListNeedsMoreLess || mangaListExpanded);
   const mangaListToShow = useMemo(() => {
+    if (mangaListHasStatusFilter) return mangaGridSorted;
+    if (mangaPlanningVisible) return mangaGridSorted;
     if (!mangaListNeedsMoreLess || mangaListExpanded) return mangaGridSorted;
     return mangaGridSorted.slice(0, mangaListCollapsedMax);
-  }, [mangaGridSorted, mangaListNeedsMoreLess, mangaListExpanded, mangaListCollapsedMax]);
+  }, [
+    mangaGridSorted,
+    mangaListHasStatusFilter,
+    mangaPlanningVisible,
+    mangaListNeedsMoreLess,
+    mangaListExpanded,
+    mangaListCollapsedMax,
+  ]);
 
   useLayoutEffect(() => {
     if (!mangaListLayoutActive) return undefined;
@@ -305,10 +413,24 @@ export function MangaTab({
     setMangaSortKey(ANIME_GRID_SORT_DEFAULT);
     setMangaFilterScoredOnly(false);
     setMangaFilterCompletedOnly(false);
+    setMangaFilterCurrentOnly(false);
+    setMangaFilterDroppedOnly(false);
+    setMangaFilterPlanningOnly(false);
+    setMangaPlanningVisible(false);
   }, [year, month]);
 
+  const sectionNavItems = useMemo(() => [
+    { id: "manga-synthese", label: "Statistiques" },
+    { id: "manga-repartition", label: "Liste des œuvres" },
+    { id: "manga-records", label: "Records" },
+    { id: "manga-graphiques", label: "Graphiques" },
+    { id: "manga-auteurs", label: "Auteurs" },
+  ], []);
+
   return (
-    <div className="list-tab-page">
+    <div className="list-tab-shell">
+      <ListTabSectionNav items={sectionNavItems} label="Navigation des sections manga" />
+      <div className="list-tab-page">
       <div id="manga-synthese" className="overview-stats-cluster list-tab-anchor">
         <div className="fade-in stat-stat-al-row--overview">
           <StatCard label="Total manga" value={mangaEntriesLength} icon="book" />
@@ -324,23 +446,23 @@ export function MangaTab({
         </div>
       </div>
 
-      <section
-        id="manga-heatmap"
-        className="fade-in list-tab-anchor"
-        aria-labelledby="manga-heatmap-title"
-      >
-        <ActivityHeatmap
-          year={year}
-          title={`Calendrier d'activité manga ${year}`}
-          dailyTotals={mangaDailyTotalsForYear}
-          unitSingular="chapitre"
-          unitPlural="chapitres"
-          collapseId="manga.heatmap"
-          titleHint="Chaque cellule représente une journée de l'année. La couleur indique le nombre de chapitres lus ce jour-là (toutes activités manga AniList confondues, période ignorée). Survole une cellule pour voir le total exact."
-        />
-      </section>
-
-      <MangaRecordsSection records={mangaRecords} />
+      {!isAllTime ? (
+        <section
+          id="manga-heatmap"
+          className="fade-in list-tab-anchor"
+          aria-labelledby="manga-heatmap-title"
+        >
+          <ActivityHeatmap
+            year={year}
+            title={`Calendrier d'activité manga ${periodYearLabel}`}
+            dailyTotals={mangaDailyTotalsForYear}
+            unitSingular="chapitre"
+            unitPlural="chapitres"
+            collapseId="manga.heatmap"
+            titleHint="Chaque cellule représente une journée de l'année. La couleur indique le nombre de chapitres lus ce jour-là (toutes activités manga AniList confondues, période ignorée). Survole une cellule pour voir le total exact."
+          />
+        </section>
+      ) : null}
 
       <section
         id="manga-repartition"
@@ -469,6 +591,55 @@ export function MangaTab({
                     </span>
                   ) : null}
                 </button>
+                {isAllTime ? (
+                  <>
+                    <button
+                      type="button"
+                      className={`list-tab-anime-grid-toolbar__toggle${mangaFilterCurrentOnly ? " is-active" : ""}`}
+                      aria-pressed={mangaFilterCurrentOnly}
+                      title="Afficher uniquement les titres en cours"
+                      onClick={() => setMangaFilterCurrentOnly((v) => !v)}
+                    >
+                      En cours
+                      {mangaFilterCurrentOnly ? (
+                        <span className="list-tab-anime-grid-toolbar__toggle-check" aria-hidden>
+                          ✓
+                        </span>
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      className={`list-tab-anime-grid-toolbar__toggle${mangaFilterDroppedOnly ? " is-active" : ""}`}
+                      aria-pressed={mangaFilterDroppedOnly}
+                      title="Afficher uniquement les titres abandonnés"
+                      onClick={() => setMangaFilterDroppedOnly((v) => !v)}
+                    >
+                      Abandonnés
+                      {mangaFilterDroppedOnly ? (
+                        <span className="list-tab-anime-grid-toolbar__toggle-check" aria-hidden>
+                          ✓
+                        </span>
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      className={`list-tab-anime-grid-toolbar__toggle${mangaFilterPlanningOnly ? " is-active" : ""}`}
+                      aria-pressed={mangaFilterPlanningOnly}
+                      title="Afficher uniquement les titres planifiés"
+                      onClick={() => {
+                        setMangaPlanningVisible(false);
+                        setMangaFilterPlanningOnly((v) => !v);
+                      }}
+                    >
+                      Planifiés
+                      {mangaFilterPlanningOnly ? (
+                        <span className="list-tab-anime-grid-toolbar__toggle-check" aria-hidden>
+                          ✓
+                        </span>
+                      ) : null}
+                    </button>
+                  </>
+                ) : null}
               </div>
             </div>
             <div className="list-tab-anime-grid-toolbar__sort">
@@ -497,7 +668,7 @@ export function MangaTab({
             </div>
           </div>
         </div>
-        {mangaTabEntries.length > 0 && mangaGridFiltered.length === 0 ? (
+        {(mangaTabEntries.length > 0 || mangaPlanningEntries.length > 0) && mangaGridSorted.length === 0 ? (
           <EmptyState
             compact
             icon="flag"
@@ -510,6 +681,10 @@ export function MangaTab({
                   setMangaSearchQuery("");
                   setMangaFilterScoredOnly(false);
                   setMangaFilterCompletedOnly(false);
+                  setMangaFilterCurrentOnly(false);
+                  setMangaFilterDroppedOnly(false);
+                  setMangaFilterPlanningOnly(false);
+                  setMangaPlanningVisible(false);
                 }}
               >
                 Réinitialiser filtres
@@ -531,14 +706,17 @@ export function MangaTab({
             <MediaCard key={e.id} entry={e} type="MANGA" deferCover />
           ))}
         </div>
-        {mangaListNeedsMoreLess && !mangaListExpanded ? (
+        {(mangaListNeedsMoreLess && !mangaListExpanded) || mangaCanRevealPlanning ? (
           <button
             type="button"
             className="list-tab-anime-more-btn"
-            onClick={() => setMangaListExpanded(true)}
-            aria-expanded={false}
+            onClick={() => {
+              if (mangaListNeedsMoreLess && !mangaListExpanded) setMangaListExpanded(true);
+              else setMangaPlanningVisible(true);
+            }}
+            aria-expanded={mangaCanRevealPlanning ? mangaPlanningVisible : false}
           >
-            <span>Voir plus</span>
+            <span>{mangaCanRevealPlanning ? "Voir œuvres planifiées" : "Voir plus"}</span>
             <svg
               className="list-tab-anime-more-btn__icon"
               width="20"
@@ -555,11 +733,14 @@ export function MangaTab({
             </svg>
           </button>
         ) : null}
-        {mangaListNeedsMoreLess && mangaListExpanded ? (
+        {((mangaListNeedsMoreLess && mangaListExpanded && !mangaCanRevealPlanning) || mangaPlanningVisible) ? (
           <button
             type="button"
             className="list-tab-anime-more-btn list-tab-anime-more-btn--collapse"
-            onClick={() => setMangaListExpanded(false)}
+            onClick={() => {
+              setMangaPlanningVisible(false);
+              setMangaListExpanded(false);
+            }}
             aria-expanded={true}
           >
             <span>Voir moins</span>
@@ -581,6 +762,8 @@ export function MangaTab({
         ) : null}
       </div>
 
+      <MangaRecordsSection records={mangaRecords} />
+
       <div
         key={`manga-viz-${year}-${month}`}
         className="list-tab-anime-viz-reveal"
@@ -599,6 +782,11 @@ export function MangaTab({
                 noTitle
                 className="list-tab-anime-chart--scores"
                 screenReaderSummary="Histogramme des scores : effectifs par tranche de demi-point de 1 à 10 pour les manga notés sur la période."
+                dataTable={{
+                  caption: "Répartition des scores manga",
+                  columns: ["Score", "Manga"],
+                  rows: mangaScoreHalfDistributionVisibleRows.map((row) => [row.label, row.count]),
+                }}
               >
                 {mangaScoreHalfDistributionVisibleRows.length > 0 ? (
                   <div className="list-tab-anime-score-chart-wrap">
@@ -654,6 +842,11 @@ export function MangaTab({
               <ChartCard
                 noTitle
                 screenReaderSummary="Radar des dix genres les plus fréquents sur les manga de la période."
+                dataTable={{
+                  caption: "Genres manga les plus fréquents",
+                  columns: ["Genre", "Titres"],
+                  rows: mangaGenrePeriodData.slice(0, ANIME_GENRE_RADAR_TOP_N).map((row) => [row.name, row.count]),
+                }}
               >
                 {mangaGenrePeriodData.length > 0 ? (
                   <RechartsWhenVisible height={260} className="list-tab-anime-recharts-mount">
@@ -708,6 +901,11 @@ export function MangaTab({
               <ChartCard
                 noTitle
                 screenReaderSummary="Nombre de manga de la période par année de sortie (date de début)."
+                dataTable={{
+                  caption: "Manga par année de sortie",
+                  columns: ["Année", "Titres"],
+                  rows: mangaReleaseYearHistogram.map((row) => [row.yearLabel, row.count]),
+                }}
               >
                 {mangaReleaseYearHistogram.length > 0 ? (
                   <RechartsWhenVisible height={212} className="list-tab-anime-recharts-mount">
@@ -845,6 +1043,76 @@ export function MangaTab({
               ]}
             />
           </div>
+          {isAllTime ? (
+            <div className="list-tab-pie-pair list-tab-alltime-extra-charts">
+              <AnimePieDistributionCard
+                title="Répartition par statut"
+                screenReaderSummary="Camembert des statuts manga All Time, incluant terminés, en cours, abandonnés et planifiés."
+                defaultModeKey="titles"
+                collapseId="manga.statusAllTime"
+                modes={[
+                  {
+                    key: "titles",
+                    label: "Titres",
+                    unitSingular: "titre",
+                    unitPlural: "titres",
+                    slices: statusPieSlices,
+                    footnote:
+                      "Le pourcentage représente la part de titres, le nombre de titres est une information complémentaire.",
+                  },
+                ]}
+              />
+              <CollapsibleChartBlock id="manga.chapterBuckets" title="Longueur des œuvres">
+                <ChartCard
+                  noTitle
+                  screenReaderSummary="Distribution All Time des manga par volume de chapitres."
+                  dataTable={{
+                    caption: "Distribution manga par volume de chapitres",
+                    columns: ["Catégorie", "Titres"],
+                    rows: mangaChapterVolumeBuckets.map((row) => [row.label, row.count]),
+                  }}
+                >
+                  {mangaChapterVolumeBuckets.length > 0 ? (
+                    <div className="list-tab-anime-score-chart-wrap">
+                      <RechartsWhenVisible height={212} className="list-tab-anime-recharts-mount">
+                        <ResponsiveContainer width="100%" height={212}>
+                          <BarChart data={mangaChapterVolumeBuckets} margin={{ top: 22, right: 8, left: 4, bottom: 2 }} barCategoryGap="18%">
+                            <CartesianGrid strokeDasharray="3 6" horizontal vertical={false} stroke="rgba(139, 160, 178, 0.12)" />
+                            <XAxis
+                              dataKey="label"
+                              tick={{ fill: "rgba(232, 238, 244, 0.88)", fontSize: 10, fontWeight: 500 }}
+                              axisLine={{ stroke: "rgba(139, 160, 178, 0.22)" }}
+                              tickLine={false}
+                              interval={0}
+                              height={36}
+                            />
+                            <YAxis type="number" hide width={0} domain={[0, "auto"]} />
+                            <Tooltip content={<CTooltip />} cursor={{ fill: "rgba(61, 180, 242, 0.07)" }} />
+                            <Bar dataKey="count" name="Titres" fill={C.accent} radius={[8, 8, 0, 0]} maxBarSize={48}>
+                              <LabelList
+                                dataKey="count"
+                                position="top"
+                                offset={6}
+                                fill="rgba(237, 241, 245, 0.95)"
+                                fontSize={11}
+                                fontWeight={600}
+                                formatter={(v: number) => (v != null && Number(v) > 0 ? String(v) : "")}
+                              />
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </RechartsWhenVisible>
+                    </div>
+                  ) : (
+                    <EmptyState icon="book" title="Aucun volume de chapitres à afficher." />
+                  )}
+                  <p className="list-tab-pie-card__footnote">
+                    Répartition des mangas selon leur nombre total de chapitres.
+                  </p>
+                </ChartCard>
+              </CollapsibleChartBlock>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -1039,6 +1307,7 @@ export function MangaTab({
         </div>
       </section>
     </div>
+    </div>
   );
 }
 
@@ -1135,6 +1404,34 @@ function MangaRecordsSection({ records }: { records: PeriodRecordsBundle }) {
         value={records.lastActivity.dateLabel}
         media={records.lastActivity.media}
         labelHint="Toute dernière activité manga enregistrée sur la période, peu importe qu'il s'agisse d'une nouvelle série ou d'une série en cours."
+      />
+    );
+  }
+  if (records.biggestOpinionGap) {
+    const deltaSign = records.biggestOpinionGap.userScore >= records.biggestOpinionGap.averageScore ? "+" : "\u2212";
+    cards.push(
+      <RecordCard
+        key="opinion-gap"
+        icon="divide"
+        label="Écart d'opinion maximal"
+        value={`${deltaSign}${records.biggestOpinionGap.gap.toFixed(1)}`}
+        media={{
+          ...records.biggestOpinionGap.media,
+          meta: `Vous ${records.biggestOpinionGap.userScore.toFixed(1)} · AniList ${records.biggestOpinionGap.averageScore.toFixed(1)}`,
+        }}
+        labelHint="Plus grand écart absolu entre votre note et la moyenne AniList, ramenées sur 10."
+      />
+    );
+  }
+  if (records.mostPromisingPlanned) {
+    cards.push(
+      <RecordCard
+        key="promising-planned"
+        icon="flag"
+        label="Planifié le plus prometteur"
+        value={`${records.mostPromisingPlanned.averageScore.toFixed(1)} / 10`}
+        media={records.mostPromisingPlanned.media}
+        labelHint="Manga planifié avec la meilleure moyenne globale AniList. Disponible surtout en All Time."
       />
     );
   }

@@ -882,7 +882,8 @@ export async function fetchListActivitiesForYear(
   options: FetchActivitiesOptions = {}
 ): Promise<ListActivityItem[]> {
   const { signal, pageMaxRetries = 2 } = options;
-  const { start } = getStartEndTsForYear(year);
+  const allTime = year === 0;
+  const { start } = allTime ? { start: 0 } : getStartEndTsForYear(year);
   const perPage = 50;
   let page = 1;
   let hasNextPage = true;
@@ -910,9 +911,9 @@ export async function fetchListActivitiesForYear(
         ),
       Number.MAX_SAFE_INTEGER
     );
-    if (oldestInPage < start) break;
+    if (!allTime && oldestInPage < start) break;
     page += 1;
-    if (page > 80) break;
+    if (page > (allTime ? 400 : 80)) break;
     await sleep(280, signal);
   }
   return all;

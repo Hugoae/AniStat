@@ -331,8 +331,10 @@ export function ActivityHeatmap({
   const collapsed = collapseId ? collapseState.collapsed : false;
   const reactId = useId();
   const bodyId = `${reactId}-body`;
+  const isAllTime = year === 0;
+  const matrixYear = isAllTime ? new Date().getFullYear() : year;
 
-  const matrix = useMemo(() => buildMatrix(year, dailyTotals), [year, dailyTotals]);
+  const matrix = useMemo(() => buildMatrix(matrixYear, dailyTotals), [matrixYear, dailyTotals]);
 
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false,
@@ -425,9 +427,15 @@ export function ActivityHeatmap({
         <div id={collapseId ? bodyId : undefined} className="collapsible-chart-animator__inner">
           <ChartCard
             noTitle
-            screenReaderSummary={`Heatmap d'activité ${year} : ${matrix.totalActiveDays} jours actifs, ${matrix.totalValue} ${totalsLabel} au total.`}
+            screenReaderSummary={`Heatmap d'activité ${isAllTime ? "All Time" : year} : ${matrix.totalActiveDays} jours actifs, ${matrix.totalValue} ${totalsLabel} au total.`}
           >
-            {matrix.totalActiveDays === 0 ? (
+            {isAllTime ? (
+              <EmptyState
+                icon="calendar"
+                title="Le calendrier quotidien n'est pas disponible en All Time."
+                cta={emptyExtra}
+              />
+            ) : matrix.totalActiveDays === 0 ? (
               <EmptyState
                 icon="calendar"
                 title={`Aucune activité enregistrée sur l'année ${year}.`}

@@ -12,7 +12,7 @@ export function PeriodEmptyBanner({
   mangaEntriesLength: number;
 }) {
   if (animeEntriesLength !== 0 || mangaEntriesLength !== 0) return null;
-  const periodLabel = month === 0 ? `${year}` : `${MONTHS[month - 1]} ${year}`;
+  const periodLabel = year === 0 ? "All Time" : month === 0 ? `${year}` : `${MONTHS[month - 1]} ${year}`;
   return (
     <div style={{ textAlign: "center", padding: 60, color: C.textMuted }}>
       <div style={{ fontSize: 48, marginBottom: 16 }}>📭</div>

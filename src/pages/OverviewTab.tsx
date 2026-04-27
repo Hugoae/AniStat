@@ -20,10 +20,15 @@ export type ChartPeriodLegend = {
 export type OverviewTabProps = {
   year: number;
   month: number;
+  totalAnime: number;
+  totalManga: number;
   totalEp: number;
+  totalTimeLabel: string;
   avgA: string;
+  animeVsCommunityScoreStdDev: string;
   totalCh: number;
   avgM: string;
+  mangaVsCommunityScoreStdDev: string;
   activeDaysCount: number;
   periodDayTotal: number;
   chartPeriodLegend: ChartPeriodLegend;
@@ -49,10 +54,15 @@ export type OverviewTabProps = {
 export function OverviewTab({
   year,
   month,
+  totalAnime,
+  totalManga,
   totalEp,
+  totalTimeLabel,
   avgA,
+  animeVsCommunityScoreStdDev,
   totalCh,
   avgM,
+  mangaVsCommunityScoreStdDev,
   activeDaysCount,
   periodDayTotal,
   chartPeriodLegend,
@@ -71,27 +81,49 @@ export function OverviewTab({
   animeDailyTotalsForYear,
   mangaDailyTotalsForYear,
 }: OverviewTabProps) {
+  const periodYearLabel = year === 0 ? "All Time" : String(year);
+  const isAllTime = year === 0;
   return (
     <div className="overview-page">
       <div className="overview-stats-cluster">
-        <div className="fade-in stat-stat-al-row--overview">
-          <StatCard label="Épisodes vus" value={totalEp} icon="play" />
-          <StatCard label="Score anime" value={avgA} icon="star" />
-          <StatCard label="Chapitres lus" value={totalCh} icon="book" />
-          <StatCard label="Score manga" value={avgM} icon="star" />
-          <StatCard
-            label="Jours actifs"
-            value={`${activeDaysCount}\u00A0/\u00A0${periodDayTotal}`}
-            icon="calendar"
-          />
-        </div>
+        {isAllTime ? (
+          <>
+            <div className="fade-in stat-stat-al-row--overview">
+              <StatCard label="Total manga" value={totalManga} icon="book" />
+              <StatCard label="Chapitres lus" value={totalCh} icon="book" />
+              <StatCard label="Score moyen manga" value={avgM} icon="star" />
+              <StatCard label="Dispersion (σ) manga" value={mangaVsCommunityScoreStdDev} icon="divide" />
+              <StatCard label="Jours actifs" value={activeDaysCount} icon="calendar" />
+            </div>
+            <div className="fade-in stat-stat-al-row--overview">
+              <StatCard label="Total animé" value={totalAnime} icon="tv" />
+              <StatCard label="Épisodes vus" value={totalEp} icon="play" />
+              <StatCard label="Score moyen anime" value={avgA} icon="star" />
+              <StatCard label="Dispersion (σ) anime" value={animeVsCommunityScoreStdDev} icon="divide" />
+              <StatCard label="Temps total" value={totalTimeLabel} icon="clock" />
+            </div>
+          </>
+        ) : (
+          <div className="fade-in stat-stat-al-row--overview">
+            <StatCard label="Épisodes vus" value={totalEp} icon="play" />
+            <StatCard label="Score anime" value={avgA} icon="star" />
+            <StatCard label="Chapitres lus" value={totalCh} icon="book" />
+            <StatCard label="Score manga" value={avgM} icon="star" />
+            <StatCard
+              label="Jours actifs"
+              value={`${activeDaysCount}\u00A0/\u00A0${periodDayTotal}`}
+              icon="calendar"
+            />
+          </div>
+        )}
         <hr className="overview-stats-divider" />
       </div>
 
-      <div className="fade-in fade-in-delay-1">
+      {!isAllTime ? (
+        <div className="fade-in fade-in-delay-1">
         <ActivityHeatmap
           year={year}
-          title={`Calendrier d'activité ${year}`}
+          title={`Calendrier d'activité ${periodYearLabel}`}
           dailyTotals={overviewDailyTotalsForYear}
           unitSingular="action"
           unitPlural="actions"
@@ -115,6 +147,7 @@ export function OverviewTab({
           ]}
         />
       </div>
+      ) : null}
 
       <div key={`overview-${year}-${month}`} className="overview-period-body">
         <div className="overview-main-column">
@@ -123,11 +156,13 @@ export function OverviewTab({
               <div className="chart-section">
                 <SectionTitle size="lg">Chapitres lus</SectionTitle>
                 <ChartCard noTitle className="chart-card--overview-line">
-                  <PeriodCompareLegend
-                    legendCurrent={chartPeriodLegend.legendCurrent}
-                    legendCompare={chartPeriodLegend.legendCompare}
-                  />
-                  {compareAvailability.missing && (
+                  {!isAllTime ? (
+                    <PeriodCompareLegend
+                      legendCurrent={chartPeriodLegend.legendCurrent}
+                      legendCompare={chartPeriodLegend.legendCompare}
+                    />
+                  ) : null}
+                  {!isAllTime && compareAvailability.missing && (
                     <div
                       className={`overview-compare-hint${compareAvailability.loadingComparison ? " overview-compare-hint--loading" : ""}`}
                     >
@@ -187,11 +222,13 @@ export function OverviewTab({
               <div className="chart-section">
                 <SectionTitle size="lg">Épisodes vus</SectionTitle>
                 <ChartCard noTitle className="chart-card--overview-line">
-                  <PeriodCompareLegend
-                    legendCurrent={chartPeriodLegend.legendCurrent}
-                    legendCompare={chartPeriodLegend.legendCompare}
-                  />
-                  {compareAvailability.missing && (
+                  {!isAllTime ? (
+                    <PeriodCompareLegend
+                      legendCurrent={chartPeriodLegend.legendCurrent}
+                      legendCompare={chartPeriodLegend.legendCompare}
+                    />
+                  ) : null}
+                  {!isAllTime && compareAvailability.missing && (
                     <div
                       className={`overview-compare-hint${compareAvailability.loadingComparison ? " overview-compare-hint--loading" : ""}`}
                     >

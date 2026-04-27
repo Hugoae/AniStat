@@ -4,6 +4,8 @@ export { SectionTitle } from "./appUi/SectionTitle";
 export { EmptyState } from "./appUi/EmptyState";
 export { LoadingBlock } from "./appUi/LoadingBlock";
 export { PeriodFloatingChip } from "./appUi/PeriodFloatingChip";
+export { ListTabSectionNav } from "./appUi/ListTabSectionNav";
+export type { ListTabSectionNavItem } from "./appUi/ListTabSectionNav";
 export { DevPanel } from "./appUi/DevPanel";
 export { MediaCard } from "./appUi/MediaCard";
 export { CTooltip, PeriodCompareLegend, CompareLineTooltip } from "./appUi/ChartTooltips";

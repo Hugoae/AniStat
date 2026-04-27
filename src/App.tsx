@@ -15,6 +15,8 @@ import {
   getPeriodDayTotal,
   computePeriodDeltaFromActivities,
   computePeriodAnimeActivityTotals,
+  computePeriodWatchMinutesByFormat,
+  computePeriodWatchMinutesByCountry,
   computePeriodWatchEpisodesByFormat,
   computePeriodWatchEpisodesByCountry,
   computePeriodReadChaptersByFormat,
@@ -78,6 +80,54 @@ import { ProfileAppHeader } from "./components/ProfileAppHeader";
 import { ProfileViewMain } from "./components/ProfileViewMain";
 import { BackToTopButton } from "./components/BackToTopButton";
 import type { ActivityCacheByYear, ActivityItem, AniListEntry, AniListUser } from "./types/domain";
+
+const ALL_TIME_YEAR = 0;
+
+function countActivityDays(activities: ActivityItem[]): number {
+  const today = Date.now();
+  const days = new Set<string>();
+  activities.forEach((activity) => {
+    const ts = Number(activity?.createdAt || 0);
+    if (!ts) return;
+    const ms = ts * 1000;
+    if (ms > today) return;
+    const d = new Date(ms);
+    days.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+  });
+  return days.size;
+}
+
+function getFirstActivityYear(activities: ActivityItem[]): number {
+  let first = Number.POSITIVE_INFINITY;
+  activities.forEach((activity) => {
+    const ts = Number(activity?.createdAt || 0);
+    if (ts > 0 && ts < first) first = ts;
+  });
+  return Number.isFinite(first) ? new Date(first * 1000).getFullYear() : new Date().getFullYear();
+}
+
+function mergeActivityRowsForPreview(rowsByYear: Array<ActivityItem[] | undefined>): ActivityItem[] {
+  const seen = new Set<string>();
+  const out: ActivityItem[] = [];
+  rowsByYear.forEach((rows) => {
+    (rows || []).forEach((item) => {
+      if (!item) return;
+      const key = item.id != null ? `id:${item.id}` : `t:${item.createdAt}:${item.media?.id}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(item);
+    });
+  });
+  return out.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+}
+
+function entryProgressTotal(entry: AniListEntry, kind: "anime" | "manga"): number {
+  const progress = Number(entry.progress || 0);
+  if (progress > 0) return progress;
+  if (entry.status !== "COMPLETED") return 0;
+  const fallback = kind === "anime" ? Number(entry.media?.episodes || 0) : Number(entry.media?.chapters || 0);
+  return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
+}
 
 /**
  * Composant racine de l'application.
@@ -285,6 +335,7 @@ function App() {
   } = profile;
 
   const appUser = user as AniListUser | null;
+  const isAllTime = year === ALL_TIME_YEAR;
 
   useEffect(() => {
     if (!IS_DEV_LOCAL) return;
@@ -344,10 +395,11 @@ function App() {
    * comparaison remonte jusqu'à N-1). Borne inférieure 1970 pour éviter
    * les dates invalides issues de données AniList corrompues. */
   const activityYearsScope = useMemo(() => {
+    if (isAllTime) return [ALL_TIME_YEAR];
     const s = new Set([year]);
     if (month === 0 || month === 1) s.add(year - 1);
     return [...s].filter((y) => y >= 1970);
-  }, [year, month]);
+  }, [isAllTime, year, month]);
 
   const activityYearsPendingCount = useMemo(() => {
     if (!appUser?.id) return 0;
@@ -418,7 +470,10 @@ function App() {
   }, [showDevPanel]);
 
   /* Setter simple pour le sélecteur de période (chips + floating chip). */
-  const changeYear = (y: number) => setYear(y);
+  const changeYear = (y: number) => {
+    setYear(y);
+    if (y === ALL_TIME_YEAR) setMonth(0);
+  };
 
   /**
    * Soumission du champ de recherche du header : on blurre l'input pour
@@ -456,8 +511,37 @@ function App() {
     return [...filled].sort((a, b) => b - a);
   }, [allAnime, allManga]);
 
+  const provisionalAllTimeActivityCaches = useMemo(() => {
+    if (!isAllTime) return null;
+    if (animeActivityCache[ALL_TIME_YEAR] && mangaActivityCache[ALL_TIME_YEAR]) return null;
+    const annualYears = years.filter(
+      (y) => y >= 1970 && animeActivityCache[y]?.length && mangaActivityCache[y]?.length
+    );
+    if (annualYears.length === 0) return null;
+    return {
+      anime: mergeActivityRowsForPreview(annualYears.map((y) => animeActivityCache[y])),
+      manga: mergeActivityRowsForPreview(annualYears.map((y) => mangaActivityCache[y])),
+      years: annualYears,
+    };
+  }, [isAllTime, years, animeActivityCache, mangaActivityCache]);
+
+  const effectiveAnimeActivityCache = useMemo(
+    () =>
+      provisionalAllTimeActivityCaches
+        ? { ...animeActivityCache, [ALL_TIME_YEAR]: provisionalAllTimeActivityCaches.anime }
+        : animeActivityCache,
+    [animeActivityCache, provisionalAllTimeActivityCaches]
+  );
+  const effectiveMangaActivityCache = useMemo(
+    () =>
+      provisionalAllTimeActivityCaches
+        ? { ...mangaActivityCache, [ALL_TIME_YEAR]: provisionalAllTimeActivityCaches.manga }
+        : mangaActivityCache,
+    [mangaActivityCache, provisionalAllTimeActivityCaches]
+  );
+
   useEffect(() => {
-    if (years.length && !years.includes(year)) {
+    if (year !== ALL_TIME_YEAR && years.length && !years.includes(year)) {
       setYear(years[0]);
     }
   }, [years, year]);
@@ -521,12 +605,12 @@ function App() {
   /* Activités pertinentes pour les totaux globaux (overview) : on garde
    * aussi l'année N-1 quand on compare. */
   const mergedAnimeForTotals = useMemo(
-    () => mergeActivitiesForDelta(year, animeActivityCache),
-    [year, animeActivityCache]
+    () => mergeActivitiesForDelta(year, effectiveAnimeActivityCache),
+    [year, effectiveAnimeActivityCache]
   );
   const mergedMangaForTotals = useMemo(
-    () => mergeActivitiesForDelta(year, mangaActivityCache),
-    [year, mangaActivityCache]
+    () => mergeActivitiesForDelta(year, effectiveMangaActivityCache),
+    [year, effectiveMangaActivityCache]
   );
 
   const animeMediaIdsWithProgress = useMemo(
@@ -550,6 +634,7 @@ function App() {
    * détaillée, ou à l'inverse de compter des médias juste planifiés.
    */
   const isEntryInPeriod = useCallback((e, y, m, activeIds) => {
+    if (y === ALL_TIME_YEAR) return e?.status !== "PLANNING";
     const mediaId = e?.media?.id;
     const hasProgressInPeriod = Boolean(mediaId && activeIds?.has(mediaId));
     const hasCompletedInPeriod = completedInYear(e, y) && (m === 0 || completedInMonth(e, y, m));
@@ -577,6 +662,16 @@ function App() {
     () => mangaEntries.filter((e) => e.status !== "PLANNING"),
     [mangaEntries]
   );
+  const animePlanningEntries = useMemo(() => {
+    if (!isAllTime) return [];
+    const out = dedupeEntriesByMedia(allAnime.filter((e) => e.status === "PLANNING"));
+    return out.items;
+  }, [allAnime, isAllTime]);
+  const mangaPlanningEntries = useMemo(() => {
+    if (!isAllTime) return [];
+    const out = dedupeEntriesByMedia(allManga.filter((e) => e.status === "PLANNING"));
+    return out.items;
+  }, [allManga, isAllTime]);
 
   const animeTabMediaIds = useMemo(
     () =>
@@ -618,38 +713,47 @@ function App() {
     () => computePeriodAnimeActivityTotals(mergedAnimeForTabTotals, year, month),
     [mergedAnimeForTabTotals, year, month]
   );
-  const totalEpAnimeTab = animeTabActivityTotals.episodes;
-  const totalMinAnimeTab = animeTabActivityTotals.minutes;
+  const totalEpAnimeTab = useMemo(
+    () =>
+      isAllTime
+        ? animeTabEntries.reduce((sum, entry) => sum + entryProgressTotal(entry, "anime"), 0)
+        : animeTabActivityTotals.episodes,
+    [animeTabActivityTotals.episodes, animeTabEntries, isAllTime]
+  );
+  const totalMinAnimeTab = useMemo(
+    () =>
+      isAllTime
+        ? animeTabEntries.reduce((sum, entry) => {
+            const episodes = entryProgressTotal(entry, "anime");
+            const duration = Number(entry.media?.duration || 24) || 24;
+            return sum + episodes * duration;
+          }, 0)
+        : animeTabActivityTotals.minutes,
+    [animeTabActivityTotals.minutes, animeTabEntries, isAllTime]
+  );
   const totalChMangaTab = useMemo(
-    () => computePeriodDeltaFromActivities(mergedMangaForTabTotals, year, month, "manga"),
-    [mergedMangaForTabTotals, year, month]
+    () =>
+      isAllTime
+        ? mangaTabEntries.reduce((sum, entry) => sum + entryProgressTotal(entry, "manga"), 0)
+        : computePeriodDeltaFromActivities(mergedMangaForTabTotals, year, month, "manga"),
+    [isAllTime, mangaTabEntries, mergedMangaForTabTotals, year, month]
   );
 
-  const animeActivityTotals = useMemo(
-    () => computePeriodAnimeActivityTotals(mergedAnimeForTotals, year, month),
-    [mergedAnimeForTotals, year, month]
-  );
-  const totalEp = animeActivityTotals.episodes;
-  /* `totalMin` existe sur `animeActivityTotals` mais n'est plus affiché en
-   * overview (remplacé par la lecture globale calculée côté AnimeTab). On ne
-   * garde ici que les épisodes pour la card « Épisodes vus ». */
-  const totalCh = useMemo(
-    () => computePeriodDeltaFromActivities(mergedMangaForTotals, year, month, "manga"),
-    [mergedMangaForTotals, year, month]
-  );
+  const totalEp = totalEpAnimeTab;
+  const totalCh = totalChMangaTab;
   const totalVol = useMemo(
     () => mangaTabEntries.reduce((s, e) => s + (e.progressVolumes || 0), 0),
     [mangaTabEntries]
   );
-  const scoredA = useMemo(() => animeEntries.filter(e => e.score > 0), [animeEntries]);
-  const scoredM = useMemo(() => mangaEntries.filter(e => e.score > 0), [mangaEntries]);
   const scoredATab = useMemo(() => animeTabEntries.filter((e) => e.score > 0), [animeTabEntries]);
   const scoredMTab = useMemo(() => mangaTabEntries.filter((e) => e.score > 0), [mangaTabEntries]);
-  const avgA = scoredA.length ? (scoredA.reduce((s,e)=>s+e.score,0)/scoredA.length).toFixed(1) : "—";
   const avgATab = scoredATab.length
     ? (scoredATab.reduce((s, e) => s + e.score, 0) / scoredATab.length).toFixed(1)
     : "—";
-  const avgM = scoredM.length ? (scoredM.reduce((s,e)=>s+e.score,0)/scoredM.length).toFixed(1) : "—";
+  const avgA = avgATab;
+  const avgM = scoredMTab.length
+    ? (scoredMTab.reduce((s, e) => s + e.score, 0) / scoredMTab.length).toFixed(1)
+    : "—";
 
   /**
    * Dispersion (σ) des écarts note perso − moyenne AniList du média (échelle /10).
@@ -710,12 +814,64 @@ function App() {
   }, [scoredATab]);
 
   const animeEpisodesByFormatData = useMemo(
-    () => computePeriodWatchEpisodesByFormat(mergedAnimeForTabTotals, year, month),
-    [mergedAnimeForTabTotals, year, month]
+    () => {
+      if (!isAllTime) return computePeriodWatchEpisodesByFormat(mergedAnimeForTabTotals, year, month);
+      const byFormat = new Map<string, number>();
+      animeTabEntries.forEach((entry) => {
+        const key = entry.media?.format || "OTHER";
+        byFormat.set(key, (byFormat.get(key) || 0) + entryProgressTotal(entry, "anime"));
+      });
+      return [...byFormat.entries()]
+        .map(([name, episodes]) => ({ name, episodes }))
+        .sort((a, b) => b.episodes - a.episodes);
+    },
+    [animeTabEntries, isAllTime, mergedAnimeForTabTotals, year, month]
+  );
+  const animeMinutesByFormatData = useMemo(
+    () => {
+      if (!isAllTime) return computePeriodWatchMinutesByFormat(mergedAnimeForTabTotals, year, month);
+      const byFormat = new Map<string, number>();
+      animeTabEntries.forEach((entry) => {
+        const key = entry.media?.format || "OTHER";
+        const minutes = entryProgressTotal(entry, "anime") * (Number(entry.media?.duration || 24) || 24);
+        byFormat.set(key, (byFormat.get(key) || 0) + minutes);
+      });
+      return [...byFormat.entries()]
+        .map(([name, minutes]) => ({ name, minutes }))
+        .sort((a, b) => b.minutes - a.minutes);
+    },
+    [animeTabEntries, isAllTime, mergedAnimeForTabTotals, year, month]
   );
   const animeEpisodesByCountryData = useMemo(
-    () => computePeriodWatchEpisodesByCountry(mergedAnimeForTabTotals, year, month),
-    [mergedAnimeForTabTotals, year, month]
+    () => {
+      if (!isAllTime) return computePeriodWatchEpisodesByCountry(mergedAnimeForTabTotals, year, month);
+      const byCountry = new Map<string, number>();
+      animeTabEntries.forEach((entry) => {
+        const raw = String(entry.media?.countryOfOrigin || "").trim();
+        const code = /^[A-Za-z]{2}$/.test(raw) ? raw.toUpperCase() : "__UNKNOWN__";
+        byCountry.set(code, (byCountry.get(code) || 0) + entryProgressTotal(entry, "anime"));
+      });
+      return [...byCountry.entries()]
+        .map(([code, episodes]) => ({ code, episodes }))
+        .sort((a, b) => b.episodes - a.episodes);
+    },
+    [animeTabEntries, isAllTime, mergedAnimeForTabTotals, year, month]
+  );
+  const animeMinutesByCountryData = useMemo(
+    () => {
+      if (!isAllTime) return computePeriodWatchMinutesByCountry(mergedAnimeForTabTotals, year, month);
+      const byCountry = new Map<string, number>();
+      animeTabEntries.forEach((entry) => {
+        const raw = String(entry.media?.countryOfOrigin || "").trim();
+        const code = /^[A-Za-z]{2}$/.test(raw) ? raw.toUpperCase() : "__UNKNOWN__";
+        const minutes = entryProgressTotal(entry, "anime") * (Number(entry.media?.duration || 24) || 24);
+        byCountry.set(code, (byCountry.get(code) || 0) + minutes);
+      });
+      return [...byCountry.entries()]
+        .map(([code, minutes]) => ({ code, minutes }))
+        .sort((a, b) => b.minutes - a.minutes);
+    },
+    [animeTabEntries, isAllTime, mergedAnimeForTabTotals, year, month]
   );
 
   /** Genres (onglet Manga) : entrées manga de la période uniquement. */
@@ -738,12 +894,33 @@ function App() {
   }, [scoredMTab]);
 
   const mangaChaptersByFormatData = useMemo(
-    () => computePeriodReadChaptersByFormat(mergedMangaForTabTotals, year, month),
-    [mergedMangaForTabTotals, year, month]
+    () => {
+      if (!isAllTime) return computePeriodReadChaptersByFormat(mergedMangaForTabTotals, year, month);
+      const byFormat = new Map<string, number>();
+      mangaTabEntries.forEach((entry) => {
+        const key = entry.media?.format || "OTHER";
+        byFormat.set(key, (byFormat.get(key) || 0) + entryProgressTotal(entry, "manga"));
+      });
+      return [...byFormat.entries()]
+        .map(([name, chapters]) => ({ name, chapters }))
+        .sort((a, b) => b.chapters - a.chapters);
+    },
+    [isAllTime, mangaTabEntries, mergedMangaForTabTotals, year, month]
   );
   const mangaChaptersByCountryData = useMemo(
-    () => computePeriodReadChaptersByCountry(mergedMangaForTabTotals, year, month),
-    [mergedMangaForTabTotals, year, month]
+    () => {
+      if (!isAllTime) return computePeriodReadChaptersByCountry(mergedMangaForTabTotals, year, month);
+      const byCountry = new Map<string, number>();
+      mangaTabEntries.forEach((entry) => {
+        const raw = String(entry.media?.countryOfOrigin || "").trim();
+        const code = /^[A-Za-z]{2}$/.test(raw) ? raw.toUpperCase() : "__UNKNOWN__";
+        byCountry.set(code, (byCountry.get(code) || 0) + entryProgressTotal(entry, "manga"));
+      });
+      return [...byCountry.entries()]
+        .map(([code, chapters]) => ({ code, chapters }))
+        .sort((a, b) => b.chapters - a.chapters);
+    },
+    [isAllTime, mangaTabEntries, mergedMangaForTabTotals, year, month]
   );
 
   const mangaReleaseYearHistogram = useMemo(() => {
@@ -784,8 +961,64 @@ function App() {
     };
   }, []);
 
+  const findBiggestOpinionGapRecord = useCallback(
+    (entries: AniListEntry[]) => {
+      let bestEntry: AniListEntry | null = null;
+      let bestGap = 0;
+      let bestUserScore = 0;
+      let bestAverageScore = 0;
+      for (const entry of entries) {
+        const userScore = Number(entry.score || 0);
+        const averageScore = Number(entry.media?.averageScore || 0) / 10;
+        if (!Number.isFinite(userScore) || !Number.isFinite(averageScore) || userScore <= 0 || averageScore <= 0) {
+          continue;
+        }
+        const gap = Math.abs(userScore - averageScore);
+        if (gap > bestGap) {
+          bestEntry = entry;
+          bestGap = gap;
+          bestUserScore = userScore;
+          bestAverageScore = averageScore;
+        }
+      }
+      if (!bestEntry || bestGap <= 0) return null;
+      const media = buildRecordMediaRef(bestEntry);
+      return media ? { media, gap: bestGap, userScore: bestUserScore, averageScore: bestAverageScore } : null;
+    },
+    [buildRecordMediaRef]
+  );
+
+  const findMostPromisingPlannedRecord = useCallback(
+    (entries: AniListEntry[]) => {
+      let bestEntry: AniListEntry | null = null;
+      let bestAverageScore = 0;
+      for (const entry of entries) {
+        const averageScore = Number(entry.media?.averageScore || 0);
+        if (!Number.isFinite(averageScore) || averageScore <= 0) continue;
+        if (averageScore > bestAverageScore) {
+          bestEntry = entry;
+          bestAverageScore = averageScore;
+        }
+      }
+      if (!bestEntry) return null;
+      const media = buildRecordMediaRef(bestEntry);
+      return media ? { media, averageScore: bestAverageScore / 10 } : null;
+    },
+    [buildRecordMediaRef]
+  );
+
   const buildPeriodRecordsBundle = useCallback(
-    (entries: AniListEntry[], activities: typeof mergedAnimeForTabTotals, kind: "anime" | "manga") => {
+    (
+      entries: AniListEntry[],
+      activities: typeof mergedAnimeForTabTotals,
+      kind: "anime" | "manga",
+      planningEntries: AniListEntry[]
+    ) => {
+      const entryByMediaId = new Map<number, AniListEntry>();
+      for (const entry of entries) {
+        const mediaId = Number(entry?.media?.id || 0);
+        if (mediaId > 0 && !entryByMediaId.has(mediaId)) entryByMediaId.set(mediaId, entry);
+      }
       const biggest = computePeriodBiggestSession(activities, year, month, kind);
       const streak = computePeriodLongestStreak(activities, year, month);
       const longest = findPeriodLongestCompleted(entries, year, month, kind);
@@ -800,6 +1033,8 @@ function App() {
       const firstAct = findPeriodFirstActivity(activities, year, month);
       const lastAct = findPeriodLastActivity(activities, year, month);
       const fast = findPeriodFastestCompleted(entries, year, month);
+      const opinionGap = findBiggestOpinionGapRecord(entries);
+      const promisingPlanned = findMostPromisingPlannedRecord(planningEntries);
       const wrap = <T extends { entry: AniListEntry }>(r: T | null) => {
         if (!r) return null;
         const m = buildRecordMediaRef(r.entry);
@@ -810,9 +1045,15 @@ function App() {
       // réutiliser `buildRecordMediaRef` sans duplication.
       const wrapActivity = <T extends { activity: ActivityItem }>(r: T | null) => {
         if (!r) return null;
-        const media = r.activity.media;
-        if (!media?.id) return null;
-        const m = buildRecordMediaRef({ id: media.id, media } as AniListEntry);
+        const mediaId = Number(r.activity.media?.id || 0);
+        if (!mediaId) return null;
+        const entry = entryByMediaId.get(mediaId);
+        const activityMedia = r.activity.media;
+        const media =
+          entry?.media && (entry.media.title?.romaji || entry.media.title?.english || entry.media.coverImage?.large)
+            ? entry.media
+            : activityMedia;
+        const m = buildRecordMediaRef({ id: mediaId, media } as AniListEntry);
         return m ? { ...r, media: m } : null;
       };
       const longestM = wrap(longest);
@@ -834,19 +1075,27 @@ function App() {
         firstActivity: firstActM ? { media: firstActM.media, dateLabel: firstActM.dateLabel } : null,
         lastActivity: lastActM ? { media: lastActM.media, dateLabel: lastActM.dateLabel } : null,
         fastestCompleted: fastM ? { media: fastM.media, days: fastM.days } : null,
+        biggestOpinionGap: opinionGap,
+        mostPromisingPlanned: promisingPlanned,
       };
     },
-    [year, month, buildRecordMediaRef]
+    [
+      year,
+      month,
+      buildRecordMediaRef,
+      findBiggestOpinionGapRecord,
+      findMostPromisingPlannedRecord,
+    ]
   );
 
   const animeRecordsData = useMemo(
-    () => buildPeriodRecordsBundle(animeTabEntries, mergedAnimeForTabTotals, "anime"),
-    [animeTabEntries, mergedAnimeForTabTotals, buildPeriodRecordsBundle]
+    () => buildPeriodRecordsBundle(animeTabEntries, mergedAnimeForTabTotals, "anime", animePlanningEntries),
+    [animeTabEntries, mergedAnimeForTabTotals, animePlanningEntries, buildPeriodRecordsBundle]
   );
 
   const mangaRecordsData = useMemo(
-    () => buildPeriodRecordsBundle(mangaTabEntries, mergedMangaForTabTotals, "manga"),
-    [mangaTabEntries, mergedMangaForTabTotals, buildPeriodRecordsBundle]
+    () => buildPeriodRecordsBundle(mangaTabEntries, mergedMangaForTabTotals, "manga", mangaPlanningEntries),
+    [mangaTabEntries, mergedMangaForTabTotals, mangaPlanningEntries, buildPeriodRecordsBundle]
   );
 
   /* ─── Top studios anime ───────────────────────────────────────────────
@@ -961,6 +1210,11 @@ function App() {
           prev.scoreSum += userScore;
           prev.scoreCount += 1;
         }
+        if (isAllTime) {
+          const episodes = entryProgressTotal(entry, "anime");
+          const duration = Number(entry.media?.duration || 24) || 24;
+          prev.minutesWatched += episodes * duration;
+        }
         if (!prev.medias.has(mediaId)) {
           prev.medias.set(mediaId, {
             id: mediaId,
@@ -974,31 +1228,33 @@ function App() {
         rows.set(name, prev);
       }
     }
-    const chronological = [...mergedAnimeForTabTotals].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    const lastByMedia = new Map<number, number>();
-    for (const a of chronological) {
-      const mediaId = Number(a?.media?.id || 0);
-      if (!mediaId) continue;
-      const prev = lastByMedia.has(mediaId) ? (lastByMedia.get(mediaId) || 0) : 0;
-      const parsed = progressNumber(a?.progress);
-      let current = parsed;
-      if (!current) {
-        const status = String(a?.status || "").toUpperCase();
-        if (status === "COMPLETED") {
-          const cap = Number(a?.media?.episodes || 0);
-          current = cap > 0 ? Math.max(prev, cap) : prev > 0 ? prev + 1 : 1;
+    if (!isAllTime) {
+      const chronological = [...mergedAnimeForTabTotals].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      const lastByMedia = new Map<number, number>();
+      for (const a of chronological) {
+        const mediaId = Number(a?.media?.id || 0);
+        if (!mediaId) continue;
+        const prev = lastByMedia.has(mediaId) ? (lastByMedia.get(mediaId) || 0) : 0;
+        const parsed = progressNumber(a?.progress);
+        let current = parsed;
+        if (!current) {
+          const status = String(a?.status || "").toUpperCase();
+          if (status === "COMPLETED") {
+            const cap = Number(a?.media?.episodes || 0);
+            current = cap > 0 ? Math.max(prev, cap) : prev > 0 ? prev + 1 : 1;
+          }
         }
+        const explicitDelta = progressRangeDelta(a?.progress);
+        const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
+        const mins = delta * (Number(a?.media?.duration || 24) || 24);
+        const studioEdges = a?.media?.studios?.edges || [];
+        const nameToIdM = animationStudioNameToId(studioEdges);
+        for (const name of nameToIdM.keys()) {
+          const row = rows.get(name);
+          if (row) row.minutesWatched += mins;
+        }
+        lastByMedia.set(mediaId, current);
       }
-      const explicitDelta = progressRangeDelta(a?.progress);
-      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-      const mins = delta * (Number(a?.media?.duration || 24) || 24);
-      const studioEdges = a?.media?.studios?.edges || [];
-      const nameToIdM = animationStudioNameToId(studioEdges);
-      for (const name of nameToIdM.keys()) {
-        const row = rows.get(name);
-        if (row) row.minutesWatched += mins;
-      }
-      lastByMedia.set(mediaId, current);
     }
     return [...rows.entries()]
       .map(([name, row]) => {
@@ -1024,7 +1280,7 @@ function App() {
         if (b.minutesWatched !== a.minutesWatched) return b.minutesWatched - a.minutesWatched;
         return a.name.localeCompare(b.name);
       });
-  }, [animeTabEntries, mergedAnimeForTabTotals]);
+  }, [animeTabEntries, isAllTime, mergedAnimeForTabTotals]);
 
   /**
    * Top auteurs (manga) — pendant naturel du module « Studios » côté anime.
@@ -1184,6 +1440,9 @@ function App() {
           prev.scoreSum += userScore;
           prev.scoreCount += 1;
         }
+        if (isAllTime) {
+          prev.chaptersRead += entryProgressTotal(entry, "manga");
+        }
         prev.roleLabelCounts.set(
           info.roleLabel,
           (prev.roleLabelCounts.get(info.roleLabel) || 0) + 1
@@ -1209,41 +1468,43 @@ function App() {
      * `LIST_ACTIVITY_QUERY` n'embarquent pas le staff, donc on récupère le
      * mapping media→auteurs depuis `rows.medias`.
      */
-    const authorsByMediaId = new Map<number, number[]>();
-    for (const [authorId, row] of rows.entries()) {
-      for (const mediaId of row.medias.keys()) {
-        const list = authorsByMediaId.get(mediaId);
-        if (list) list.push(authorId);
-        else authorsByMediaId.set(mediaId, [authorId]);
-      }
-    }
-    const chronological = [...mergedMangaForTabTotals].sort(
-      (a, b) => (a.createdAt || 0) - (b.createdAt || 0)
-    );
-    const lastByMedia = new Map<number, number>();
-    for (const a of chronological) {
-      const mediaId = Number(a?.media?.id || 0);
-      if (!mediaId) continue;
-      const prev = lastByMedia.get(mediaId) || 0;
-      const parsed = progressNumber(a?.progress);
-      let current = parsed;
-      if (!current) {
-        const status = String(a?.status || "").toUpperCase();
-        if (status === "COMPLETED") {
-          const cap = Number(a?.media?.chapters || 0);
-          current = cap > 0 ? Math.max(prev, cap) : prev > 0 ? prev + 1 : 1;
+    if (!isAllTime) {
+      const authorsByMediaId = new Map<number, number[]>();
+      for (const [authorId, row] of rows.entries()) {
+        for (const mediaId of row.medias.keys()) {
+          const list = authorsByMediaId.get(mediaId);
+          if (list) list.push(authorId);
+          else authorsByMediaId.set(mediaId, [authorId]);
         }
       }
-      const explicitDelta = progressRangeDelta(a?.progress);
-      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-      const authorIds = authorsByMediaId.get(mediaId);
-      if (authorIds) {
-        for (const aid of authorIds) {
-          const row = rows.get(aid);
-          if (row) row.chaptersRead += delta;
+      const chronological = [...mergedMangaForTabTotals].sort(
+        (a, b) => (a.createdAt || 0) - (b.createdAt || 0)
+      );
+      const lastByMedia = new Map<number, number>();
+      for (const a of chronological) {
+        const mediaId = Number(a?.media?.id || 0);
+        if (!mediaId) continue;
+        const prev = lastByMedia.get(mediaId) || 0;
+        const parsed = progressNumber(a?.progress);
+        let current = parsed;
+        if (!current) {
+          const status = String(a?.status || "").toUpperCase();
+          if (status === "COMPLETED") {
+            const cap = Number(a?.media?.chapters || 0);
+            current = cap > 0 ? Math.max(prev, cap) : prev > 0 ? prev + 1 : 1;
+          }
         }
+        const explicitDelta = progressRangeDelta(a?.progress);
+        const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
+        const authorIds = authorsByMediaId.get(mediaId);
+        if (authorIds) {
+          for (const aid of authorIds) {
+            const row = rows.get(aid);
+            if (row) row.chaptersRead += delta;
+          }
+        }
+        lastByMedia.set(mediaId, current);
       }
-      lastByMedia.set(mediaId, current);
     }
 
     return [...rows.values()]
@@ -1283,7 +1544,7 @@ function App() {
         if (b.chaptersRead !== a.chaptersRead) return b.chaptersRead - a.chaptersRead;
         return a.name.localeCompare(b.name);
       });
-  }, [mangaTabEntries, mergedMangaForTabTotals]);
+  }, [isAllTime, mangaTabEntries, mergedMangaForTabTotals]);
 
   const animeReleaseYearHistogram = useMemo(() => {
     const bins = new Map<number, number>();
@@ -1328,15 +1589,29 @@ function App() {
     return out;
   }, [animeTabEntries]);
 
+  const allTimeActivityYears = useMemo(() => {
+    if (!isAllTime) return [];
+    const firstYear = getFirstActivityYear([...mergedAnimeForTotals, ...mergedMangaForTotals]);
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: currentYear - firstYear + 1 }, (_, i) => firstYear + i);
+  }, [isAllTime, mergedAnimeForTotals, mergedMangaForTotals]);
+
   /* ─── Séries temporelles pour les graphiques « courbes N vs N-1 » ─────
    * Mois = 0 (toute l'année) : on affiche les 12 mois de l'année courante
    * comparés aux 12 mois de l'année précédente.
    * Mois > 0 : on descend au niveau quotidien (jour par jour) pour le
    * mois sélectionné vs même mois de l'année précédente. */
   const mangaChaptersChartData = useMemo(() => {
+    if (isAllTime) {
+      return allTimeActivityYears.map((activityYear) => ({
+        label: String(activityYear),
+        current: computePeriodDeltaFromActivities(mergedMangaForTabTotals, activityYear, 0, "manga"),
+        compare: 0,
+      }));
+    }
     const { compareY, compareM } = getComparisonPeriodMeta(year, month);
-    const mergedCur = mergeActivitiesForDelta(year, mangaActivityCache);
-    const mergedComp = mergeActivitiesForDelta(compareY, mangaActivityCache);
+    const mergedCur = mergeActivitiesForDelta(year, effectiveMangaActivityCache);
+    const mergedComp = mergeActivitiesForDelta(compareY, effectiveMangaActivityCache);
 
     if (month === 0) {
       const curM = computeMonthlyDeltasFromActivities(mergedCur, year, "manga");
@@ -1358,12 +1633,19 @@ function App() {
         compare: compD[d] || 0,
       };
     });
-  }, [year, month, mangaActivityCache]);
+  }, [allTimeActivityYears, isAllTime, year, month, effectiveMangaActivityCache, mergedMangaForTabTotals]);
 
   const animeEpisodesChartData = useMemo(() => {
+    if (isAllTime) {
+      return allTimeActivityYears.map((activityYear) => ({
+        label: String(activityYear),
+        current: computePeriodAnimeActivityTotals(mergedAnimeForTabTotals, activityYear, 0).episodes,
+        compare: 0,
+      }));
+    }
     const { compareY, compareM } = getComparisonPeriodMeta(year, month);
-    const mergedCur = mergeActivitiesForDelta(year, animeActivityCache);
-    const mergedComp = mergeActivitiesForDelta(compareY, animeActivityCache);
+    const mergedCur = mergeActivitiesForDelta(year, effectiveAnimeActivityCache);
+    const mergedComp = mergeActivitiesForDelta(compareY, effectiveAnimeActivityCache);
 
     if (month === 0) {
       const curM = computeMonthlyDeltasFromActivities(mergedCur, year, "anime");
@@ -1385,7 +1667,7 @@ function App() {
         compare: compD[d] || 0,
       };
     });
-  }, [year, month, animeActivityCache]);
+  }, [allTimeActivityYears, isAllTime, year, month, effectiveAnimeActivityCache, mergedAnimeForTabTotals]);
 
   const fmtData = useMemo(() => {
     const fmtCount: Record<string, number> = {};
@@ -1403,10 +1685,11 @@ function App() {
     animeTabEntries.forEach((e) => {
       counts[e.status] = (counts[e.status] || 0) + 1;
     });
+    if (animePlanningEntries.length > 0) counts.PLANNING = animePlanningEntries.length;
     return counts;
-  }, [animeTabEntries]);
+  }, [animeTabEntries, animePlanningEntries]);
   const animeStatusEntriesOrdered = useMemo(() => {
-    const order = ["COMPLETED", "CURRENT", "PAUSED", "DROPPED", "REPEATING"];
+    const order = ["COMPLETED", "CURRENT", "PAUSED", "DROPPED", "REPEATING", "PLANNING"];
     return Object.entries(statusCntA).sort(
       (a, b) => order.indexOf(a[0]) - order.indexOf(b[0])
     );
@@ -1429,10 +1712,11 @@ function App() {
     mangaTabEntries.forEach((e) => {
       counts[e.status] = (counts[e.status] || 0) + 1;
     });
+    if (mangaPlanningEntries.length > 0) counts.PLANNING = mangaPlanningEntries.length;
     return counts;
-  }, [mangaTabEntries]);
+  }, [mangaTabEntries, mangaPlanningEntries]);
   const mangaStatusEntriesOrdered = useMemo(() => {
-    const order = ["COMPLETED", "CURRENT", "PAUSED", "DROPPED", "REPEATING"];
+    const order = ["COMPLETED", "CURRENT", "PAUSED", "DROPPED", "REPEATING", "PLANNING"];
     return Object.entries(statusCntM).sort(
       (a, b) => order.indexOf(a[0]) - order.indexOf(b[0])
     );
@@ -1503,7 +1787,11 @@ function App() {
   const overviewTopCount = 10;
   const overviewTopAnime = useMemo(() => topA.slice(0, overviewTopCount), [topA, overviewTopCount]);
   const overviewTopManga = useMemo(() => topM.slice(0, overviewTopCount), [topM, overviewTopCount]);
-  const overviewTopPeriodTitle = month === 0 ? `${year}` : `${MONTHS_FULL[month - 1]} ${year}`;
+  const overviewTopPeriodTitle = isAllTime
+    ? "All Time"
+    : month === 0
+      ? `${year}`
+      : `${MONTHS_FULL[month - 1]} ${year}`;
 
   const {
     overviewMangaTopScrollRef,
@@ -1520,8 +1808,11 @@ function App() {
   );
 
   const activeDaysCount = useMemo(
-    () => countActiveCalendarDays(year, month, mergedAnimeForTotals, mergedMangaForTotals, animeEntries, mangaEntries),
-    [year, month, mergedAnimeForTotals, mergedMangaForTotals, animeEntries, mangaEntries]
+    () =>
+      isAllTime
+        ? countActivityDays([...mergedAnimeForTotals, ...mergedMangaForTotals])
+        : countActiveCalendarDays(year, month, mergedAnimeForTotals, mergedMangaForTotals, animeEntries, mangaEntries),
+    [isAllTime, year, month, mergedAnimeForTotals, mergedMangaForTotals, animeEntries, mangaEntries]
   );
 
   /**
@@ -1550,7 +1841,10 @@ function App() {
     }
     return merged;
   }, [animeDailyTotalsForYear, mangaDailyTotalsForYear]);
-  const periodDayTotal = useMemo(() => getPeriodDayTotal(year, month), [year, month]);
+  const periodDayTotal = useMemo(
+    () => (isAllTime ? activeDaysCount : getPeriodDayTotal(year, month)),
+    [activeDaysCount, isAllTime, year, month]
+  );
 
   const tabs = [
     {key:"overview",label:"Vue d'ensemble"},
@@ -1561,7 +1855,8 @@ function App() {
   const chartPeriodLegend = useMemo(() => getComparisonPeriodMeta(year, month), [year, month]);
   const compareAvailability = useMemo(() => {
     const compareY = chartPeriodLegend?.compareY;
-    const compareMissing = compareY && (!animeActivityCache[compareY] || !mangaActivityCache[compareY]);
+    const compareMissing =
+      compareY != null && (!animeActivityCache[compareY] || !mangaActivityCache[compareY]);
     const loadingComparison = Boolean(compareMissing && loadingActivities);
     return {
       missing: Boolean(compareMissing),
@@ -1581,11 +1876,17 @@ function App() {
     if (!loaded || loading || !appUser?.id) return false;
     if (error) return false;
     const y = year;
+    if (y === ALL_TIME_YEAR) {
+      if (provisionalAllTimeActivityCaches) return false;
+      return !(animeActivityCache[ALL_TIME_YEAR] && mangaActivityCache[ALL_TIME_YEAR]);
+    }
     if (y < 1970) return false;
     const a = animeActivityCache[y];
     const m = mangaActivityCache[y];
     return !(a && m);
-  }, [loaded, loading, appUser?.id, error, year, animeActivityCache, mangaActivityCache]);
+  }, [loaded, loading, appUser?.id, error, year, provisionalAllTimeActivityCaches, animeActivityCache, mangaActivityCache]);
+
+  const awaitingAllTimeActivities = isAllTime && awaitingPrimaryYearActivities;
 
   const retryableYears = useMemo((): number[] => {
     if (!appUser?.id) return [];
@@ -1693,6 +1994,8 @@ function App() {
         loading={loading}
         primaryProfileLoader={primaryProfileLoader}
         awaitingPrimaryYearActivities={awaitingPrimaryYearActivities}
+        awaitingAllTimeActivities={awaitingAllTimeActivities}
+        hasProvisionalAllTimeActivities={Boolean(provisionalAllTimeActivityCaches)}
         loadingActivities={loadingActivities}
         error={error != null ? String(error) : null}
         apiDisabled={apiDisabled}
@@ -1731,9 +2034,14 @@ function App() {
                 year={year}
                 month={month}
                 totalEp={totalEp}
+                totalAnime={animeTabEntries.length}
+                totalManga={mangaTabEntries.length}
+                totalTimeLabel={fmtMin(totalMinAnimeTab)}
                 avgA={avgA}
+                animeVsCommunityScoreStdDev={animeVsCommunityScoreStdDev}
                 totalCh={totalCh}
                 avgM={avgM}
+                mangaVsCommunityScoreStdDev={mangaVsCommunityScoreStdDev}
                 activeDaysCount={activeDaysCount}
                 periodDayTotal={periodDayTotal}
                 chartPeriodLegend={chartPeriodLegend}
@@ -1769,11 +2077,14 @@ function App() {
                 animeCountryEntriesOrdered={animeCountryEntriesOrdered}
                 fmtData={fmtData}
                 animeTabEntries={animeTabEntries}
+                animePlanningEntries={animePlanningEntries}
                 animeScoreHalfDistributionRows={animeScoreHalfDistributionRows}
                 animeGenrePeriodData={animeGenrePeriodData}
                 animeTopTagsData={animeTopTagsData}
                 animeEpisodesByFormatData={animeEpisodesByFormatData}
+                animeMinutesByFormatData={animeMinutesByFormatData}
                 animeEpisodesByCountryData={animeEpisodesByCountryData}
+                animeMinutesByCountryData={animeMinutesByCountryData}
                 animeTopStudios={animeTopStudios}
                 animeReleaseYearHistogram={animeReleaseYearHistogram}
                 animeSeasonHistogram={animeSeasonHistogram}
@@ -1797,6 +2108,7 @@ function App() {
                 mangaCountryEntriesOrdered={mangaCountryEntriesOrdered}
                 mangaFmtData={mangaFmtData}
                 mangaTabEntries={mangaTabEntries}
+                mangaPlanningEntries={mangaPlanningEntries}
                 mangaScoreHalfDistributionRows={mangaScoreHalfDistributionRows}
                 mangaGenrePeriodData={mangaGenrePeriodData}
                 mangaTopTagsData={mangaTopTagsData}

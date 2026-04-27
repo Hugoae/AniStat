@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   BarChart,
@@ -30,6 +30,7 @@ import {
   mediaFormatShortLabel,
   SectionTitle,
   EmptyState,
+  ListTabSectionNav,
 } from "../components/AppUi";
 import { StatLabelHint } from "../components/appUi/StatPrimitives";
 import { RecordCard } from "../components/appUi/RecordCard";
@@ -72,11 +73,14 @@ export type AnimeTabProps = {
   animeCountryEntriesOrdered: [string, number][];
   fmtData: { name: string; value: number }[];
   animeTabEntries: AniListEntry[];
+  animePlanningEntries: AniListEntry[];
   animeScoreHalfDistributionRows: { bucket: number; label: string; count: number }[];
   animeGenrePeriodData: { name: string; count: number }[];
   animeTopTagsData: TopTagsRow[];
   animeEpisodesByFormatData: { name: string; episodes: number }[];
+  animeMinutesByFormatData: { name: string; minutes: number }[];
   animeEpisodesByCountryData: { code: string; episodes: number }[];
+  animeMinutesByCountryData: { code: string; minutes: number }[];
   animeTopStudios: {
     name: string;
     anilistStudioId: number | null;
@@ -109,11 +113,14 @@ export function AnimeTab({
   animeCountryEntriesOrdered,
   fmtData,
   animeTabEntries,
+  animePlanningEntries,
   animeScoreHalfDistributionRows,
   animeGenrePeriodData,
   animeTopTagsData,
   animeEpisodesByFormatData,
+  animeMinutesByFormatData,
   animeEpisodesByCountryData,
+  animeMinutesByCountryData,
   animeTopStudios,
   animeReleaseYearHistogram,
   animeSeasonHistogram,
@@ -135,6 +142,10 @@ export function AnimeTab({
   const [animeSortKey, setAnimeSortKey] = useState<AnimeGridSortKey>(ANIME_GRID_SORT_DEFAULT);
   const [animeFilterScoredOnly, setAnimeFilterScoredOnly] = useState(false);
   const [animeFilterCompletedOnly, setAnimeFilterCompletedOnly] = useState(false);
+  const [animeFilterCurrentOnly, setAnimeFilterCurrentOnly] = useState(false);
+  const [animeFilterDroppedOnly, setAnimeFilterDroppedOnly] = useState(false);
+  const [animeFilterPlanningOnly, setAnimeFilterPlanningOnly] = useState(false);
+  const [animePlanningVisible, setAnimePlanningVisible] = useState(false);
 
   const viewFullYearCta =
     month !== 0 ? (
@@ -142,23 +153,71 @@ export function AnimeTab({
         Voir toute l&apos;année {year}
       </button>
     ) : null;
+  const periodYearLabel = year === 0 ? "All Time" : String(year);
+  const isAllTime = year === 0;
 
   const animeSearchNormalized = useMemo(
     () => normalizeAnimeSearchText(animeSearchQuery),
     [animeSearchQuery]
   );
-  const animeGridFiltered = useMemo(
-    () =>
-      filterAnimeGridEntries(animeTabEntries, {
+  const compareByAverageScoreDesc = useCallback((a: AniListEntry, b: AniListEntry) => {
+    const avgA = Number(a.media?.averageScore) || 0;
+    const avgB = Number(b.media?.averageScore) || 0;
+    if (avgB !== avgA) return avgB - avgA;
+    return compareAnimeGridEntries(a, b, "title-asc");
+  }, []);
+
+  const animeGridSorted = useMemo(
+    () => {
+      const normalBase = filterAnimeGridEntries(animeTabEntries, {
         normalizedSearch: animeSearchNormalized,
         scoredOnly: animeFilterScoredOnly,
-        completedOnly: animeFilterCompletedOnly,
-      }),
-    [animeTabEntries, animeSearchNormalized, animeFilterScoredOnly, animeFilterCompletedOnly]
+        completedOnly: !isAllTime && animeFilterCompletedOnly,
+      });
+      if (!isAllTime) return [...normalBase].sort((a, b) => compareAnimeGridEntries(a, b, animeSortKey));
+      const planningBase = filterAnimeGridEntries(animePlanningEntries, {
+        normalizedSearch: animeSearchNormalized,
+        scoredOnly: animeFilterScoredOnly,
+        completedOnly: false,
+      }).sort(compareByAverageScoreDesc);
+      const statusFilters = [
+        animeFilterCompletedOnly && "COMPLETED",
+        animeFilterCurrentOnly && "CURRENT",
+        animeFilterDroppedOnly && "DROPPED",
+        animeFilterPlanningOnly && "PLANNING",
+      ].filter(Boolean);
+      if (statusFilters.length > 0) {
+        const selected = [...normalBase, ...planningBase].filter((entry) => statusFilters.includes(String(entry.status)));
+        if (statusFilters.length === 1 && statusFilters[0] === "PLANNING") return selected.sort(compareByAverageScoreDesc);
+        return selected.sort((a, b) => compareAnimeGridEntries(a, b, animeSortKey));
+      }
+      const normalSorted = [...normalBase].sort((a, b) => compareAnimeGridEntries(a, b, animeSortKey));
+      return animePlanningVisible ? [...normalSorted, ...planningBase] : normalSorted;
+    },
+    [
+      animeTabEntries,
+      animePlanningEntries,
+      animeSearchNormalized,
+      animeFilterScoredOnly,
+      animeFilterCompletedOnly,
+      animeFilterCurrentOnly,
+      animeFilterDroppedOnly,
+      animeFilterPlanningOnly,
+      animePlanningVisible,
+      animeSortKey,
+      compareByAverageScoreDesc,
+      isAllTime,
+    ]
   );
-  const animeGridSorted = useMemo(
-    () => [...animeGridFiltered].sort((a, b) => compareAnimeGridEntries(a, b, animeSortKey)),
-    [animeGridFiltered, animeSortKey]
+
+  const animePlanningFilteredSorted = useMemo(
+    () =>
+      filterAnimeGridEntries(animePlanningEntries, {
+        normalizedSearch: animeSearchNormalized,
+        scoredOnly: animeFilterScoredOnly,
+        completedOnly: false,
+      }).sort(compareByAverageScoreDesc),
+    [animePlanningEntries, animeSearchNormalized, animeFilterScoredOnly, compareByAverageScoreDesc]
   );
 
   /** Colonnes = cartes 155px + gap 14px (aligné sur .list-tab-media-grid). */
@@ -169,11 +228,29 @@ export function AnimeTab({
     return Math.max(1, Math.floor((w + LIST_TAB_ANIME_GRID_GAP) / cell));
   }, [animeListGridWidth]);
   const animeListCollapsedMax = animeListGridColumns * LIST_TAB_ANIME_VISIBLE_ROWS;
-  const animeListNeedsMoreLess = animeGridSorted.length > animeListCollapsedMax;
+  const animeListHasStatusFilter =
+    animeFilterCompletedOnly || animeFilterCurrentOnly || animeFilterDroppedOnly || animeFilterPlanningOnly;
+  const animeListNeedsMoreLess =
+    !animeListHasStatusFilter && !animePlanningVisible && animeGridSorted.length > animeListCollapsedMax;
+  const animeCanRevealPlanning =
+    isAllTime &&
+    !animeListHasStatusFilter &&
+    !animePlanningVisible &&
+    animePlanningFilteredSorted.length > 0 &&
+    (!animeListNeedsMoreLess || animeListExpanded);
   const animeListToShow = useMemo(() => {
+    if (animeListHasStatusFilter) return animeGridSorted;
+    if (animePlanningVisible) return animeGridSorted;
     if (!animeListNeedsMoreLess || animeListExpanded) return animeGridSorted;
     return animeGridSorted.slice(0, animeListCollapsedMax);
-  }, [animeGridSorted, animeListNeedsMoreLess, animeListExpanded, animeListCollapsedMax]);
+  }, [
+    animeGridSorted,
+    animeListHasStatusFilter,
+    animePlanningVisible,
+    animeListNeedsMoreLess,
+    animeListExpanded,
+    animeListCollapsedMax,
+  ]);
 
   /*
    * Mesure dynamique de la largeur de la grille pour en déduire le nombre
@@ -208,6 +285,10 @@ export function AnimeTab({
     setAnimeSortKey(ANIME_GRID_SORT_DEFAULT);
     setAnimeFilterScoredOnly(false);
     setAnimeFilterCompletedOnly(false);
+    setAnimeFilterCurrentOnly(false);
+    setAnimeFilterDroppedOnly(false);
+    setAnimeFilterPlanningOnly(false);
+    setAnimePlanningVisible(false);
   }, [year, month]);
   const formatEpisodesByName = useMemo(
     () =>
@@ -223,14 +304,14 @@ export function AnimeTab({
       ),
     [animeEpisodesByCountryData]
   );
-  const formatEpisodesLabel = (episodesRaw: number) => {
+  const formatEpisodesLabel = useCallback((episodesRaw: number) => {
     const ep = Math.max(0, Math.round(Number(episodesRaw) || 0));
     return `${ep} épisode${ep > 1 ? "s" : ""} vu${ep > 1 ? "s" : ""}`;
-  };
-  const formatTitlesLabel = (titlesRaw: number) => {
-    const n = Math.max(0, Math.round(Number(titlesRaw) || 0));
-    return `${n} titre${n > 1 ? "s" : ""}`;
-  };
+  }, []);
+  const formatTimeLabel = useCallback(
+    (minutesRaw: number) => fmtMin(Math.max(0, Math.round(Number(minutesRaw) || 0))),
+    [fmtMin]
+  );
 
   const formatPieSlicesByTitles = useMemo(
     () =>
@@ -241,10 +322,12 @@ export function AnimeTab({
         fill: PIE_COLORS[i % PIE_COLORS.length],
         extraInfo: formatEpisodesLabel(formatEpisodesByName.get(String(row.name)) || 0),
       })),
-    [fmtData, formatEpisodesByName]
+    [fmtData, formatEpisodesByName, formatEpisodesLabel]
   );
   const formatPieSlicesByEpisodes = useMemo(() => {
-    const titlesByName = new Map(fmtData.map((row) => [String(row.name), Number(row.value) || 0] as const));
+    const minutesByName = new Map(
+      animeMinutesByFormatData.map((row) => [String(row.name), Number(row.minutes) || 0] as const)
+    );
     return animeEpisodesByFormatData
       .filter((row) => Number(row.episodes) > 0)
       .map((row, i) => ({
@@ -252,9 +335,9 @@ export function AnimeTab({
         label: mediaFormatShortLabel(row.name) || String(row.name),
         value: Number(row.episodes) || 0,
         fill: PIE_COLORS[i % PIE_COLORS.length],
-        extraInfo: formatTitlesLabel(titlesByName.get(String(row.name)) || 0),
+        extraInfo: formatTimeLabel(minutesByName.get(String(row.name)) || 0),
       }));
-  }, [animeEpisodesByFormatData, fmtData]);
+  }, [animeEpisodesByFormatData, animeMinutesByFormatData, formatTimeLabel]);
 
   const countryPieSlicesByTitles = useMemo(
     () =>
@@ -270,11 +353,11 @@ export function AnimeTab({
           extraInfo: formatEpisodesLabel(countryEpisodesByCode.get(code) || 0),
         };
       }),
-    [animeCountryEntriesOrdered, countryEpisodesByCode]
+    [animeCountryEntriesOrdered, countryEpisodesByCode, formatEpisodesLabel]
   );
   const countryPieSlicesByEpisodes = useMemo(() => {
-    const titlesByCode = new Map(
-      animeCountryEntriesOrdered.map(([code, c]) => [String(code), Number(c) || 0] as const)
+    const minutesByCode = new Map(
+      animeMinutesByCountryData.map((row) => [String(row.code), Number(row.minutes) || 0] as const)
     );
     return animeEpisodesByCountryData
       .filter((row) => Number(row.episodes) > 0)
@@ -288,10 +371,41 @@ export function AnimeTab({
           value: Number(row.episodes) || 0,
           fill: PIE_COLORS[i % PIE_COLORS.length],
           flagCode: meta?.code,
-          extraInfo: formatTitlesLabel(titlesByCode.get(code) || 0),
+          extraInfo: formatTimeLabel(minutesByCode.get(code) || 0),
         };
       });
-  }, [animeEpisodesByCountryData, animeCountryEntriesOrdered]);
+  }, [animeEpisodesByCountryData, animeMinutesByCountryData, formatTimeLabel]);
+  const statusPieSlices = useMemo(
+    () =>
+      animeStatusEntriesOrdered.map(([status, value], i) => ({
+        key: status,
+        label: STATUS_LABELS[status] || status,
+        value,
+        fill: STATUS_COLORS[status] || PIE_COLORS[i % PIE_COLORS.length],
+        extraInfo: `${value} titre${value > 1 ? "s" : ""}`,
+      })),
+    [animeStatusEntriesOrdered]
+  );
+  const animeDurationBuckets = useMemo(() => {
+    const rows = [
+      { key: "short", label: "< 15 min", count: 0 },
+      { key: "mid", label: "15-21 min", count: 0 },
+      { key: "standard", label: "22-25 min", count: 0 },
+      { key: "long", label: "26-45 min", count: 0 },
+      { key: "feature", label: "> 45 min", count: 0 },
+      { key: "unknown", label: "Inconnu", count: 0 },
+    ];
+    for (const entry of animeTabEntries) {
+      const duration = Number(entry.media?.duration || 0);
+      if (duration > 0 && duration < 15) rows[0].count += 1;
+      else if (duration >= 15 && duration <= 21) rows[1].count += 1;
+      else if (duration >= 22 && duration <= 25) rows[2].count += 1;
+      else if (duration >= 26 && duration <= 45) rows[3].count += 1;
+      else if (duration > 45) rows[4].count += 1;
+      else rows[5].count += 1;
+    }
+    return rows.filter((row) => row.count > 0);
+  }, [animeTabEntries]);
   const animeScoreHalfDistributionVisibleRows = useMemo(() => {
     if (animeScoreHalfDistributionRows.length === 0) return [];
     const nonZeroIndices = animeScoreHalfDistributionRows
@@ -356,13 +470,22 @@ export function AnimeTab({
     setStudiosExpanded(false);
   }, [year, month]);
 
+  const sectionNavItems = useMemo(() => [
+    { id: "anime-synthese", label: "Statistiques" },
+    { id: "anime-repartition", label: "Liste des œuvres" },
+    { id: "anime-records", label: "Records" },
+    { id: "anime-graphiques", label: "Graphiques" },
+    { id: "anime-studios", label: "Studios" },
+  ], []);
+
   return (
+    <div className="list-tab-shell">
+    <ListTabSectionNav items={sectionNavItems} label="Navigation des sections anime" />
     <div className="list-tab-page">
       <div id="anime-synthese" className="overview-stats-cluster list-tab-anchor">
         <div className="fade-in stat-stat-al-row--overview">
           <StatCard label="Total anime" value={animeEntriesLength} icon="tv" />
           <StatCard label="Épisodes vus" value={totalEp} icon="play" />
-          <StatCard label="Temps" value={fmtMin(totalMin)} icon="clock" />
           <StatCard label="Score moyen" value={avgA} icon="star" />
           <StatCard
             label="Dispersion (σ)"
@@ -370,26 +493,27 @@ export function AnimeTab({
             icon="divide"
             labelHint="Écart-type (σ) de vos écarts (votre note − moyenne AniList) sur la période, en points sur 10. C'est l'amplitude typique d'un écart, sans considérer son sens : 0 = vos notes collent à la moyenne du site, plus la valeur monte plus vos notes sont tranchées (au-dessus comme au-dessous). Pour savoir si vous sur- ou sous-notez en moyenne, regardez le graphique « Ta note vs note AniList » plus bas."
           />
+          <StatCard label="Temps total" value={fmtMin(totalMin)} icon="clock" />
         </div>
       </div>
 
-      <section
-        id="anime-heatmap"
-        className="fade-in list-tab-anchor"
-        aria-labelledby="anime-heatmap-title"
-      >
-        <ActivityHeatmap
-          year={year}
-          title={`Calendrier d'activité anime ${year}`}
-          dailyTotals={animeDailyTotalsForYear}
-          unitSingular="épisode"
-          unitPlural="épisodes"
-          collapseId="anime.heatmap"
-          titleHint="Chaque cellule représente une journée de l'année. La couleur indique le nombre d'épisodes vus ce jour-là (toutes activités anime AniList confondues, période ignorée). Survole une cellule pour voir le total exact."
-        />
-      </section>
-
-      <AnimeRecordsSection records={animeRecords} />
+      {!isAllTime ? (
+        <section
+          id="anime-heatmap"
+          className="fade-in list-tab-anchor"
+          aria-labelledby="anime-heatmap-title"
+        >
+          <ActivityHeatmap
+            year={year}
+            title={`Calendrier d'activité anime ${periodYearLabel}`}
+            dailyTotals={animeDailyTotalsForYear}
+            unitSingular="épisode"
+            unitPlural="épisodes"
+            collapseId="anime.heatmap"
+            titleHint="Chaque cellule représente une journée de l'année. La couleur indique le nombre d'épisodes vus ce jour-là (toutes activités anime AniList confondues, période ignorée). Survole une cellule pour voir le total exact."
+          />
+        </section>
+      ) : null}
 
       <section
         id="anime-repartition"
@@ -518,6 +642,55 @@ export function AnimeTab({
                     </span>
                   ) : null}
                 </button>
+                {isAllTime ? (
+                  <>
+                    <button
+                      type="button"
+                      className={`list-tab-anime-grid-toolbar__toggle${animeFilterCurrentOnly ? " is-active" : ""}`}
+                      aria-pressed={animeFilterCurrentOnly}
+                      title="Afficher uniquement les titres en cours"
+                      onClick={() => setAnimeFilterCurrentOnly((v) => !v)}
+                    >
+                      En cours
+                      {animeFilterCurrentOnly ? (
+                        <span className="list-tab-anime-grid-toolbar__toggle-check" aria-hidden>
+                          ✓
+                        </span>
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      className={`list-tab-anime-grid-toolbar__toggle${animeFilterDroppedOnly ? " is-active" : ""}`}
+                      aria-pressed={animeFilterDroppedOnly}
+                      title="Afficher uniquement les titres abandonnés"
+                      onClick={() => setAnimeFilterDroppedOnly((v) => !v)}
+                    >
+                      Abandonnés
+                      {animeFilterDroppedOnly ? (
+                        <span className="list-tab-anime-grid-toolbar__toggle-check" aria-hidden>
+                          ✓
+                        </span>
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      className={`list-tab-anime-grid-toolbar__toggle${animeFilterPlanningOnly ? " is-active" : ""}`}
+                      aria-pressed={animeFilterPlanningOnly}
+                      title="Afficher uniquement les titres planifiés"
+                      onClick={() => {
+                        setAnimePlanningVisible(false);
+                        setAnimeFilterPlanningOnly((v) => !v);
+                      }}
+                    >
+                      Planifiés
+                      {animeFilterPlanningOnly ? (
+                        <span className="list-tab-anime-grid-toolbar__toggle-check" aria-hidden>
+                          ✓
+                        </span>
+                      ) : null}
+                    </button>
+                  </>
+                ) : null}
               </div>
             </div>
             <div className="list-tab-anime-grid-toolbar__sort">
@@ -546,7 +719,7 @@ export function AnimeTab({
             </div>
           </div>
         </div>
-        {animeTabEntries.length > 0 && animeGridFiltered.length === 0 ? (
+        {(animeTabEntries.length > 0 || animePlanningEntries.length > 0) && animeGridSorted.length === 0 ? (
           <EmptyState
             compact
             icon="flag"
@@ -559,6 +732,10 @@ export function AnimeTab({
                   setAnimeSearchQuery("");
                   setAnimeFilterScoredOnly(false);
                   setAnimeFilterCompletedOnly(false);
+                  setAnimeFilterCurrentOnly(false);
+                  setAnimeFilterDroppedOnly(false);
+                  setAnimeFilterPlanningOnly(false);
+                  setAnimePlanningVisible(false);
                 }}
               >
                 Réinitialiser filtres
@@ -580,14 +757,17 @@ export function AnimeTab({
             <MediaCard key={e.id} entry={e} type="ANIME" deferCover />
           ))}
         </div>
-        {animeListNeedsMoreLess && !animeListExpanded ? (
+        {(animeListNeedsMoreLess && !animeListExpanded) || animeCanRevealPlanning ? (
           <button
             type="button"
             className="list-tab-anime-more-btn"
-            onClick={() => setAnimeListExpanded(true)}
-            aria-expanded={false}
+            onClick={() => {
+              if (animeListNeedsMoreLess && !animeListExpanded) setAnimeListExpanded(true);
+              else setAnimePlanningVisible(true);
+            }}
+            aria-expanded={animeCanRevealPlanning ? animePlanningVisible : false}
           >
-            <span>Voir plus</span>
+            <span>{animeCanRevealPlanning ? "Voir œuvres planifiées" : "Voir plus"}</span>
             <svg
               className="list-tab-anime-more-btn__icon"
               width="20"
@@ -604,11 +784,14 @@ export function AnimeTab({
             </svg>
           </button>
         ) : null}
-        {animeListNeedsMoreLess && animeListExpanded ? (
+        {((animeListNeedsMoreLess && animeListExpanded && !animeCanRevealPlanning) || animePlanningVisible) ? (
           <button
             type="button"
             className="list-tab-anime-more-btn list-tab-anime-more-btn--collapse"
-            onClick={() => setAnimeListExpanded(false)}
+            onClick={() => {
+              setAnimePlanningVisible(false);
+              setAnimeListExpanded(false);
+            }}
             aria-expanded={true}
           >
             <span>Voir moins</span>
@@ -630,6 +813,8 @@ export function AnimeTab({
         ) : null}
       </div>
 
+      <AnimeRecordsSection records={animeRecords} />
+
       <div
         key={`anime-viz-${year}-${month}`}
         className="list-tab-anime-viz-reveal"
@@ -648,6 +833,11 @@ export function AnimeTab({
           noTitle
           className="list-tab-anime-chart--scores"
           screenReaderSummary="Histogramme des scores : effectifs par tranche de demi-point de 1 à 10 pour les anime notés sur la période."
+          dataTable={{
+            caption: "Répartition des scores anime",
+            columns: ["Score", "Anime"],
+            rows: animeScoreHalfDistributionVisibleRows.map((row) => [row.label, row.count]),
+          }}
         >
           {animeScoreHalfDistributionVisibleRows.length > 0 ? (
             <div className="list-tab-anime-score-chart-wrap">
@@ -703,6 +893,11 @@ export function AnimeTab({
           <ChartCard
             noTitle
             screenReaderSummary="Radar des dix genres les plus fréquents sur les anime de la période."
+            dataTable={{
+              caption: "Genres anime les plus fréquents",
+              columns: ["Genre", "Titres"],
+              rows: animeGenrePeriodData.slice(0, ANIME_GENRE_RADAR_TOP_N).map((row) => [row.name, row.count]),
+            }}
           >
             {animeGenrePeriodData.length > 0 ? (
               <RechartsWhenVisible height={260} className="list-tab-anime-recharts-mount">
@@ -757,6 +952,11 @@ export function AnimeTab({
           <ChartCard
             noTitle
             screenReaderSummary="Nombre d’anime de la période par année de sortie (seasonYear ou date de début)."
+            dataTable={{
+              caption: "Anime par année de sortie",
+              columns: ["Année", "Titres"],
+              rows: animeReleaseYearHistogram.map((row) => [row.yearLabel, row.count]),
+            }}
           >
             {animeReleaseYearHistogram.length > 0 ? (
               <RechartsWhenVisible height={212} className="list-tab-anime-recharts-mount">
@@ -839,6 +1039,11 @@ export function AnimeTab({
             <ChartCard
               noTitle
               screenReaderSummary="Répartition des anime de la période par saison de diffusion AniList (hiver, printemps, été, automne)."
+              dataTable={{
+                caption: "Anime par saison de diffusion",
+                columns: ["Saison", "Titres"],
+                rows: animeSeasonHistogram.map((row) => [row.name, row.count]),
+              }}
             >
               {animeSeasonHistogram.length > 0 ? (
                 <div className="list-tab-anime-score-chart-wrap">
@@ -956,6 +1161,76 @@ export function AnimeTab({
             ]}
           />
         </div>
+        {isAllTime ? (
+          <div className="list-tab-pie-pair list-tab-alltime-extra-charts">
+            <AnimePieDistributionCard
+              title="Répartition par statut"
+              screenReaderSummary="Camembert des statuts anime All Time, incluant terminés, en cours, abandonnés et planifiés."
+              defaultModeKey="titles"
+              collapseId="anime.statusAllTime"
+              modes={[
+                {
+                  key: "titles",
+                  label: "Titres",
+                  unitSingular: "titre",
+                  unitPlural: "titres",
+                  slices: statusPieSlices,
+                  footnote:
+                    "Le pourcentage représente la part de titres, le nombre de titres est une information complémentaire.",
+                },
+              ]}
+            />
+            <CollapsibleChartBlock id="anime.durationBuckets" title="Durée des épisodes">
+              <ChartCard
+                noTitle
+                screenReaderSummary="Distribution All Time des anime par durée d'épisode."
+                dataTable={{
+                  caption: "Distribution anime par durée d'épisode",
+                  columns: ["Catégorie", "Titres"],
+                  rows: animeDurationBuckets.map((row) => [row.label, row.count]),
+                }}
+              >
+                {animeDurationBuckets.length > 0 ? (
+                  <div className="list-tab-anime-score-chart-wrap">
+                    <RechartsWhenVisible height={212} className="list-tab-anime-recharts-mount">
+                      <ResponsiveContainer width="100%" height={212}>
+                        <BarChart data={animeDurationBuckets} margin={{ top: 22, right: 8, left: 4, bottom: 2 }} barCategoryGap="18%">
+                          <CartesianGrid strokeDasharray="3 6" horizontal vertical={false} stroke="rgba(139, 160, 178, 0.12)" />
+                          <XAxis
+                            dataKey="label"
+                            tick={{ fill: "rgba(232, 238, 244, 0.88)", fontSize: 10, fontWeight: 500 }}
+                            axisLine={{ stroke: "rgba(139, 160, 178, 0.22)" }}
+                            tickLine={false}
+                            interval={0}
+                            height={36}
+                          />
+                          <YAxis type="number" hide width={0} domain={[0, "auto"]} />
+                          <Tooltip content={<CTooltip />} cursor={{ fill: "rgba(61, 180, 242, 0.07)" }} />
+                          <Bar dataKey="count" name="Titres" fill={C.accent} radius={[8, 8, 0, 0]} maxBarSize={48}>
+                            <LabelList
+                              dataKey="count"
+                              position="top"
+                              offset={6}
+                              fill="rgba(237, 241, 245, 0.95)"
+                              fontSize={11}
+                              fontWeight={600}
+                              formatter={(v: number) => (v != null && Number(v) > 0 ? String(v) : "")}
+                            />
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </RechartsWhenVisible>
+                  </div>
+                ) : (
+                  <EmptyState icon="clock" title="Aucune durée d'épisode à afficher." />
+                )}
+                <p className="list-tab-pie-card__footnote">
+                  Répartition des animés selon la durée moyenne de leurs épisodes.
+                </p>
+              </ChartCard>
+            </CollapsibleChartBlock>
+          </div>
+        ) : null}
       </div>
       </div>
 
@@ -1133,6 +1408,7 @@ export function AnimeTab({
         </div>
       </section>
     </div>
+    </div>
   );
 }
 
@@ -1229,6 +1505,34 @@ function AnimeRecordsSection({ records }: { records: PeriodRecordsBundle }) {
         value={records.lastActivity.dateLabel}
         media={records.lastActivity.media}
         labelHint="Toute dernière activité anime enregistrée sur la période, peu importe qu'il s'agisse d'une nouvelle série ou d'une série en cours."
+      />
+    );
+  }
+  if (records.biggestOpinionGap) {
+    const deltaSign = records.biggestOpinionGap.userScore >= records.biggestOpinionGap.averageScore ? "+" : "\u2212";
+    cards.push(
+      <RecordCard
+        key="opinion-gap"
+        icon="divide"
+        label="Écart d'opinion maximal"
+        value={`${deltaSign}${records.biggestOpinionGap.gap.toFixed(1)}`}
+        media={{
+          ...records.biggestOpinionGap.media,
+          meta: `Vous ${records.biggestOpinionGap.userScore.toFixed(1)} · AniList ${records.biggestOpinionGap.averageScore.toFixed(1)}`,
+        }}
+        labelHint="Plus grand écart absolu entre votre note et la moyenne AniList, ramenées sur 10."
+      />
+    );
+  }
+  if (records.mostPromisingPlanned) {
+    cards.push(
+      <RecordCard
+        key="promising-planned"
+        icon="flag"
+        label="Planifié le plus prometteur"
+        value={`${records.mostPromisingPlanned.averageScore.toFixed(1)} / 10`}
+        media={records.mostPromisingPlanned.media}
+        labelHint="Anime planifié avec la meilleure moyenne globale AniList. Disponible surtout en All Time."
       />
     );
   }

@@ -29,6 +29,8 @@ export type AniListMedia = {
   format?: string | null;
   duration?: number | null;
   episodes?: number | null;
+  chapters?: number | null;
+  volumes?: number | null;
   siteUrl?: string | null;
   averageScore?: number | null;
   genres?: string[];
@@ -85,6 +87,7 @@ export type AniListEntry = {
 };
 
 export type ActivityItem = {
+  id?: number;
   createdAt?: number;
   progress?: string | null;
   status?: string | null;
@@ -116,4 +119,6 @@ export type PeriodRecordsBundle = {
   /** Toute dernière activité de la période (progrès ou changement de statut). */
   lastActivity: { media: RecordMediaRef; dateLabel: string } | null;
   fastestCompleted: { media: RecordMediaRef; days: number } | null;
+  biggestOpinionGap: { media: RecordMediaRef; gap: number; userScore: number; averageScore: number } | null;
+  mostPromisingPlanned: { media: RecordMediaRef; averageScore: number } | null;
 };
