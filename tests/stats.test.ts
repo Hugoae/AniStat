@@ -127,4 +127,79 @@ describe("stats", () => {
     const daily = computeDailyDeltasInMonth(acts, 2025, 1, "manga");
     expect(daily[1]).toBe(1);
   });
+
+  it("manga progress slash uses current chapter not total (61 / 102)", () => {
+    const tsMay3 = Math.floor(new Date(2026, 4, 3, 14, 0, 0).getTime() / 1000);
+    const acts = [
+      {
+        id: 10,
+        createdAt: tsMay3,
+        status: "CURRENT",
+        progress: "61 / 102",
+        media: { id: 501, chapters: 102 },
+      },
+    ];
+    expect(computePeriodDeltaFromActivities(acts, 2026, 5, "manga")).toBe(61);
+    const daily = computeDailyDeltasInMonth(acts, 2026, 5, "manga");
+    expect(daily[3]).toBe(61);
+  });
+
+  it("manga progress slash chain sums daily deltas without inflating totals", () => {
+    const t1 = Math.floor(new Date(2026, 4, 2, 10, 0, 0).getTime() / 1000);
+    const t2 = Math.floor(new Date(2026, 4, 3, 11, 0, 0).getTime() / 1000);
+    const acts = [
+      {
+        id: 11,
+        createdAt: t1,
+        status: "CURRENT",
+        progress: "10 / 100",
+        media: { id: 502, chapters: 100 },
+      },
+      {
+        id: 12,
+        createdAt: t2,
+        status: "CURRENT",
+        progress: "61 / 102",
+        media: { id: 502, chapters: 102 },
+      },
+    ];
+    expect(computePeriodDeltaFromActivities(acts, 2026, 5, "manga")).toBe(61);
+    const daily = computeDailyDeltasInMonth(acts, 2026, 5, "manga");
+    expect(daily[2]).toBe(10);
+    expect(daily[3]).toBe(51);
+  });
+
+  it("overlapping manga progress ranges only count newly reached chapters", () => {
+    const tMay2 = Math.floor(new Date(2026, 4, 2, 19, 34, 8).getTime() / 1000);
+    const tMay3a = Math.floor(new Date(2026, 4, 3, 22, 30, 5).getTime() / 1000);
+    const tMay3b = Math.floor(new Date(2026, 4, 3, 23, 34, 37).getTime() / 1000);
+    const acts = [
+      {
+        id: 20,
+        createdAt: tMay2,
+        status: "read chapter",
+        progress: "424 - 479",
+        media: { id: 30012, chapters: 706 },
+      },
+      {
+        id: 21,
+        createdAt: tMay3a,
+        status: "read chapter",
+        progress: "480 - 520",
+        media: { id: 30012, chapters: 706 },
+      },
+      {
+        id: 22,
+        createdAt: tMay3b,
+        status: "read chapter",
+        progress: "480 - 540",
+        media: { id: 30012, chapters: 706 },
+      },
+    ];
+
+    const daily = computeDailyDeltasInMonth(acts, 2026, 5, "manga");
+    expect(daily[2]).toBe(56);
+    expect(daily[3]).toBe(61);
+    expect(computePeriodDeltaFromActivities(acts, 2026, 5, "manga")).toBe(117);
+  });
 });

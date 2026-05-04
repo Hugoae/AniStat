@@ -26,11 +26,21 @@ import { MONTHS } from '../config/constants';
 
   const getProgressNumber = (progressRaw) => {
     if (progressRaw === null || progressRaw === undefined) return 0;
-    const nums = String(progressRaw).match(/\d+/g);
+    if (typeof progressRaw === "number" && Number.isFinite(progressRaw)) {
+      return Math.max(0, Math.trunc(progressRaw));
+    }
+    const str = String(progressRaw).trim();
+    /* AniList : « chapitre courant / total » — ne pas prendre Math.max de tous les chiffres (sinon 102 au lieu de 61). */
+    const slashCurrent = str.match(/^(\d+)\s*\/\s*\d+/);
+    if (slashCurrent) {
+      const n = Number(slashCurrent[1]);
+      return Number.isFinite(n) ? n : 0;
+    }
+    const nums = str.match(/\d+/g);
     if (!nums || nums.length === 0) return 0;
     return Math.max(...nums.map((n) => Number(n) || 0));
   };
-  const getProgressRangeDelta = (progressRaw) => {
+  const getProgressRangeDelta = (progressRaw, prev = 0) => {
     const raw = String(progressRaw ?? "").trim();
     if (!raw) return null;
     const m = raw.match(/(\d+)\s*-\s*(\d+)/);
@@ -38,7 +48,11 @@ import { MONTHS } from '../config/constants';
     const a = Number(m[1]);
     const b = Number(m[2]);
     if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-    return Math.max(0, Math.abs(b - a) + 1);
+    const start = Math.min(a, b);
+    const end = Math.max(a, b);
+    const previous = Number.isFinite(Number(prev)) ? Math.max(0, Number(prev)) : 0;
+    const firstUnread = Math.max(start, previous + 1);
+    return Math.max(0, end - firstUnread + 1);
   };
 
   const toFiniteNumber = (v, fallback = 0) => {
@@ -295,7 +309,7 @@ import { MONTHS } from '../config/constants';
       if (!mediaId) return;
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
       const current = activityEffectiveProgress(a, prev, kind);
-      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
       const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
       if (isTsInPeriod(a.createdAt || 0, year, month)) total += delta;
       lastByMedia.set(mediaId, current);
@@ -315,7 +329,7 @@ import { MONTHS } from '../config/constants';
       if (!mediaId) return;
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
       const current = activityEffectiveProgress(a, prev, "anime");
-      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
       const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
       if (isTsInPeriod(a.createdAt || 0, year, month)) {
         episodes += delta;
@@ -338,7 +352,7 @@ import { MONTHS } from '../config/constants';
       if (!mediaId) return;
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
       const current = activityEffectiveProgress(a, prev, "anime");
-      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
       const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
       if (isTsInPeriod(a.createdAt || 0, year, month)) {
         const fmt = a?.media?.format || "OTHER";
@@ -363,7 +377,7 @@ import { MONTHS } from '../config/constants';
       if (!mediaId) return;
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
       const current = activityEffectiveProgress(a, prev, "anime");
-      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
       const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
       if (isTsInPeriod(a.createdAt || 0, year, month)) {
         const raw = String(a?.media?.countryOfOrigin || "").trim();
@@ -389,7 +403,7 @@ import { MONTHS } from '../config/constants';
       if (!mediaId) return;
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
       const current = activityEffectiveProgress(a, prev, "anime");
-      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
       const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
       if (isTsInPeriod(a.createdAt || 0, year, month)) {
         const fmt = a?.media?.format || "OTHER";
@@ -415,7 +429,7 @@ function computePeriodReadChaptersByFormat(activities, year, month) {
     if (!mediaId) return;
     const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
     const current = activityEffectiveProgress(a, prev, "manga");
-    const explicitDelta = getProgressRangeDelta(a?.progress);
+    const explicitDelta = getProgressRangeDelta(a?.progress, prev);
     const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
     if (isTsInPeriod(a.createdAt || 0, year, month)) {
       const fmt = a?.media?.format || "OTHER";
@@ -440,7 +454,7 @@ function computePeriodReadChaptersByCountry(activities, year, month) {
     if (!mediaId) return;
     const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
     const current = activityEffectiveProgress(a, prev, "manga");
-    const explicitDelta = getProgressRangeDelta(a?.progress);
+    const explicitDelta = getProgressRangeDelta(a?.progress, prev);
     const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
     if (isTsInPeriod(a.createdAt || 0, year, month)) {
       const raw = String(a?.media?.countryOfOrigin || "").trim();
@@ -534,7 +548,7 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
     if (!mediaId) return;
     const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
     const current = activityEffectiveProgress(a, prev, "anime");
-    const explicitDelta = getProgressRangeDelta(a?.progress);
+    const explicitDelta = getProgressRangeDelta(a?.progress, prev);
     const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
     if (isTsInPeriod(a.createdAt || 0, year, month)) {
       const raw = String(a?.media?.countryOfOrigin || "").trim();
@@ -560,7 +574,7 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
       if (!mediaId || !a.createdAt) return;
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
       const current = activityEffectiveProgress(a, prev, kind);
-      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
       const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
       const d = new Date(a.createdAt * 1000);
       if (d.getFullYear() === year) {
@@ -591,7 +605,7 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
       const d = new Date(a.createdAt * 1000);
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
       const current = activityEffectiveProgress(a, prev, kind);
-      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
       const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
       lastByMedia.set(mediaId, current);
       if (delta > 0 && d.getFullYear() === year) {
@@ -616,7 +630,7 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
       const d = new Date(a.createdAt * 1000);
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
       const current = activityEffectiveProgress(a, prev, kind);
-      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
       const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
       lastByMedia.set(mediaId, current);
       if (d.getFullYear() === year && d.getMonth() + 1 === month) {
@@ -638,7 +652,7 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
       if (!mediaId) return;
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
       const current = activityEffectiveProgress(a, prev, kind);
-      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
       const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
       if (delta > 0 && isTsInPeriod(a.createdAt || 0, year, month)) {
         mediaIds.add(mediaId);
@@ -719,7 +733,7 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
       if (!mediaId) return;
       const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
       const current = activityEffectiveProgress(a, prev, kind);
-      const explicitDelta = getProgressRangeDelta(a?.progress);
+      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
       const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
       if (delta > 0 && isTsInPeriod(a.createdAt || 0, year, month)) {
         const key = dayKeyFromTimestamp(a.createdAt);

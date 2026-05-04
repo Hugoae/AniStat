@@ -120,8 +120,8 @@ function endBackgroundRefresh(
  *  2. **Fetch du profil** — requête `USER_QUERY` puis pagination anime/manga
  *     (`MEDIA_LIST_QUERY`, `MEDIA_LIST_QUERY_MANGA`). Exposé via
  *     `{ user, allAnime, allManga }`.
- *  3. **Primary cache Supabase** — lecture immédiate depuis la base, puis
- *     refresh AniList silencieux pour mettre à jour la source de vérité.
+ *  3. **Primary cache Supabase** — lecture immédiate depuis la base ; aucun
+ *     refresh AniList automatique (uniquement via le bouton d'actualisation).
  *  4. **Mode invité** — si Supabase ne connaît pas encore le profil, AniList
  *     reste le fallback bloquant initial, puis le résultat est archivé.
  *  5. **Dédoublonnage des requêtes** — `profileInFlightRef` évite deux fetchs
@@ -304,7 +304,6 @@ export function useProfileLoader(
             setPendingProfileName(null);
             setInputVal("");
             lastForegroundProfileKeyRef.current = profileKey;
-            void fetchData(name, { forceNetwork: true, background: true });
             return;
           }
         } catch (err: unknown) {

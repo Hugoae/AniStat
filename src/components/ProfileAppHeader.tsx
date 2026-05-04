@@ -220,18 +220,17 @@ export function ProfileAppHeader({
                 </div>
               ) : null}
               {syncStatusLabel ? (
-                <div className={`header-sync-row${syncRefreshing ? " header-sync-row--refreshing" : ""}`}>
+                <div className="header-sync-row">
                   <span className="header-sync-badge">
-                    {syncRefreshing ? <span className="spinner spinner--sm" aria-hidden /> : null}
-                    <span>{syncRefreshing ? "Mise à jour en fond…" : syncStatusLabel}</span>
+                    <span>{syncStatusLabel}</span>
                   </span>
                   <button
                     type="button"
-                    className="header-sync-refresh-btn"
+                    className={`header-sync-refresh-btn${syncRefreshing ? " header-sync-refresh-btn--spinning" : ""}`}
                     onClick={onRefreshProfile}
                     disabled={syncRefreshing}
-                    aria-label="Rafraîchir les données AniList"
-                    title="Rafraîchir les données AniList"
+                    aria-label="Actualiser depuis AniList (delta sync)"
+                    title="Actualiser depuis AniList (delta sync)"
                   >
                     <svg
                       width="14"

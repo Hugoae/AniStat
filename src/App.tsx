@@ -127,18 +127,18 @@ function entryProgressTotal(entry: AniListEntry, kind: "anime" | "manga"): numbe
   return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
 }
 
-function formatSyncRelativeTime(iso: string | null): string | null {
+function formatSyncAbsoluteDate(iso: string | null): string | null {
   if (!iso) return null;
-  const ts = new Date(iso).getTime();
-  if (!Number.isFinite(ts)) return null;
-  const diffMs = Math.max(0, Date.now() - ts);
-  const minutes = Math.floor(diffMs / 60_000);
-  if (minutes < 1) return "Synchronisé à l'instant";
-  if (minutes < 60) return `Synchronisé il y a ${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `Synchronisé il y a ${hours} h`;
-  const days = Math.floor(hours / 24);
-  return `Synchronisé il y a ${days} j`;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const f = new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `Données du ${f.format(d)}`;
 }
 
 /**
@@ -321,7 +321,6 @@ function App() {
     hashTick,
     loading,
     error,
-    setError,
     apiDisabled,
     user,
     loaded,
@@ -459,7 +458,7 @@ function App() {
   }, [rateLimitState]);
   const showApiBadge = IS_DEV_LOCAL || (rateLimitState?.blockedForMs || 0) > 0;
   const syncStatusLabel = useMemo(
-    () => formatSyncRelativeTime(lastSupabaseSyncAt),
+    () => formatSyncAbsoluteDate(lastSupabaseSyncAt),
     [lastSupabaseSyncAt]
   );
 
@@ -581,7 +580,6 @@ function App() {
     user: activityUserForLoader,
     year,
     month,
-    years,
     animeActivityCache,
     mangaActivityCache,
     setAnimeActivityCache,
@@ -591,7 +589,6 @@ function App() {
     setLoadingActivities,
     setActivityLoadingMessage,
     setActivityWarning,
-    setError,
     setResource,
     metricInc,
     refs: activityLoaderRefs,

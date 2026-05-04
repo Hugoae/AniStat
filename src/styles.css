@@ -3910,10 +3910,13 @@ a:focus-visible,
   font-weight: 700;
   letter-spacing: 0.02em;
 }
-.header-sync-row--refreshing .header-sync-badge {
-  color: var(--color-accent);
-  border-color: rgba(61, 180, 242, 0.34);
-  background: rgba(61, 180, 242, 0.08);
+@keyframes header-sync-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.header-sync-refresh-btn--spinning svg {
+  animation: header-sync-refresh-spin 1s linear infinite;
 }
 .header-sync-refresh-btn {
   width: 26px;

@@ -73,7 +73,7 @@ export async function getUserAndLists(username: string): Promise<SupabaseProfile
   const mangaSnapshot = snapshots?.find((row) => row.media_type === "MANGA");
   if (!animeSnapshot || !mangaSnapshot) return null;
   const syncedAt =
-    [animeSnapshot.fetched_at, mangaSnapshot.fetched_at, userRow.updated_at]
+    [animeSnapshot.updated_at, mangaSnapshot.updated_at, userRow.updated_at]
       .filter(Boolean)
       .sort()
       .at(-1) ?? null;
