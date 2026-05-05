@@ -5,6 +5,7 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  Legend,
   Area,
   Line,
   LabelList,
@@ -18,6 +19,53 @@ type RechartsTooltipProps = TooltipProps<
   number | string | Array<number | string>,
   number | string
 >;
+
+type OverviewCompareSelectOption = { value: string; label: string };
+
+function OverviewChartLegend({
+  legendCurrent,
+  compareValue,
+  compareOptions,
+  onCompareChange,
+  compareEmptyLabel,
+}: {
+  legendCurrent: string;
+  compareValue: string;
+  compareOptions: OverviewCompareSelectOption[];
+  onCompareChange: (value: string) => void;
+  compareEmptyLabel?: string | null;
+}) {
+  return (
+    <div className="overview-chart-legend flex flex-row items-center gap-4">
+      <div className="overview-chart-legend__row">
+        <span className="period-compare-legend__swatch period-compare-legend__swatch--current" />
+        <span className="period-compare-legend__label period-compare-legend__label--current">{legendCurrent}</span>
+      </div>
+      <div className="overview-chart-legend__row">
+        <span className="period-compare-legend__swatch period-compare-legend__swatch--compare" />
+        <span className="period-compare-legend__vs">vs</span>
+        <label className="overview-chart-legend__select-wrap">
+          <span className="visually-hidden">Période de comparaison</span>
+          <select
+            className="overview-chart-legend__select bg-slate-800 text-slate-200 border border-slate-700/60 outline-none cursor-pointer"
+            value={compareValue}
+            disabled={compareOptions.length === 0}
+            onChange={(e) => onCompareChange(e.target.value)}
+          >
+            {compareOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {compareEmptyLabel ? (
+          <span className="overview-chart-legend__empty-note">{compareEmptyLabel}</span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 /**
  * Adapte le payload générique de Recharts vers le shape plus strict attendu
@@ -52,16 +100,31 @@ export function OverviewActivityLineChart({
   month,
   year,
   fillGradientId,
+  compareLineDimmed,
+  legendCurrent,
+  compareValue,
+  compareOptions,
+  onCompareChange,
+  compareEmptyLabel,
 }: {
   data: unknown[];
   month: number;
   year: number;
   fillGradientId: string;
+  /** Réduit l’opacité de la courbe de comparaison (ex. chargement Supabase). */
+  compareLineDimmed?: boolean;
+  legendCurrent?: string;
+  compareValue?: string;
+  compareOptions?: OverviewCompareSelectOption[];
+  onCompareChange?: (value: string) => void;
+  compareEmptyLabel?: string | null;
 }) {
   const showCompare = year !== 0;
+  const compareStrokeOpacity = compareLineDimmed ? 0.18 : 0.42;
+  const legendOptions = compareOptions ?? [];
   return (
     <ResponsiveContainer width="100%" height={240}>
-      <LineChart data={data} margin={{ top: 24, right: 34, left: 8, bottom: 6 }}>
+      <LineChart data={data} margin={{ top: 8, right: 34, left: 8, bottom: 6 }}>
         <defs>
           <linearGradient id={fillGradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={C.accent} stopOpacity={0.5} />
@@ -91,6 +154,22 @@ export function OverviewActivityLineChart({
           content={(props) => renderCompareTooltip(props, year, month)}
           cursor={{ stroke: "rgba(139, 160, 178, 0.2)", strokeWidth: 1 }}
         />
+        {showCompare && legendCurrent && compareValue && onCompareChange ? (
+          <Legend
+            verticalAlign="top"
+            align="left"
+            height={66}
+            content={() => (
+              <OverviewChartLegend
+                legendCurrent={legendCurrent}
+                compareValue={compareValue}
+                compareOptions={legendOptions}
+                onCompareChange={onCompareChange}
+                compareEmptyLabel={compareEmptyLabel}
+              />
+            )}
+          />
+        ) : null}
         <Area type="monotone" dataKey="current" stroke="none" fill={`url(#${fillGradientId})`} isAnimationActive={false} />
         <Line
           type="monotone"
@@ -121,7 +200,7 @@ export function OverviewActivityLineChart({
             type="monotone"
             dataKey="compare"
             stroke="#4a5d6e"
-            strokeOpacity={0.42}
+            strokeOpacity={compareStrokeOpacity}
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4, fill: "rgba(74, 93, 110, 0.68)" }}

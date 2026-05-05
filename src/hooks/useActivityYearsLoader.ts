@@ -157,6 +157,107 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     mediaBitsByIdRef,
   } = refs;
   const supabaseActivityHydrationRef = useRef<Set<string>>(new Set());
+  const animeActivityCacheRef = useRef(animeActivityCache);
+  const mangaActivityCacheRef = useRef(mangaActivityCache);
+  useEffect(() => {
+    animeActivityCacheRef.current = animeActivityCache;
+  }, [animeActivityCache]);
+  useEffect(() => {
+    mangaActivityCacheRef.current = mangaActivityCache;
+  }, [mangaActivityCache]);
+
+  /**
+   * Hydrate uniquement depuis Supabase (`getActivities`), sans AniList.
+   * Utilisé par la vue Overview quand l’utilisateur choisit une autre période de comparaison.
+   */
+  const hydrateMissingYearsFromSupabase = useCallback(
+    async (rawYears: number[]) => {
+      const ownerId = user?.id;
+      if (!loaded || !ownerId) return;
+      const uniqueYears = [...new Set(rawYears.filter(isFetchableActivityYear))];
+      const hydrationSet = supabaseActivityHydrationRef.current;
+      const pending: Array<{ type: ActivitySnapshotType; year: number }> = [];
+
+      for (const y of uniqueYears) {
+        const aMissing = animeActivityCacheRef.current[y] === undefined;
+        const mMissing = mangaActivityCacheRef.current[y] === undefined;
+        if (aMissing) {
+          const key = supabaseActivityKey(ownerId, "ANIME_LIST", y);
+          if (!hydrationSet.has(key)) {
+            hydrationSet.add(key);
+            pending.push({ type: "ANIME_LIST", year: y });
+          }
+        }
+        if (mMissing) {
+          const key = supabaseActivityKey(ownerId, "MANGA_LIST", y);
+          if (!hydrationSet.has(key)) {
+            hydrationSet.add(key);
+            pending.push({ type: "MANGA_LIST", year: y });
+          }
+        }
+      }
+
+      if (pending.length === 0) return;
+
+      const resultByKey = new Map<string, ActivityItem[]>();
+      await Promise.allSettled(
+        pending.map(async (target) => {
+          const dedupeKey = `${target.type}:${target.year}`;
+          try {
+            const rowsRaw = await getActivities(ownerId, target.type, target.year);
+            if (latestUserIdRef.current !== ownerId) return;
+            const rows = enrichActivitiesWithMediaBits(rowsRaw, mediaBitsByIdRef.current);
+            resultByKey.set(dedupeKey, rows);
+          } catch (err: unknown) {
+            const e = err as { message?: string };
+            devLog(
+              "activity supabase hydrate failed",
+              target.type,
+              activityYearLabel(target.year),
+              e?.message || err
+            );
+            resultByKey.set(dedupeKey, []);
+          }
+        })
+      );
+
+      if (latestUserIdRef.current !== ownerId) {
+        for (const t of pending) {
+          hydrationSet.delete(supabaseActivityKey(ownerId, t.type, t.year));
+        }
+        return;
+      }
+
+      const hydratedAnime = new Map<number, ActivityItem[]>();
+      const hydratedManga = new Map<number, ActivityItem[]>();
+      for (const t of pending) {
+        const k = `${t.type}:${t.year}`;
+        const rows = resultByKey.get(k) ?? [];
+        if (t.type === "ANIME_LIST") hydratedAnime.set(t.year, rows);
+        else hydratedManga.set(t.year, rows);
+      }
+
+      setAnimeActivityCache((prev) => {
+        const next = { ...prev };
+        for (const [yy, rows] of hydratedAnime) {
+          if (next[yy] === undefined) next[yy] = rows;
+        }
+        return next;
+      });
+      setMangaActivityCache((prev) => {
+        const next = { ...prev };
+        for (const [yy, rows] of hydratedManga) {
+          if (next[yy] === undefined) next[yy] = rows;
+        }
+        return next;
+      });
+
+      for (const t of pending) {
+        hydrationSet.delete(supabaseActivityKey(ownerId, t.type, t.year));
+      }
+    },
+    [loaded, user?.id, latestUserIdRef, mediaBitsByIdRef, setAnimeActivityCache, setMangaActivityCache]
+  );
 
   const prefetchYearActivities = useCallback(
     async (targetYear: number, ownerId: number, options: { force?: boolean } = {}) => {
@@ -292,17 +393,17 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
 
   const handleRetryComparisonNow = useCallback(() => {
     if (year === ALL_TIME_YEAR) return;
-    const compareYear = month === 0 || month === 1 ? year - 1 : null;
+    const compareYear = year > 1970 ? year - 1 : null;
     if (!compareYear || compareYear < 1970) return;
     retryYearNow(compareYear);
-  }, [month, retryYearNow, year]);
+  }, [retryYearNow, year]);
 
   useEffect(() => {
     if (!loaded || !user?.id) return undefined;
     const ownerId = user.id;
     const hydrationSet = supabaseActivityHydrationRef.current;
     const yearsNeeded = new Set([year]);
-    if (year !== ALL_TIME_YEAR && (month === 0 || month === 1)) yearsNeeded.add(year - 1);
+    if (year !== ALL_TIME_YEAR && year > 1970) yearsNeeded.add(year - 1);
     const scopeYears = [...yearsNeeded].filter(isFetchableActivityYear);
     const targets: Array<{ type: ActivitySnapshotType; year: number }> = [];
 
@@ -407,7 +508,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     const ownerId = user.id;
 
     const yearsNeeded = new Set([year]);
-    if (year !== ALL_TIME_YEAR && (month === 0 || month === 1)) yearsNeeded.add(year - 1);
+    if (year !== ALL_TIME_YEAR && year > 1970) yearsNeeded.add(year - 1);
     const scopeYears = [...yearsNeeded].filter(isFetchableActivityYear);
 
     scopeYears.forEach((y) => {
@@ -432,12 +533,20 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     }
 
     setLoadingActivities(false);
+    const compareYear = year !== ALL_TIME_YEAR && year > 1970 ? year - 1 : null;
+    if (
+      compareYear != null &&
+      compareYear >= 1970 &&
+      (animeActivityCache[compareYear] === undefined || mangaActivityCache[compareYear] === undefined)
+    ) {
+      setActivityWarning(`Comparaison ${compareYear} indisponible : données N-1 non synchronisées.`);
+      return;
+    }
     setActivityWarning(null);
   }, [
     loaded,
     user?.id,
     year,
-    month,
     animeActivityCache,
     mangaActivityCache,
     setResource,
@@ -459,18 +568,18 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     if (!user?.id || !loaded) return;
     const ownerId = user.id;
     if (!isFetchableActivityYear(year)) return;
-    const compareY =
-      year !== ALL_TIME_YEAR && (month === 0 || month === 1) ? year - 1 : null;
+    const compareY = year !== ALL_TIME_YEAR && year > 1970 ? year - 1 : null;
     if (compareY != null && compareY >= 1970) {
       await prefetchYearActivities(compareY, ownerId, { force: true });
     }
     await prefetchYearActivities(year, ownerId, { force: true });
-  }, [loaded, month, prefetchYearActivities, user?.id, year]);
+  }, [loaded, prefetchYearActivities, user?.id, year]);
 
   return {
     prefetchYearActivities,
     retryYearNow,
     handleRetryComparisonNow,
     refreshCurrentActivities,
+    hydrateMissingYearsFromSupabase,
   };
 }

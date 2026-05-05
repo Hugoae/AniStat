@@ -67,6 +67,36 @@ export type DevPanelProps = {
   animeEntriesCount: number;
   mangaEntriesCount: number;
   fetchLog: readonly FetchLogEntry[];
+  deltaAudit?: {
+    anime: {
+      totalDelta: number;
+      rows: Array<{
+        activityId: number | null;
+        mediaId: number;
+        createdAt: number;
+        progressRaw: unknown;
+        status: unknown;
+        prev: number;
+        current: number;
+        delta: number;
+        rule: string;
+      }>;
+    };
+    manga: {
+      totalDelta: number;
+      rows: Array<{
+        activityId: number | null;
+        mediaId: number;
+        createdAt: number;
+        progressRaw: unknown;
+        status: unknown;
+        prev: number;
+        current: number;
+        delta: number;
+        rule: string;
+      }>;
+    };
+  } | null;
   onResetMetrics: () => void;
   onResetFetchLog: () => void;
 };
@@ -110,6 +140,7 @@ export function DevPanel({
   animeEntriesCount,
   mangaEntriesCount,
   fetchLog,
+  deltaAudit = null,
   onResetMetrics,
   onResetFetchLog,
 }: DevPanelProps) {
@@ -690,6 +721,54 @@ export function DevPanel({
           </p>
         )}
       </section>
+
+      {/* Section 6 : audit delta (dev-only) */}
+      {deltaAudit ? (
+        <section className="dev-panel__section">
+          <h4 className="dev-panel__section-title">Audit des deltas (période active)</h4>
+          <div className="dev-panel__summary">
+            <span>
+              Anime <strong>{deltaAudit.anime.totalDelta}</strong> ({deltaAudit.anime.rows.length} activités)
+            </span>
+            <span>
+              Manga <strong>{deltaAudit.manga.totalDelta}</strong> ({deltaAudit.manga.rows.length} activités)
+            </span>
+          </div>
+          <div className="dev-panel__tablewrap" role="region" aria-label="Audit des deltas manga">
+            <table className="dev-panel__table">
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Heure</th>
+                  <th>Activity</th>
+                  <th>Media</th>
+                  <th>Progress</th>
+                  <th>Prev→Cur</th>
+                  <th>Delta</th>
+                  <th>Règle</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...deltaAudit.anime.rows.map((r) => ({ ...r, kind: "anime" })), ...deltaAudit.manga.rows.map((r) => ({ ...r, kind: "manga" }))]
+                  .sort((a, b) => b.createdAt - a.createdAt)
+                  .slice(0, 120)
+                  .map((row) => (
+                    <tr key={`${row.kind}:${row.activityId ?? "na"}:${row.createdAt}:${row.mediaId}`}>
+                      <td>{row.kind}</td>
+                      <td>{formatTimeOfDay(row.createdAt * 1000)}</td>
+                      <td>{row.activityId ?? "—"}</td>
+                      <td>{row.mediaId}</td>
+                      <td>{String(row.progressRaw ?? "—")}</td>
+                      <td>{row.prev}→{row.current}</td>
+                      <td><span className="dev-panel__value">{row.delta}</span></td>
+                      <td>{row.rule}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

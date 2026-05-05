@@ -67,6 +67,37 @@ type DebugMetricsView = {
   profileFetchCount?: number;
 };
 
+type DeltaAuditPayload = {
+  anime: {
+    totalDelta: number;
+    rows: Array<{
+      activityId: number | null;
+      mediaId: number;
+      createdAt: number;
+      progressRaw: unknown;
+      status: unknown;
+      prev: number;
+      current: number;
+      delta: number;
+      rule: string;
+    }>;
+  };
+  manga: {
+    totalDelta: number;
+    rows: Array<{
+      activityId: number | null;
+      mediaId: number;
+      createdAt: number;
+      progressRaw: unknown;
+      status: unknown;
+      prev: number;
+      current: number;
+      delta: number;
+      rule: string;
+    }>;
+  };
+} | null;
+
 export type ProfileTabDef = { key: string; label: string };
 
 export type ProfileViewMainProps = {
@@ -97,6 +128,7 @@ export type ProfileViewMainProps = {
   activityEtaLabel: string | null;
   rateInfoLabel: string | null;
   activityWarning: string | null;
+  deltaAudit?: DeltaAuditPayload;
   handleRetryComparisonNow: () => void;
   retryableYears: number[];
   retryYearNow: (yy: number) => void;
@@ -140,6 +172,7 @@ export function ProfileViewMain({
   activityEtaLabel,
   rateInfoLabel,
   activityWarning,
+  deltaAudit = null,
   handleRetryComparisonNow,
   retryableYears,
   retryYearNow,
@@ -274,6 +307,7 @@ export function ProfileViewMain({
           animeEntriesCount={animeEntriesCount}
           mangaEntriesCount={mangaEntriesCount}
           fetchLog={fetchLog}
+          deltaAudit={deltaAudit}
           onResetMetrics={() => {
             const reset = window.AniListStatDebug?.resetMetrics;
             if (typeof reset === "function") reset();

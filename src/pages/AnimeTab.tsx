@@ -19,7 +19,7 @@ import {
   CartesianGrid,
   LabelList,
 } from "recharts";
-import { C, PIE_COLORS, STATUS_LABELS, STATUS_COLORS } from "../config/constants";
+import { C, STATUS_LABELS, STATUS_COLORS } from "../config/constants";
 import {
   StatCard,
   ChartCard,
@@ -33,6 +33,7 @@ import {
   ListTabSectionNav,
 } from "../components/AppUi";
 import { StatLabelHint } from "../components/appUi/StatPrimitives";
+import { buildColorMapFromOrderedKeys, getColorForLabel } from "../lib/chartColors";
 import { RecordCard } from "../components/appUi/RecordCard";
 import { RecordsCarouselSection } from "../components/appUi/RecordsCarouselSection";
 import { CollapsibleChartBlock } from "../components/appUi/CollapsibleChartBlock";
@@ -312,17 +313,29 @@ export function AnimeTab({
     (minutesRaw: number) => fmtMin(Math.max(0, Math.round(Number(minutesRaw) || 0))),
     [fmtMin]
   );
+  const formatColorMap = useMemo(
+    () => buildColorMapFromOrderedKeys(fmtData.map((row) => String(row.name))),
+    [fmtData]
+  );
+  const countryColorMap = useMemo(
+    () => buildColorMapFromOrderedKeys(animeCountryEntriesOrdered.map(([code]) => String(code))),
+    [animeCountryEntriesOrdered]
+  );
+  const animeSeasonColorMap = useMemo(
+    () => buildColorMapFromOrderedKeys(animeSeasonHistogram.map((row) => row.key)),
+    [animeSeasonHistogram]
+  );
 
   const formatPieSlicesByTitles = useMemo(
     () =>
-      fmtData.map((row, i) => ({
+      fmtData.map((row) => ({
         key: String(row.name),
         label: mediaFormatShortLabel(row.name) || String(row.name),
         value: row.value,
-        fill: PIE_COLORS[i % PIE_COLORS.length],
+        fill: getColorForLabel(String(row.name), formatColorMap),
         extraInfo: formatEpisodesLabel(formatEpisodesByName.get(String(row.name)) || 0),
       })),
-    [fmtData, formatEpisodesByName, formatEpisodesLabel]
+    [fmtData, formatColorMap, formatEpisodesByName, formatEpisodesLabel]
   );
   const formatPieSlicesByEpisodes = useMemo(() => {
     const minutesByName = new Map(
@@ -330,30 +343,30 @@ export function AnimeTab({
     );
     return animeEpisodesByFormatData
       .filter((row) => Number(row.episodes) > 0)
-      .map((row, i) => ({
+      .map((row) => ({
         key: String(row.name),
         label: mediaFormatShortLabel(row.name) || String(row.name),
         value: Number(row.episodes) || 0,
-        fill: PIE_COLORS[i % PIE_COLORS.length],
+        fill: getColorForLabel(String(row.name), formatColorMap),
         extraInfo: formatTimeLabel(minutesByName.get(String(row.name)) || 0),
       }));
-  }, [animeEpisodesByFormatData, animeMinutesByFormatData, formatTimeLabel]);
+  }, [animeEpisodesByFormatData, animeMinutesByFormatData, formatColorMap, formatTimeLabel]);
 
   const countryPieSlicesByTitles = useMemo(
     () =>
-      animeCountryEntriesOrdered.map(([code, c], i) => {
+      animeCountryEntriesOrdered.map(([code, c]) => {
         const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code);
         const label = meta ? meta.label : "Inconnu";
         return {
           key: code,
           label,
           value: c,
-          fill: PIE_COLORS[i % PIE_COLORS.length],
+          fill: getColorForLabel(code, countryColorMap),
           flagCode: meta?.code,
           extraInfo: formatEpisodesLabel(countryEpisodesByCode.get(code) || 0),
         };
       }),
-    [animeCountryEntriesOrdered, countryEpisodesByCode, formatEpisodesLabel]
+    [animeCountryEntriesOrdered, countryColorMap, countryEpisodesByCode, formatEpisodesLabel]
   );
   const countryPieSlicesByEpisodes = useMemo(() => {
     const minutesByCode = new Map(
@@ -361,7 +374,7 @@ export function AnimeTab({
     );
     return animeEpisodesByCountryData
       .filter((row) => Number(row.episodes) > 0)
-      .map((row, i) => {
+      .map((row) => {
         const code = String(row.code);
         const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code);
         const label = meta ? meta.label : "Inconnu";
@@ -369,19 +382,19 @@ export function AnimeTab({
           key: code,
           label,
           value: Number(row.episodes) || 0,
-          fill: PIE_COLORS[i % PIE_COLORS.length],
+          fill: getColorForLabel(code, countryColorMap),
           flagCode: meta?.code,
           extraInfo: formatTimeLabel(minutesByCode.get(code) || 0),
         };
       });
-  }, [animeEpisodesByCountryData, animeMinutesByCountryData, formatTimeLabel]);
+  }, [animeEpisodesByCountryData, animeMinutesByCountryData, countryColorMap, formatTimeLabel]);
   const statusPieSlices = useMemo(
     () =>
-      animeStatusEntriesOrdered.map(([status, value], i) => ({
+      animeStatusEntriesOrdered.map(([status, value]) => ({
         key: status,
         label: STATUS_LABELS[status] || status,
         value,
-        fill: STATUS_COLORS[status] || PIE_COLORS[i % PIE_COLORS.length],
+        fill: STATUS_COLORS[status] || getColorForLabel(status),
         extraInfo: `${value} titre${value > 1 ? "s" : ""}`,
       })),
     [animeStatusEntriesOrdered]
@@ -1074,8 +1087,8 @@ export function AnimeTab({
                         <YAxis type="number" hide width={0} domain={[0, "auto"]} />
                         <Tooltip content={<CTooltip />} cursor={{ fill: "rgba(61, 180, 242, 0.07)" }} />
                         <Bar dataKey="count" name="Titres" radius={[8, 8, 0, 0]} maxBarSize={48}>
-                          {animeSeasonHistogram.map((row, i) => (
-                            <Cell key={row.key} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                          {animeSeasonHistogram.map((row) => (
+                            <Cell key={row.key} fill={getColorForLabel(row.key, animeSeasonColorMap)} />
                           ))}
                           <LabelList
                             dataKey="count"
@@ -1481,6 +1494,44 @@ function AnimeRecordsSection({ records }: { records: PeriodRecordsBundle }) {
         value={records.lastStarted.dateLabel}
         media={records.lastStarted.media}
         labelHint="Dernier anime commencé (date startedAt la plus récente) durant la période sélectionnée."
+      />
+    );
+  }
+  if (records.worksStartedInPeriod) {
+    const n = records.worksStartedInPeriod.count;
+    cards.push(
+      <RecordCard
+        key="works-started"
+        icon="stack"
+        label="Œuvres commencées"
+        value={`${n} œuvre${n > 1 ? "s" : ""}`}
+        mediaStack={records.worksStartedInPeriod.spotlight.map((r) => ({
+          id: r.id,
+          title: r.title,
+          coverImageUrl: r.coverImageUrl,
+          coverColor: r.coverColor,
+          anilistUrl: r.anilistUrl,
+        }))}
+        labelHint="Titres distincts dont la date de début sur la liste (startedAt) tombe dans la période sélectionnée. Vignettes : vos meilleures notes, sinon les meilleures moyennes AniList."
+      />
+    );
+  }
+  if (records.worksCompletedInPeriod) {
+    const n = records.worksCompletedInPeriod.count;
+    cards.push(
+      <RecordCard
+        key="works-completed"
+        icon="check"
+        label="Œuvres terminées"
+        value={`${n} œuvre${n > 1 ? "s" : ""}`}
+        mediaStack={records.worksCompletedInPeriod.spotlight.map((r) => ({
+          id: r.id,
+          title: r.title,
+          coverImageUrl: r.coverImageUrl,
+          coverColor: r.coverColor,
+          anilistUrl: r.anilistUrl,
+        }))}
+        labelHint="Titres passés en « terminé » avec une date de complétion (completedAt) dans la période sélectionnée. Vignettes : vos meilleures notes, sinon les meilleures moyennes AniList."
       />
     );
   }

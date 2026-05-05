@@ -32,12 +32,16 @@ import {
   findPeriodFirstActivity,
   findPeriodLastActivity,
   findPeriodFastestCompleted,
+  collectPeriodWorksStartedEntries,
+  collectPeriodWorksCompletedEntries,
+  pickSpotlightEntriesFromWorks,
   computeMonthlyDeltasFromActivities,
   computeDailyDeltasInMonth,
   computeDailyDeltasInYear,
   getMediaIdsWithProgressInPeriod,
   getComparisonPeriodMeta,
   mergeActivitiesForDelta,
+  buildPeriodDeltaAudit,
 } from './lib/stats';
 import {
   getRateLimitState,
@@ -74,6 +78,11 @@ import { useActivityYearsLoader } from "./hooks/useActivityYearsLoader";
 import { useActivityLoadingUi } from "./hooks/useActivityLoadingUi";
 import { useHeaderQuickPicks } from "./hooks/useHeaderQuickPicks";
 import { useOverviewTopScrollFades } from "./hooks/useOverviewTopScrollFades";
+import {
+  buildOverviewCompareOptions,
+  getOverviewEffectiveCompareOptionId,
+  resolveOverviewCompareSelection,
+} from "./lib/overviewCompare";
 import { ProfileAppHeader } from "./components/ProfileAppHeader";
 import { ProfileViewMain } from "./components/ProfileViewMain";
 import { BackToTopButton } from "./components/BackToTopButton";
@@ -102,6 +111,34 @@ function getFirstActivityYear(activities: ActivityItem[]): number {
     if (ts > 0 && ts < first) first = ts;
   });
   return Number.isFinite(first) ? new Date(first * 1000).getFullYear() : new Date().getFullYear();
+}
+
+function getAccountCreationYear(user: AniListUser | null, fallback = 2015): number {
+  const createdAt = Number(user?.createdAt || 0);
+  if (Number.isFinite(createdAt) && createdAt > 0) {
+    return new Date(createdAt * 1000).getFullYear();
+  }
+  return fallback;
+}
+
+function getFirstKnownUserYear(user: AniListUser | null, activities: ActivityItem[], entries: AniListEntry[]): number {
+  const candidates: number[] = [];
+  const accountYear = getAccountCreationYear(user, 0);
+  if (accountYear > 0) candidates.push(accountYear);
+
+  for (const activity of activities) {
+    const ts = Number(activity?.createdAt || 0);
+    if (ts > 0) candidates.push(new Date(ts * 1000).getFullYear());
+  }
+
+  for (const entry of entries) {
+    if (entry.updatedAt) candidates.push(new Date(entry.updatedAt * 1000).getFullYear());
+    if (entry.startedAt?.year != null) candidates.push(Number(entry.startedAt.year));
+    if (entry.completedAt?.year != null) candidates.push(Number(entry.completedAt.year));
+  }
+
+  const valid = candidates.filter((y) => Number.isFinite(y) && y >= 1970);
+  return valid.length > 0 ? Math.min(...valid) : 2015;
 }
 
 function mergeActivityRowsForPreview(rowsByYear: Array<ActivityItem[] | undefined>): ActivityItem[] {
@@ -575,7 +612,8 @@ function App() {
     ? { id: appUser.id, name: appUser.name }
     : null;
 
-  const { retryYearNow, handleRetryComparisonNow, refreshCurrentActivities } = useActivityYearsLoader({
+  const { retryYearNow, handleRetryComparisonNow, refreshCurrentActivities, hydrateMissingYearsFromSupabase } =
+    useActivityYearsLoader({
     loaded,
     user: activityUserForLoader,
     year,
@@ -747,6 +785,13 @@ function App() {
 
   const totalEp = totalEpAnimeTab;
   const totalCh = totalChMangaTab;
+  const deltaAudit = useMemo(() => {
+    if (!IS_DEV_LOCAL) return null;
+    return {
+      anime: buildPeriodDeltaAudit(mergedAnimeForTabTotals, year, month, "anime"),
+      manga: buildPeriodDeltaAudit(mergedMangaForTabTotals, year, month, "manga"),
+    };
+  }, [mergedAnimeForTabTotals, mergedMangaForTabTotals, month, year]);
   const totalVol = useMemo(
     () => mangaTabEntries.reduce((s, e) => s + (e.progressVolumes || 0), 0),
     [mangaTabEntries]
@@ -1041,6 +1086,14 @@ function App() {
       const fast = findPeriodFastestCompleted(entries, year, month);
       const opinionGap = findBiggestOpinionGapRecord(entries);
       const promisingPlanned = findMostPromisingPlannedRecord(planningEntries);
+      const startedWorks = collectPeriodWorksStartedEntries(entries, year, month);
+      const completedWorks = collectPeriodWorksCompletedEntries(entries, year, month);
+      const spotlightStarted = pickSpotlightEntriesFromWorks(startedWorks, 3)
+        .map((e) => buildRecordMediaRef(e))
+        .filter((m): m is NonNullable<typeof m> => Boolean(m));
+      const spotlightCompleted = pickSpotlightEntriesFromWorks(completedWorks, 3)
+        .map((e) => buildRecordMediaRef(e))
+        .filter((m): m is NonNullable<typeof m> => Boolean(m));
       const wrap = <T extends { entry: AniListEntry }>(r: T | null) => {
         if (!r) return null;
         const m = buildRecordMediaRef(r.entry);
@@ -1083,6 +1136,12 @@ function App() {
         fastestCompleted: fastM ? { media: fastM.media, days: fastM.days } : null,
         biggestOpinionGap: opinionGap,
         mostPromisingPlanned: promisingPlanned,
+        worksStartedInPeriod:
+          startedWorks.length > 0 ? { count: startedWorks.length, spotlight: spotlightStarted } : null,
+        worksCompletedInPeriod:
+          completedWorks.length > 0
+            ? { count: completedWorks.length, spotlight: spotlightCompleted }
+            : null,
       };
     },
     [
@@ -1602,11 +1661,77 @@ function App() {
     return Array.from({ length: currentYear - firstYear + 1 }, (_, i) => firstYear + i);
   }, [isAllTime, mergedAnimeForTotals, mergedMangaForTotals]);
 
-  /* ─── Séries temporelles pour les graphiques « courbes N vs N-1 » ─────
-   * Mois = 0 (toute l'année) : on affiche les 12 mois de l'année courante
-   * comparés aux 12 mois de l'année précédente.
-   * Mois > 0 : on descend au niveau quotidien (jour par jour) pour le
-   * mois sélectionné vs même mois de l'année précédente. */
+  const overviewCompareFirstAvailableYear = useMemo(
+    () =>
+      getFirstKnownUserYear(
+        appUser,
+        [...mergedAnimeForTotals, ...mergedMangaForTotals],
+        [...allAnime, ...allManga]
+      ),
+    [appUser, mergedAnimeForTotals, mergedMangaForTotals, allAnime, allManga]
+  );
+  const overviewCompareOptions = useMemo(
+    () => buildOverviewCompareOptions(year, month, overviewCompareFirstAvailableYear),
+    [year, month, overviewCompareFirstAvailableYear]
+  );
+  const [overviewCompareOptionId, setOverviewCompareOptionId] = useState<string | null>(null);
+  useEffect(() => {
+    setOverviewCompareOptionId(null);
+  }, [year, month]);
+
+  const resolvedOverviewCompare = useMemo(
+    () => resolveOverviewCompareSelection(year, month, overviewCompareOptionId, overviewCompareOptions),
+    [year, month, overviewCompareOptionId, overviewCompareOptions]
+  );
+  const overviewCompareSelectValue = useMemo(
+    () => getOverviewEffectiveCompareOptionId(year, month, overviewCompareOptionId, overviewCompareOptions),
+    [year, month, overviewCompareOptionId, overviewCompareOptions]
+  );
+  const overviewCompareSelectOptions = useMemo(
+    () => overviewCompareOptions.map((o) => ({ value: o.id, label: o.label })),
+    [overviewCompareOptions]
+  );
+
+  const [overviewCompareBusy, setOverviewCompareBusy] = useState(false);
+  useEffect(() => {
+    if (year === ALL_TIME_YEAR) {
+      setOverviewCompareBusy(false);
+      return;
+    }
+    const cy = resolvedOverviewCompare.compareY;
+    if (cy < 1970) {
+      setOverviewCompareBusy(false);
+      return;
+    }
+    const needsPair = cy > 1970;
+    const missing =
+      animeActivityCache[cy] === undefined ||
+      mangaActivityCache[cy] === undefined ||
+      (needsPair &&
+        (animeActivityCache[cy - 1] === undefined || mangaActivityCache[cy - 1] === undefined));
+    if (!missing) {
+      setOverviewCompareBusy(false);
+      return;
+    }
+    const years = needsPair ? [cy - 1, cy] : [cy];
+    let cancelled = false;
+    setOverviewCompareBusy(true);
+    void hydrateMissingYearsFromSupabase(years).finally(() => {
+      if (!cancelled) setOverviewCompareBusy(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    year,
+    resolvedOverviewCompare.compareY,
+    hydrateMissingYearsFromSupabase,
+    animeActivityCache,
+    mangaActivityCache,
+  ]);
+
+  /* ─── Séries temporelles pour les graphiques « courbes N vs comparaison » ─
+   * La période de comparaison est choisie sur l’Overview (Supabase uniquement). */
   const mangaChaptersChartData = useMemo(() => {
     if (isAllTime) {
       return allTimeActivityYears.map((activityYear) => ({
@@ -1615,7 +1740,8 @@ function App() {
         compare: 0,
       }));
     }
-    const { compareY, compareM } = getComparisonPeriodMeta(year, month);
+    const compareY = resolvedOverviewCompare.compareY;
+    const compareM = resolvedOverviewCompare.compareM;
     const mergedCur = mergeActivitiesForDelta(year, effectiveMangaActivityCache);
     const mergedComp = mergeActivitiesForDelta(compareY, effectiveMangaActivityCache);
 
@@ -1629,7 +1755,7 @@ function App() {
       }));
     }
     const curD = computeDailyDeltasInMonth(mergedCur, year, month, "manga");
-    const compD = computeDailyDeltasInMonth(mergedComp, compareY, compareM, "manga");
+    const compD = computeDailyDeltasInMonth(mergedComp, compareY, compareM ?? 1, "manga");
     const dim = new Date(year, month, 0).getDate();
     return Array.from({ length: dim }, (_, i) => {
       const d = i + 1;
@@ -1639,7 +1765,16 @@ function App() {
         compare: compD[d] || 0,
       };
     });
-  }, [allTimeActivityYears, isAllTime, year, month, effectiveMangaActivityCache, mergedMangaForTabTotals]);
+  }, [
+    allTimeActivityYears,
+    isAllTime,
+    year,
+    month,
+    resolvedOverviewCompare.compareY,
+    resolvedOverviewCompare.compareM,
+    effectiveMangaActivityCache,
+    mergedMangaForTabTotals,
+  ]);
 
   const animeEpisodesChartData = useMemo(() => {
     if (isAllTime) {
@@ -1649,7 +1784,8 @@ function App() {
         compare: 0,
       }));
     }
-    const { compareY, compareM } = getComparisonPeriodMeta(year, month);
+    const compareY = resolvedOverviewCompare.compareY;
+    const compareM = resolvedOverviewCompare.compareM;
     const mergedCur = mergeActivitiesForDelta(year, effectiveAnimeActivityCache);
     const mergedComp = mergeActivitiesForDelta(compareY, effectiveAnimeActivityCache);
 
@@ -1663,7 +1799,7 @@ function App() {
       }));
     }
     const curD = computeDailyDeltasInMonth(mergedCur, year, month, "anime");
-    const compD = computeDailyDeltasInMonth(mergedComp, compareY, compareM, "anime");
+    const compD = computeDailyDeltasInMonth(mergedComp, compareY, compareM ?? 1, "anime");
     const dim = new Date(year, month, 0).getDate();
     return Array.from({ length: dim }, (_, i) => {
       const d = i + 1;
@@ -1673,7 +1809,20 @@ function App() {
         compare: compD[d] || 0,
       };
     });
-  }, [allTimeActivityYears, isAllTime, year, month, effectiveAnimeActivityCache, mergedAnimeForTabTotals]);
+  }, [
+    allTimeActivityYears,
+    isAllTime,
+    year,
+    month,
+    resolvedOverviewCompare.compareY,
+    resolvedOverviewCompare.compareM,
+    effectiveAnimeActivityCache,
+    mergedAnimeForTabTotals,
+  ]);
+  const overviewCompareHasAnyData = useMemo(
+    () => mangaChaptersChartData.some((row) => row.compare > 0) || animeEpisodesChartData.some((row) => row.compare > 0),
+    [mangaChaptersChartData, animeEpisodesChartData]
+  );
 
   const fmtData = useMemo(() => {
     const fmtCount: Record<string, number> = {};
@@ -1860,22 +2009,65 @@ function App() {
 
   const chartPeriodLegend = useMemo(() => getComparisonPeriodMeta(year, month), [year, month]);
   const compareAvailability = useMemo(() => {
-    const compareY = chartPeriodLegend?.compareY;
+    if (year === ALL_TIME_YEAR) {
+      return {
+        missing: false,
+        compareY: null as number | null,
+        loadingComparison: false,
+        loadingLabel: "",
+        idleLabel: "",
+      };
+    }
+    const cy = resolvedOverviewCompare.compareY;
+    const label = resolvedOverviewCompare.legendCompare;
+    const needsPair = cy >= 1970 && cy > 1970;
     const compareMissing =
-      compareY != null && (!animeActivityCache[compareY] || !mangaActivityCache[compareY]);
-    const loadingComparison = Boolean(compareMissing && loadingActivities);
+      cy >= 1970 &&
+      (!animeActivityCache[cy] ||
+        !mangaActivityCache[cy] ||
+        (needsPair &&
+          (!animeActivityCache[cy - 1] || !mangaActivityCache[cy - 1])));
+    const loadingComparison = Boolean(compareMissing && (loadingActivities || overviewCompareBusy));
     return {
       missing: Boolean(compareMissing),
-      compareY,
+      compareY: cy >= 1970 ? cy : null,
       loadingComparison,
-      loadingLabel: compareY
-        ? `Chargement des données pour la courbe de comparaison (${compareY})…`
-        : "Chargement des données pour la courbe de comparaison…",
-      idleLabel: compareY
-        ? `Comparaison ${compareY} indisponible pour le moment`
+      loadingLabel: label
+        ? `Chargement des données pour la comparaison (${label})…`
+        : "Chargement des données pour la comparaison…",
+      idleLabel: label
+        ? `Données « ${label} » indisponibles pour le moment (vérifiez la synchro Supabase).`
         : "Comparaison indisponible pour le moment",
     };
-  }, [animeActivityCache, chartPeriodLegend, loadingActivities, mangaActivityCache]);
+  }, [
+    year,
+    resolvedOverviewCompare,
+    animeActivityCache,
+    mangaActivityCache,
+    loadingActivities,
+    overviewCompareBusy,
+  ]);
+
+  const handleRetryComparisonNowDynamic = useCallback(() => {
+    if (year === ALL_TIME_YEAR) {
+      handleRetryComparisonNow();
+      return;
+    }
+    const cy = resolvedOverviewCompare.compareY;
+    if (cy >= 1970) {
+      if (cy > 1970) retryYearNow(cy - 1);
+      retryYearNow(cy);
+      void hydrateMissingYearsFromSupabase(cy > 1970 ? [cy - 1, cy] : [cy]);
+      return;
+    }
+    handleRetryComparisonNow();
+  }, [
+    year,
+    resolvedOverviewCompare.compareY,
+    retryYearNow,
+    handleRetryComparisonNow,
+    hydrateMissingYearsFromSupabase,
+  ]);
 
   const hasDashboardData = Boolean(loaded && appUser?.id && Array.isArray(allAnime) && Array.isArray(allManga));
   const displayProfileLoading = loading && !hasDashboardData;
@@ -2015,7 +2207,8 @@ function App() {
         activityEtaLabel={activityEtaLabel}
         rateInfoLabel={rateInfoLabel}
         activityWarning={activityWarning != null ? String(activityWarning) : null}
-        handleRetryComparisonNow={handleRetryComparisonNow}
+        deltaAudit={deltaAudit}
+        handleRetryComparisonNow={handleRetryComparisonNowDynamic}
         retryableYears={retryableYears}
         retryYearNow={retryYearNow}
         isDevLocal={IS_DEV_LOCAL}
@@ -2054,7 +2247,16 @@ function App() {
                 mangaVsCommunityScoreStdDev={mangaVsCommunityScoreStdDev}
                 activeDaysCount={activeDaysCount}
                 periodDayTotal={periodDayTotal}
-                chartPeriodLegend={chartPeriodLegend}
+                chartLegendCurrent={chartPeriodLegend.legendCurrent}
+                overviewCompareSelectValue={overviewCompareSelectValue}
+                overviewCompareSelectOptions={overviewCompareSelectOptions}
+                onOverviewCompareChange={setOverviewCompareOptionId}
+                overviewCompareLineDimmed={compareAvailability.missing}
+                overviewCompareEmptyLabel={
+                  !compareAvailability.missing && !overviewCompareHasAnyData
+                    ? "Aucune donnée pour cette période"
+                    : null
+                }
                 compareAvailability={compareAvailability}
                 mangaChaptersChartData={mangaChaptersChartData}
                 animeEpisodesChartData={animeEpisodesChartData}
@@ -2138,6 +2340,9 @@ function App() {
               month={month}
               animeEntriesLength={animeTabEntries.length}
               mangaEntriesLength={mangaTabEntries.length}
+              loadingActivities={loadingActivities}
+              comparisonYearMissing={compareAvailability.missing}
+              hasProfileData={Boolean(appUser?.id)}
             />
       </ProfileViewMain>
 

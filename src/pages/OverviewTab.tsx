@@ -1,5 +1,11 @@
 import type { RefObject } from "react";
-import { StatCard, ChartCard, MediaCard, PeriodCompareLegend, SectionTitle, EmptyState } from "../components/AppUi";
+import {
+  StatCard,
+  ChartCard,
+  MediaCard,
+  SectionTitle,
+  EmptyState,
+} from "../components/AppUi";
 import { OverviewActivityLineChart } from "../components/OverviewActivityLineChart";
 import { ActivityHeatmap, type DailyTotalsByIso } from "../components/ActivityHeatmap";
 import { CarouselNavButtons } from "../components/appUi/CarouselNavButtons";
@@ -10,11 +16,6 @@ export type CompareAvailability = {
   loadingComparison: boolean;
   loadingLabel: string;
   idleLabel: string;
-};
-
-export type ChartPeriodLegend = {
-  legendCurrent: string;
-  legendCompare: string;
 };
 
 export type OverviewTabProps = {
@@ -31,7 +32,13 @@ export type OverviewTabProps = {
   mangaVsCommunityScoreStdDev: string;
   activeDaysCount: number;
   periodDayTotal: number;
-  chartPeriodLegend: ChartPeriodLegend;
+  chartLegendCurrent: string;
+  overviewCompareSelectValue: string;
+  overviewCompareSelectOptions: { value: string; label: string }[];
+  onOverviewCompareChange: (value: string) => void;
+  /** Courbe grisée tant que les activités Supabase de comparaison manquent. */
+  overviewCompareLineDimmed: boolean;
+  overviewCompareEmptyLabel: string | null;
   compareAvailability: CompareAvailability;
   mangaChaptersChartData: { label: string; current: number; compare: number }[];
   animeEpisodesChartData: { label: string; current: number; compare: number }[];
@@ -65,7 +72,12 @@ export function OverviewTab({
   mangaVsCommunityScoreStdDev,
   activeDaysCount,
   periodDayTotal,
-  chartPeriodLegend,
+  chartLegendCurrent,
+  overviewCompareSelectValue,
+  overviewCompareSelectOptions,
+  onOverviewCompareChange,
+  overviewCompareLineDimmed,
+  overviewCompareEmptyLabel,
   compareAvailability,
   mangaChaptersChartData,
   animeEpisodesChartData,
@@ -156,13 +168,7 @@ export function OverviewTab({
               <div className="chart-section">
                 <SectionTitle size="lg">Chapitres lus</SectionTitle>
                 <ChartCard noTitle className="chart-card--overview-line">
-                  {!isAllTime ? (
-                    <PeriodCompareLegend
-                      legendCurrent={chartPeriodLegend.legendCurrent}
-                      legendCompare={chartPeriodLegend.legendCompare}
-                    />
-                  ) : null}
-                  {!isAllTime && compareAvailability.missing && (
+                  {!isAllTime && compareAvailability.missing ? (
                     <div
                       className={`overview-compare-hint${compareAvailability.loadingComparison ? " overview-compare-hint--loading" : ""}`}
                     >
@@ -170,12 +176,18 @@ export function OverviewTab({
                         ? compareAvailability.loadingLabel
                         : compareAvailability.idleLabel}
                     </div>
-                  )}
+                  ) : null}
                   <OverviewActivityLineChart
                     data={mangaChaptersChartData}
                     month={month}
                     year={year}
                     fillGradientId="overview-activity-area-manga"
+                    compareLineDimmed={overviewCompareLineDimmed}
+                    legendCurrent={chartLegendCurrent}
+                    compareValue={overviewCompareSelectValue}
+                    compareOptions={overviewCompareSelectOptions}
+                    onCompareChange={onOverviewCompareChange}
+                    compareEmptyLabel={overviewCompareEmptyLabel}
                   />
                 </ChartCard>
               </div>
@@ -222,13 +234,7 @@ export function OverviewTab({
               <div className="chart-section">
                 <SectionTitle size="lg">Épisodes vus</SectionTitle>
                 <ChartCard noTitle className="chart-card--overview-line">
-                  {!isAllTime ? (
-                    <PeriodCompareLegend
-                      legendCurrent={chartPeriodLegend.legendCurrent}
-                      legendCompare={chartPeriodLegend.legendCompare}
-                    />
-                  ) : null}
-                  {!isAllTime && compareAvailability.missing && (
+                  {!isAllTime && compareAvailability.missing ? (
                     <div
                       className={`overview-compare-hint${compareAvailability.loadingComparison ? " overview-compare-hint--loading" : ""}`}
                     >
@@ -236,12 +242,18 @@ export function OverviewTab({
                         ? compareAvailability.loadingLabel
                         : compareAvailability.idleLabel}
                     </div>
-                  )}
+                  ) : null}
                   <OverviewActivityLineChart
                     data={animeEpisodesChartData}
                     month={month}
                     year={year}
                     fillGradientId="overview-activity-area-anime"
+                    compareLineDimmed={overviewCompareLineDimmed}
+                    legendCurrent={chartLegendCurrent}
+                    compareValue={overviewCompareSelectValue}
+                    compareOptions={overviewCompareSelectOptions}
+                    onCompareChange={onOverviewCompareChange}
+                    compareEmptyLabel={overviewCompareEmptyLabel}
                   />
                 </ChartCard>
               </div>

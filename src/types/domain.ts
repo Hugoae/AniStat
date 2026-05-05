@@ -1,6 +1,8 @@
 export type AniListUser = {
   id: number;
   name: string;
+  /** Timestamp Unix de création du compte AniList, si disponible. */
+  createdAt?: number | null;
   bannerImage?: string | null;
   avatar?: { large?: string | null; medium?: string | null };
 };
@@ -121,4 +123,8 @@ export type PeriodRecordsBundle = {
   fastestCompleted: { media: RecordMediaRef; days: number } | null;
   biggestOpinionGap: { media: RecordMediaRef; gap: number; userScore: number; averageScore: number } | null;
   mostPromisingPlanned: { media: RecordMediaRef; averageScore: number } | null;
+  /** Nombre d’œuvres distinctes dont `startedAt` est dans la période + jusqu’à 3 covers (tri notes / moyenne). */
+  worksStartedInPeriod: { count: number; spotlight: RecordMediaRef[] } | null;
+  /** Nombre d’œuvres complétées dans la période + jusqu’à 3 covers. */
+  worksCompletedInPeriod: { count: number; spotlight: RecordMediaRef[] } | null;
 };

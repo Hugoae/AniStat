@@ -40,7 +40,20 @@ import { MONTHS } from '../config/constants';
     if (!nums || nums.length === 0) return 0;
     return Math.max(...nums.map((n) => Number(n) || 0));
   };
-  const getProgressRangeDelta = (progressRaw, prev = 0) => {
+  const RANGE_OVERLAP_DEDUP_WINDOW_SEC = 6 * 60 * 60;
+
+  function isNearRangeCorrection(previousCreatedAt, createdAt) {
+    const prevTs = Number(previousCreatedAt || 0);
+    const curTs = Number(createdAt || 0);
+    if (prevTs <= 0 || curTs <= 0) return false;
+    return Math.max(0, curTs - prevTs) <= RANGE_OVERLAP_DEDUP_WINDOW_SEC;
+  }
+
+  const getProgressRangeDelta = (
+    progressRaw,
+    prev = 0,
+    context = { previousCreatedAt: 0, createdAt: 0 }
+  ) => {
     const raw = String(progressRaw ?? "").trim();
     if (!raw) return null;
     const m = raw.match(/(\d+)\s*-\s*(\d+)/);
@@ -51,6 +64,11 @@ import { MONTHS } from '../config/constants';
     const start = Math.min(a, b);
     const end = Math.max(a, b);
     const previous = Number.isFinite(Number(prev)) ? Math.max(0, Number(prev)) : 0;
+    const shouldDedupOverlap = isNearRangeCorrection(
+      context?.previousCreatedAt,
+      context?.createdAt
+    );
+    if (!shouldDedupOverlap) return Math.max(0, end - start + 1);
     const firstUnread = Math.max(start, previous + 1);
     return Math.max(0, end - firstUnread + 1);
   };
@@ -93,6 +111,38 @@ import { MONTHS } from '../config/constants';
     const cap = inferCompletedCap(a, kind);
     if (cap != null) return Math.max(prev, cap);
     return prev > 0 ? prev + 1 : 1;
+  }
+
+  function buildActivityDeltaRows(activities, kind = "anime") {
+    const chronological = [...(activities || [])].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const lastProgressByMedia = new Map();
+    const lastCreatedAtByMedia = new Map();
+    const rows = [];
+
+    chronological.forEach((a) => {
+      const mediaId = a?.media?.id;
+      const createdAt = Number(a?.createdAt || 0);
+      if (!mediaId || !createdAt) return;
+      const prev = lastProgressByMedia.has(mediaId) ? lastProgressByMedia.get(mediaId) : 0;
+      const previousCreatedAt = lastCreatedAtByMedia.has(mediaId) ? lastCreatedAtByMedia.get(mediaId) : 0;
+      const current = activityEffectiveProgress(a, prev, kind);
+      const explicitDelta = getProgressRangeDelta(a?.progress, prev, { previousCreatedAt, createdAt });
+      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
+      const rule = explicitDelta != null ? "range" : "progress";
+      rows.push({
+        activity: a,
+        mediaId,
+        createdAt,
+        prev,
+        current,
+        delta,
+        rule,
+      });
+      lastProgressByMedia.set(mediaId, current);
+      lastCreatedAtByMedia.set(mediaId, createdAt);
+    });
+
+    return rows;
   }
 
   /**
@@ -300,65 +350,34 @@ import { MONTHS } from '../config/constants';
   }
 
   function computePeriodDeltaFromActivities(activities, year, month, kind = "anime") {
-    const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    const lastByMedia = new Map();
+    const rows = buildActivityDeltaRows(activities, kind);
     let total = 0;
-
-    chronological.forEach((a) => {
-      const mediaId = a?.media?.id;
-      if (!mediaId) return;
-      const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-      const current = activityEffectiveProgress(a, prev, kind);
-      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
-      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-      if (isTsInPeriod(a.createdAt || 0, year, month)) total += delta;
-      lastByMedia.set(mediaId, current);
+    rows.forEach((row) => {
+      if (isTsInPeriod(row.createdAt || 0, year, month)) total += row.delta;
     });
-
     return total;
   }
 
   function computePeriodAnimeActivityTotals(activities, year, month) {
-    const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    const lastByMedia = new Map();
+    const rows = buildActivityDeltaRows(activities, "anime");
     let episodes = 0;
     let minutes = 0;
-
-    chronological.forEach((a) => {
-      const mediaId = a?.media?.id;
-      if (!mediaId) return;
-      const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-      const current = activityEffectiveProgress(a, prev, "anime");
-      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
-      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-      if (isTsInPeriod(a.createdAt || 0, year, month)) {
-        episodes += delta;
-        minutes += delta * (a?.media?.duration || 24);
-      }
-      lastByMedia.set(mediaId, current);
+    rows.forEach((row) => {
+      if (!isTsInPeriod(row.createdAt || 0, year, month)) return;
+      episodes += row.delta;
+      minutes += row.delta * (row.activity?.media?.duration || 24);
     });
-
     return { episodes, minutes };
   }
 
   /** Épisodes vus sur la période, agrégés par format (activités anime). */
   function computePeriodWatchEpisodesByFormat(activities, year, month) {
-    const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    const lastByMedia = new Map();
+    const rows = buildActivityDeltaRows(activities, "anime");
     const byFormat = {};
-
-    chronological.forEach((a) => {
-      const mediaId = a?.media?.id;
-      if (!mediaId) return;
-      const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-      const current = activityEffectiveProgress(a, prev, "anime");
-      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
-      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-      if (isTsInPeriod(a.createdAt || 0, year, month)) {
-        const fmt = a?.media?.format || "OTHER";
-        byFormat[fmt] = (byFormat[fmt] || 0) + delta;
-      }
-      lastByMedia.set(mediaId, current);
+    rows.forEach((row) => {
+      if (!isTsInPeriod(row.createdAt || 0, year, month)) return;
+      const fmt = row.activity?.media?.format || "OTHER";
+      byFormat[fmt] = (byFormat[fmt] || 0) + row.delta;
     });
 
     return Object.entries(byFormat)
@@ -368,23 +387,13 @@ import { MONTHS } from '../config/constants';
 
   /** Épisodes vus sur la période, agrégés par pays d'origine (activités anime). */
   function computePeriodWatchEpisodesByCountry(activities, year, month) {
-    const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    const lastByMedia = new Map();
+    const rows = buildActivityDeltaRows(activities, "anime");
     const byCountry = {};
-
-    chronological.forEach((a) => {
-      const mediaId = a?.media?.id;
-      if (!mediaId) return;
-      const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-      const current = activityEffectiveProgress(a, prev, "anime");
-      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
-      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-      if (isTsInPeriod(a.createdAt || 0, year, month)) {
-        const raw = String(a?.media?.countryOfOrigin || "").trim();
-        const code = /^[A-Za-z]{2}$/.test(raw) ? raw.toUpperCase() : "__UNKNOWN__";
-        byCountry[code] = (byCountry[code] || 0) + delta;
-      }
-      lastByMedia.set(mediaId, current);
+    rows.forEach((row) => {
+      if (!isTsInPeriod(row.createdAt || 0, year, month)) return;
+      const raw = String(row.activity?.media?.countryOfOrigin || "").trim();
+      const code = /^[A-Za-z]{2}$/.test(raw) ? raw.toUpperCase() : "__UNKNOWN__";
+      byCountry[code] = (byCountry[code] || 0) + row.delta;
     });
 
     return Object.entries(byCountry)
@@ -394,23 +403,13 @@ import { MONTHS } from '../config/constants';
 
   /** Minutes visionnées sur la période, agrégées par format (activités anime). */
   function computePeriodWatchMinutesByFormat(activities, year, month) {
-    const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    const lastByMedia = new Map();
+    const rows = buildActivityDeltaRows(activities, "anime");
     const byFormat = {};
-
-    chronological.forEach((a) => {
-      const mediaId = a?.media?.id;
-      if (!mediaId) return;
-      const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-      const current = activityEffectiveProgress(a, prev, "anime");
-      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
-      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-      if (isTsInPeriod(a.createdAt || 0, year, month)) {
-        const fmt = a?.media?.format || "OTHER";
-        const mins = delta * (a?.media?.duration || 24);
-        byFormat[fmt] = (byFormat[fmt] || 0) + mins;
-      }
-      lastByMedia.set(mediaId, current);
+    rows.forEach((row) => {
+      if (!isTsInPeriod(row.createdAt || 0, year, month)) return;
+      const fmt = row.activity?.media?.format || "OTHER";
+      const mins = row.delta * (row.activity?.media?.duration || 24);
+      byFormat[fmt] = (byFormat[fmt] || 0) + mins;
     });
 
     return Object.entries(byFormat)
@@ -420,22 +419,12 @@ import { MONTHS } from '../config/constants';
 
 /** Chapitres lus sur la période, agrégés par format (activités manga). */
 function computePeriodReadChaptersByFormat(activities, year, month) {
-  const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  const lastByMedia = new Map();
+  const rows = buildActivityDeltaRows(activities, "manga");
   const byFormat = {};
-
-  chronological.forEach((a) => {
-    const mediaId = a?.media?.id;
-    if (!mediaId) return;
-    const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-    const current = activityEffectiveProgress(a, prev, "manga");
-    const explicitDelta = getProgressRangeDelta(a?.progress, prev);
-    const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-    if (isTsInPeriod(a.createdAt || 0, year, month)) {
-      const fmt = a?.media?.format || "OTHER";
-      byFormat[fmt] = (byFormat[fmt] || 0) + delta;
-    }
-    lastByMedia.set(mediaId, current);
+  rows.forEach((row) => {
+    if (!isTsInPeriod(row.createdAt || 0, year, month)) return;
+    const fmt = row.activity?.media?.format || "OTHER";
+    byFormat[fmt] = (byFormat[fmt] || 0) + row.delta;
   });
 
   return Object.entries(byFormat)
@@ -445,23 +434,13 @@ function computePeriodReadChaptersByFormat(activities, year, month) {
 
 /** Chapitres lus sur la période, agrégés par pays d'origine (activités manga). */
 function computePeriodReadChaptersByCountry(activities, year, month) {
-  const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  const lastByMedia = new Map();
+  const rows = buildActivityDeltaRows(activities, "manga");
   const byCountry = {};
-
-  chronological.forEach((a) => {
-    const mediaId = a?.media?.id;
-    if (!mediaId) return;
-    const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-    const current = activityEffectiveProgress(a, prev, "manga");
-    const explicitDelta = getProgressRangeDelta(a?.progress, prev);
-    const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-    if (isTsInPeriod(a.createdAt || 0, year, month)) {
-      const raw = String(a?.media?.countryOfOrigin || "").trim();
-      const code = /^[A-Za-z]{2}$/.test(raw) ? raw.toUpperCase() : "__UNKNOWN__";
-      byCountry[code] = (byCountry[code] || 0) + delta;
-    }
-    lastByMedia.set(mediaId, current);
+  rows.forEach((row) => {
+    if (!isTsInPeriod(row.createdAt || 0, year, month)) return;
+    const raw = String(row.activity?.media?.countryOfOrigin || "").trim();
+    const code = /^[A-Za-z]{2}$/.test(raw) ? raw.toUpperCase() : "__UNKNOWN__";
+    byCountry[code] = (byCountry[code] || 0) + row.delta;
   });
 
   return Object.entries(byCountry)
@@ -539,24 +518,14 @@ function computePeriodTopTags(
 
 /** Minutes visionnées sur la période, agrégées par pays d'origine (activités anime). */
 function computePeriodWatchMinutesByCountry(activities, year, month) {
-  const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-  const lastByMedia = new Map();
+  const rows = buildActivityDeltaRows(activities, "anime");
   const byCountry = {};
-
-  chronological.forEach((a) => {
-    const mediaId = a?.media?.id;
-    if (!mediaId) return;
-    const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-    const current = activityEffectiveProgress(a, prev, "anime");
-    const explicitDelta = getProgressRangeDelta(a?.progress, prev);
-    const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-    if (isTsInPeriod(a.createdAt || 0, year, month)) {
-      const raw = String(a?.media?.countryOfOrigin || "").trim();
-      const code = /^[A-Za-z]{2}$/.test(raw) ? raw.toUpperCase() : "__UNKNOWN__";
-      const mins = delta * (a?.media?.duration || 24);
-      byCountry[code] = (byCountry[code] || 0) + mins;
-    }
-    lastByMedia.set(mediaId, current);
+  rows.forEach((row) => {
+    if (!isTsInPeriod(row.createdAt || 0, year, month)) return;
+    const raw = String(row.activity?.media?.countryOfOrigin || "").trim();
+    const code = /^[A-Za-z]{2}$/.test(raw) ? raw.toUpperCase() : "__UNKNOWN__";
+    const mins = row.delta * (row.activity?.media?.duration || 24);
+    byCountry[code] = (byCountry[code] || 0) + mins;
   });
 
   return Object.entries(byCountry)
@@ -565,23 +534,14 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
 }
 
   function computeMonthlyDeltasFromActivities(activities, year, kind = "anime") {
-    const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    const lastByMedia = new Map();
+    const rows = buildActivityDeltaRows(activities, kind);
     const monthly = {};
-
-    chronological.forEach((a) => {
-      const mediaId = a?.media?.id;
-      if (!mediaId || !a.createdAt) return;
-      const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-      const current = activityEffectiveProgress(a, prev, kind);
-      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
-      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-      const d = new Date(a.createdAt * 1000);
+    rows.forEach((row) => {
+      const d = new Date(row.createdAt * 1000);
       if (d.getFullYear() === year) {
         const m = d.getMonth() + 1;
-        monthly[m] = (monthly[m] || 0) + delta;
+        monthly[m] = (monthly[m] || 0) + row.delta;
       }
-      lastByMedia.set(mediaId, current);
     });
 
     return monthly;
@@ -594,25 +554,17 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
    * Sert notamment à alimenter la heatmap d'activité.
    */
   function computeDailyDeltasInYear(activities, year, kind = "anime") {
-    const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    const lastByMedia = new Map();
+    const rows = buildActivityDeltaRows(activities, kind);
     /** @type {Record<string, number>} */
     const daily = {};
 
-    chronological.forEach((a) => {
-      const mediaId = a?.media?.id;
-      if (!mediaId || !a.createdAt) return;
-      const d = new Date(a.createdAt * 1000);
-      const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-      const current = activityEffectiveProgress(a, prev, kind);
-      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
-      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-      lastByMedia.set(mediaId, current);
-      if (delta > 0 && d.getFullYear() === year) {
+    rows.forEach((row) => {
+      const d = new Date(row.createdAt * 1000);
+      if (row.delta > 0 && d.getFullYear() === year) {
         const m = String(d.getMonth() + 1).padStart(2, "0");
         const day = String(d.getDate()).padStart(2, "0");
         const key = `${year}-${m}-${day}`;
-        daily[key] = (daily[key] || 0) + delta;
+        daily[key] = (daily[key] || 0) + row.delta;
       }
     });
 
@@ -620,22 +572,14 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
   }
 
   function computeDailyDeltasInMonth(activities, year, month, kind = "anime") {
-    const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    const lastByMedia = new Map();
+    const rows = buildActivityDeltaRows(activities, kind);
     const daily = {};
 
-    chronological.forEach((a) => {
-      const mediaId = a?.media?.id;
-      if (!mediaId || !a.createdAt) return;
-      const d = new Date(a.createdAt * 1000);
-      const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-      const current = activityEffectiveProgress(a, prev, kind);
-      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
-      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-      lastByMedia.set(mediaId, current);
+    rows.forEach((row) => {
+      const d = new Date(row.createdAt * 1000);
       if (d.getFullYear() === year && d.getMonth() + 1 === month) {
         const day = d.getDate();
-        daily[day] = (daily[day] || 0) + delta;
+        daily[day] = (daily[day] || 0) + row.delta;
       }
     });
 
@@ -643,21 +587,13 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
   }
 
   function getMediaIdsWithProgressInPeriod(activities, year, month, kind = "anime") {
-    const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    const lastByMedia = new Map();
+    const rows = buildActivityDeltaRows(activities, kind);
     const mediaIds = new Set();
 
-    chronological.forEach((a) => {
-      const mediaId = a?.media?.id;
-      if (!mediaId) return;
-      const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-      const current = activityEffectiveProgress(a, prev, kind);
-      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
-      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-      if (delta > 0 && isTsInPeriod(a.createdAt || 0, year, month)) {
-        mediaIds.add(mediaId);
+    rows.forEach((row) => {
+      if (row.delta > 0 && isTsInPeriod(row.createdAt || 0, year, month)) {
+        mediaIds.add(row.mediaId);
       }
-      lastByMedia.set(mediaId, current);
     });
 
     return mediaIds;
@@ -696,6 +632,28 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
     };
   }
 
+  function buildPeriodDeltaAudit(activities, year, month, kind = "anime") {
+    const rows = buildActivityDeltaRows(activities, kind);
+    const periodRows = rows.filter((row) => isTsInPeriod(row.createdAt || 0, year, month));
+    return {
+      kind,
+      year,
+      month,
+      totalDelta: periodRows.reduce((sum, row) => sum + row.delta, 0),
+      rows: periodRows.map((row) => ({
+        activityId: row.activity?.id ?? null,
+        mediaId: row.mediaId,
+        createdAt: row.createdAt,
+        progressRaw: row.activity?.progress ?? null,
+        status: row.activity?.status ?? null,
+        prev: row.prev,
+        current: row.current,
+        delta: row.delta,
+        rule: row.rule,
+      })),
+    };
+  }
+
   /* ----------------------------------------------------------------------- *
    * Records / faits marquants — helpers
    * ----------------------------------------------------------------------- */
@@ -724,22 +682,14 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
 
   /** Plus grosse session sur la période (somme des deltas par jour). */
   function computePeriodBiggestSession(activities, year, month, kind) {
-    const chronological = [...activities].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-    const lastByMedia = new Map();
+    const rows = buildActivityDeltaRows(activities, kind);
     const byDay = new Map();
 
-    chronological.forEach((a) => {
-      const mediaId = a?.media?.id;
-      if (!mediaId) return;
-      const prev = lastByMedia.has(mediaId) ? lastByMedia.get(mediaId) : 0;
-      const current = activityEffectiveProgress(a, prev, kind);
-      const explicitDelta = getProgressRangeDelta(a?.progress, prev);
-      const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-      if (delta > 0 && isTsInPeriod(a.createdAt || 0, year, month)) {
-        const key = dayKeyFromTimestamp(a.createdAt);
-        byDay.set(key, (byDay.get(key) || 0) + delta);
+    rows.forEach((row) => {
+      if (row.delta > 0 && isTsInPeriod(row.createdAt || 0, year, month)) {
+        const key = dayKeyFromTimestamp(row.createdAt);
+        byDay.set(key, (byDay.get(key) || 0) + row.delta);
       }
-      lastByMedia.set(mediaId, current);
     });
 
     let bestKey = null;
@@ -886,6 +836,59 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
   }
 
   /** Plus rapide à terminer parmi les entrées complétées dans la période. */
+  /**
+   * Entrées uniques (par media id) dont la date `startedAt` tombe dans la période.
+   * Même fenêtre que `findPeriodFirstStarted` / `fuzzyDateInPeriod`.
+   */
+  function collectPeriodWorksStartedEntries(entries, year, month) {
+    const byId = new Map();
+    for (const e of entries || []) {
+      if (!fuzzyDateInPeriod(e?.startedAt, year, month)) continue;
+      const id = Number(e?.media?.id || 0);
+      if (!id) continue;
+      if (!byId.has(id)) byId.set(id, e);
+    }
+    return [...byId.values()];
+  }
+
+  /**
+   * Entrées uniques complétées dans la période (`status` + `completedAt`).
+   */
+  function collectPeriodWorksCompletedEntries(entries, year, month) {
+    const byId = new Map();
+    for (const e of entries || []) {
+      if (String(e?.status || "").toUpperCase() !== "COMPLETED") continue;
+      if (!fuzzyDateInPeriod(e?.completedAt, year, month)) continue;
+      const id = Number(e?.media?.id || 0);
+      if (!id) continue;
+      if (!byId.has(id)) byId.set(id, e);
+    }
+    return [...byId.values()];
+  }
+
+  /**
+   * Jusqu’à `limit` titres pour vignettes : meilleures notes perso si au moins une note > 0,
+   * sinon meilleures moyennes AniList (`averageScore` brut API, tri décroissant).
+   */
+  function pickSpotlightEntriesFromWorks(entries, limit = 3) {
+    const list = [...(entries || [])];
+    if (list.length === 0) return [];
+    const hasUserScore = list.some((e) => Number(e?.score || 0) > 0);
+    if (hasUserScore) {
+      list.sort((a, b) => {
+        const sb = Number(b?.score || 0);
+        const sa = Number(a?.score || 0);
+        if (sb !== sa) return sb - sa;
+        return Number(b?.media?.averageScore || 0) - Number(a?.media?.averageScore || 0);
+      });
+    } else {
+      list.sort(
+        (a, b) => Number(b?.media?.averageScore || 0) - Number(a?.media?.averageScore || 0)
+      );
+    }
+    return list.slice(0, Math.max(0, limit));
+  }
+
   function findPeriodFastestCompleted(entries, year, month) {
     let best = null;
     let bestDays = Infinity;
@@ -1005,6 +1008,9 @@ export {
   findPeriodFirstActivity,
   findPeriodLastActivity,
   findPeriodFastestCompleted,
+  collectPeriodWorksStartedEntries,
+  collectPeriodWorksCompletedEntries,
+  pickSpotlightEntriesFromWorks,
   computeMonthlyDeltasFromActivities,
   computeDailyDeltasInMonth,
   computeDailyDeltasInYear,
@@ -1015,4 +1021,5 @@ export {
   dedupeEntriesByMedia,
   getComparisonPeriodMeta,
   mergeActivitiesForDelta,
+  buildPeriodDeltaAudit,
 };

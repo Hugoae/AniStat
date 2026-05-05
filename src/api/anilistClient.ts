@@ -201,6 +201,7 @@ query UserProfile($name: String!) {
   User(name: $name) {
     id
     name
+    createdAt
     avatar { large medium }
     bannerImage
   }

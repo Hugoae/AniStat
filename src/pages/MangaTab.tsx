@@ -18,7 +18,7 @@ import {
   CartesianGrid,
   LabelList,
 } from "recharts";
-import { C, PIE_COLORS, STATUS_LABELS, STATUS_COLORS } from "../config/constants";
+import { C, STATUS_LABELS, STATUS_COLORS } from "../config/constants";
 import {
   StatCard,
   ChartCard,
@@ -32,6 +32,7 @@ import {
   ListTabSectionNav,
 } from "../components/AppUi";
 import { StatLabelHint } from "../components/appUi/StatPrimitives";
+import { buildColorMapFromOrderedKeys, getColorForLabel } from "../lib/chartColors";
 import { RecordCard } from "../components/appUi/RecordCard";
 import { RecordsCarouselSection } from "../components/appUi/RecordsCarouselSection";
 import { RechartsWhenVisible } from "../components/RechartsWhenVisible";
@@ -174,46 +175,54 @@ export function MangaTab({
     const n = Math.max(0, Math.round(Number(titlesRaw) || 0));
     return `${n} titre${n > 1 ? "s" : ""}`;
   };
+  const formatColorMap = useMemo(
+    () => buildColorMapFromOrderedKeys(mangaFmtData.map((row) => String(row.name))),
+    [mangaFmtData]
+  );
+  const countryColorMap = useMemo(
+    () => buildColorMapFromOrderedKeys(mangaCountryEntriesOrdered.map(([code]) => String(code))),
+    [mangaCountryEntriesOrdered]
+  );
 
   const formatPieSlicesByTitles = useMemo(
     () =>
-      mangaFmtData.map((row, i) => ({
+      mangaFmtData.map((row) => ({
         key: String(row.name),
         label: mediaFormatShortLabel(row.name) || String(row.name),
         value: row.value,
-        fill: PIE_COLORS[i % PIE_COLORS.length],
+        fill: getColorForLabel(String(row.name), formatColorMap),
         extraInfo: formatChaptersLabel(formatChaptersByName.get(String(row.name)) || 0),
       })),
-    [mangaFmtData, formatChaptersByName]
+    [mangaFmtData, formatColorMap, formatChaptersByName]
   );
   const formatPieSlicesByChapters = useMemo(() => {
     const titlesByName = new Map(mangaFmtData.map((row) => [String(row.name), Number(row.value) || 0] as const));
     return mangaChaptersByFormatData
       .filter((row) => Number(row.chapters) > 0)
-      .map((row, i) => ({
+      .map((row) => ({
         key: String(row.name),
         label: mediaFormatShortLabel(row.name) || String(row.name),
         value: Number(row.chapters) || 0,
-        fill: PIE_COLORS[i % PIE_COLORS.length],
+        fill: getColorForLabel(String(row.name), formatColorMap),
         extraInfo: formatTitlesLabel(titlesByName.get(String(row.name)) || 0),
       }));
-  }, [mangaChaptersByFormatData, mangaFmtData]);
+  }, [mangaChaptersByFormatData, mangaFmtData, formatColorMap]);
 
   const countryPieSlicesByTitles = useMemo(
     () =>
-      mangaCountryEntriesOrdered.map(([code, c], i) => {
+      mangaCountryEntriesOrdered.map(([code, c]) => {
         const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code);
         const label = meta ? meta.label : "Inconnu";
         return {
           key: code,
           label,
           value: c,
-          fill: PIE_COLORS[i % PIE_COLORS.length],
+          fill: getColorForLabel(code, countryColorMap),
           flagCode: meta?.code,
           extraInfo: formatChaptersLabel(countryChaptersByCode.get(code) || 0),
         };
       }),
-    [mangaCountryEntriesOrdered, countryChaptersByCode]
+    [mangaCountryEntriesOrdered, countryColorMap, countryChaptersByCode]
   );
   const countryPieSlicesByChapters = useMemo(() => {
     const titlesByCode = new Map(
@@ -221,7 +230,7 @@ export function MangaTab({
     );
     return mangaChaptersByCountryData
       .filter((row) => Number(row.chapters) > 0)
-      .map((row, i) => {
+      .map((row) => {
         const code = String(row.code);
         const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code);
         const label = meta ? meta.label : "Inconnu";
@@ -229,19 +238,19 @@ export function MangaTab({
           key: code,
           label,
           value: Number(row.chapters) || 0,
-          fill: PIE_COLORS[i % PIE_COLORS.length],
+          fill: getColorForLabel(code, countryColorMap),
           flagCode: meta?.code,
           extraInfo: formatTitlesLabel(titlesByCode.get(code) || 0),
         };
       });
-  }, [mangaChaptersByCountryData, mangaCountryEntriesOrdered]);
+  }, [mangaChaptersByCountryData, mangaCountryEntriesOrdered, countryColorMap]);
   const statusPieSlices = useMemo(
     () =>
-      mangaStatusEntriesOrdered.map(([status, value], i) => ({
+      mangaStatusEntriesOrdered.map(([status, value]) => ({
         key: status,
         label: STATUS_LABELS[status] || status,
         value,
-        fill: STATUS_COLORS[status] || PIE_COLORS[i % PIE_COLORS.length],
+        fill: STATUS_COLORS[status] || getColorForLabel(status),
         extraInfo: `${value} titre${value > 1 ? "s" : ""}`,
       })),
     [mangaStatusEntriesOrdered]
@@ -1380,6 +1389,44 @@ function MangaRecordsSection({ records }: { records: PeriodRecordsBundle }) {
         value={records.lastStarted.dateLabel}
         media={records.lastStarted.media}
         labelHint="Dernier manga commencé (date startedAt la plus récente) durant la période sélectionnée."
+      />
+    );
+  }
+  if (records.worksStartedInPeriod) {
+    const n = records.worksStartedInPeriod.count;
+    cards.push(
+      <RecordCard
+        key="works-started"
+        icon="stack"
+        label="Œuvres commencées"
+        value={`${n} œuvre${n > 1 ? "s" : ""}`}
+        mediaStack={records.worksStartedInPeriod.spotlight.map((r) => ({
+          id: r.id,
+          title: r.title,
+          coverImageUrl: r.coverImageUrl,
+          coverColor: r.coverColor,
+          anilistUrl: r.anilistUrl,
+        }))}
+        labelHint="Titres distincts dont la date de début sur la liste (startedAt) tombe dans la période sélectionnée. Vignettes : vos meilleures notes, sinon les meilleures moyennes AniList."
+      />
+    );
+  }
+  if (records.worksCompletedInPeriod) {
+    const n = records.worksCompletedInPeriod.count;
+    cards.push(
+      <RecordCard
+        key="works-completed"
+        icon="check"
+        label="Œuvres terminées"
+        value={`${n} œuvre${n > 1 ? "s" : ""}`}
+        mediaStack={records.worksCompletedInPeriod.spotlight.map((r) => ({
+          id: r.id,
+          title: r.title,
+          coverImageUrl: r.coverImageUrl,
+          coverColor: r.coverColor,
+          anilistUrl: r.anilistUrl,
+        }))}
+        labelHint="Titres passés en « terminé » avec une date de complétion (completedAt) dans la période sélectionnée. Vignettes : vos meilleures notes, sinon les meilleures moyennes AniList."
       />
     );
   }

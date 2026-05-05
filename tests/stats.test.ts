@@ -7,6 +7,10 @@ import {
   computeDailyDeltasInMonth,
   getMediaIdsWithProgressInPeriod,
   normalizeListScoreToPoint10,
+  buildPeriodDeltaAudit,
+  collectPeriodWorksStartedEntries,
+  collectPeriodWorksCompletedEntries,
+  pickSpotlightEntriesFromWorks,
 } from "../src/lib/stats";
 
 describe("stats", () => {
@@ -201,5 +205,67 @@ describe("stats", () => {
     expect(daily[2]).toBe(56);
     expect(daily[3]).toBe(61);
     expect(computePeriodDeltaFromActivities(acts, 2026, 5, "manga")).toBe(117);
+  });
+
+  it("distant reread range still counts as read chapters", () => {
+    const tOld = Math.floor(new Date(2025, 6, 15, 19, 26, 48).getTime() / 1000);
+    const tReread = Math.floor(new Date(2026, 3, 15, 12, 16, 41).getTime() / 1000);
+    const acts = [
+      { id: 30, createdAt: tOld, status: "read chapter", progress: "1 - 43", media: { id: 30012, chapters: 706 } },
+      { id: 31, createdAt: tReread, status: "read chapter", progress: "1 - 16", media: { id: 30012, chapters: 706 } },
+    ];
+    expect(computePeriodDeltaFromActivities(acts, 2026, 4, "manga")).toBe(16);
+  });
+
+  it("buildPeriodDeltaAudit returns rows and recomposed total", () => {
+    const ts = Math.floor(new Date(2026, 4, 3, 14, 0, 0).getTime() / 1000);
+    const acts = [
+      { id: 40, createdAt: ts, status: "CURRENT", progress: "61 / 102", media: { id: 501, chapters: 102 } },
+    ];
+    const audit = buildPeriodDeltaAudit(acts, 2026, 5, "manga");
+    expect(audit.totalDelta).toBe(61);
+    expect(audit.rows.length).toBe(1);
+    expect(audit.rows[0].rule).toBe("progress");
+  });
+
+  it("collectPeriodWorksStartedEntries dedupes by media and respects period", () => {
+    const entries = [
+      { media: { id: 1, averageScore: 80 }, score: 7, startedAt: { year: 2026, month: 5, day: 1 }, status: "CURRENT" },
+      { media: { id: 1, averageScore: 80 }, score: 7, startedAt: { year: 2026, month: 5, day: 2 }, status: "CURRENT" },
+      { media: { id: 2, averageScore: 90 }, score: 8, startedAt: { year: 2026, month: 4, day: 1 }, status: "CURRENT" },
+    ];
+    const started = collectPeriodWorksStartedEntries(entries, 2026, 5);
+    expect(started.length).toBe(1);
+    expect(started[0].media.id).toBe(1);
+  });
+
+  it("pickSpotlightEntriesFromWorks prefers user score then averageScore", () => {
+    const entries = [
+      { media: { id: 1, averageScore: 99 }, score: 7, startedAt: { year: 2026, month: 5, day: 1 }, status: "CURRENT" },
+      { media: { id: 2, averageScore: 70 }, score: 9, startedAt: { year: 2026, month: 5, day: 2 }, status: "CURRENT" },
+      { media: { id: 3, averageScore: 95 }, score: 7, startedAt: { year: 2026, month: 5, day: 3 }, status: "CURRENT" },
+    ];
+    const spot = pickSpotlightEntriesFromWorks(collectPeriodWorksStartedEntries(entries, 2026, 5), 3);
+    expect(spot.map((e) => e.media.id)).toEqual([2, 1, 3]);
+  });
+
+  it("pickSpotlightEntriesFromWorks uses AniList average when no user scores", () => {
+    const entries = [
+      { media: { id: 1, averageScore: 70 }, score: 0, startedAt: { year: 2026, month: 3, day: 1 }, status: "CURRENT" },
+      { media: { id: 2, averageScore: 92 }, score: 0, startedAt: { year: 2026, month: 3, day: 2 }, status: "CURRENT" },
+    ];
+    const spot = pickSpotlightEntriesFromWorks(collectPeriodWorksStartedEntries(entries, 2026, 3), 3);
+    expect(spot.map((e) => e.media.id)).toEqual([2, 1]);
+  });
+
+  it("collectPeriodWorksCompletedEntries only completed in period", () => {
+    const entries = [
+      { media: { id: 1 }, status: "COMPLETED", completedAt: { year: 2026, month: 4, day: 1 }, score: 8 },
+      { media: { id: 2 }, status: "CURRENT", completedAt: { year: 2026, month: 4, day: 1 }, score: 8 },
+      { media: { id: 3 }, status: "COMPLETED", completedAt: { year: 2025, month: 4, day: 1 }, score: 8 },
+    ];
+    const done = collectPeriodWorksCompletedEntries(entries, 2026, 4);
+    expect(done.length).toBe(1);
+    expect(done[0].media.id).toBe(1);
   });
 });
