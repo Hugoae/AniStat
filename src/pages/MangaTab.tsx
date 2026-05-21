@@ -100,6 +100,7 @@ export type MangaTabProps = {
   mangaDailyTotalsForYear: DailyTotalsByIso;
   /** Évite de mesurer la grille quand l’onglet est masqué (largeur 0). */
   mangaListLayoutActive: boolean;
+  mangaPeriodProgressByMedia: Map<number, number>;
 };
 
 export function MangaTab({
@@ -126,6 +127,7 @@ export function MangaTab({
   mangaRecords,
   mangaDailyTotalsForYear,
   mangaListLayoutActive,
+  mangaPeriodProgressByMedia,
 }: MangaTabProps) {
   const viewFullYearCta =
     month !== 0 ? (
@@ -712,7 +714,13 @@ export function MangaTab({
           }
         >
           {mangaListToShow.map((e) => (
-            <MediaCard key={e.id} entry={e} type="MANGA" deferCover />
+            <MediaCard
+              key={e.id}
+              entry={e}
+              type="MANGA"
+              deferCover
+              periodProgress={mangaPeriodProgressByMedia.get(e.media?.id || 0) || 0}
+            />
           ))}
         </div>
         {(mangaListNeedsMoreLess && !mangaListExpanded) || mangaCanRevealPlanning ? (

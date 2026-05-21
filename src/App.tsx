@@ -39,6 +39,7 @@ import {
   computeDailyDeltasInMonth,
   computeDailyDeltasInYear,
   getMediaIdsWithProgressInPeriod,
+  computePeriodProgressByMedia,
   getComparisonPeriodMeta,
   mergeActivitiesForDelta,
   buildPeriodDeltaAudit,
@@ -756,6 +757,20 @@ function App() {
   const animeTabActivityTotals = useMemo(
     () => computePeriodAnimeActivityTotals(mergedAnimeForTabTotals, year, month),
     [mergedAnimeForTabTotals, year, month]
+  );
+  const animePeriodProgressByMedia = useMemo(
+    () =>
+      isAllTime
+        ? new Map<number, number>()
+        : computePeriodProgressByMedia(mergedAnimeForTabTotals, year, month, "anime"),
+    [isAllTime, mergedAnimeForTabTotals, year, month]
+  );
+  const mangaPeriodProgressByMedia = useMemo(
+    () =>
+      isAllTime
+        ? new Map<number, number>()
+        : computePeriodProgressByMedia(mergedMangaForTabTotals, year, month, "manga"),
+    [isAllTime, mergedMangaForTabTotals, year, month]
   );
   const totalEpAnimeTab = useMemo(
     () =>
@@ -2303,6 +2318,7 @@ function App() {
                 animeRecords={animeRecordsData}
                 animeDailyTotalsForYear={animeDailyTotalsForYear}
                 animeListLayoutActive={tab === "anime" && loaded}
+                animePeriodProgressByMedia={animePeriodProgressByMedia}
               />
             )}
 
@@ -2331,6 +2347,7 @@ function App() {
                 mangaRecords={mangaRecordsData}
                 mangaDailyTotalsForYear={mangaDailyTotalsForYear}
                 mangaListLayoutActive={tab === "manga" && loaded}
+                mangaPeriodProgressByMedia={mangaPeriodProgressByMedia}
               />
             )}
             </div>

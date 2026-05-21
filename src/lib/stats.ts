@@ -599,6 +599,18 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
     return mediaIds;
   }
 
+  function computePeriodProgressByMedia(activities, year, month, kind = "anime") {
+    const rows = buildActivityDeltaRows(activities, kind);
+    const byMedia = new Map();
+
+    rows.forEach((row) => {
+      if (row.delta <= 0 || !isTsInPeriod(row.createdAt || 0, year, month)) return;
+      byMedia.set(row.mediaId, (byMedia.get(row.mediaId) || 0) + row.delta);
+    });
+
+    return byMedia;
+  }
+
   function getComparisonPeriodMeta(year, month) {
     if (year === 0) {
       return {
@@ -1015,6 +1027,7 @@ export {
   computeDailyDeltasInMonth,
   computeDailyDeltasInYear,
   getMediaIdsWithProgressInPeriod,
+  computePeriodProgressByMedia,
   normalizeEntry,
   normalizeEntries,
   normalizeActivitiesWithDiagnostics,

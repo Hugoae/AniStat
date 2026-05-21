@@ -6,6 +6,7 @@ import {
   computePeriodAnimeActivityTotals,
   computeDailyDeltasInMonth,
   getMediaIdsWithProgressInPeriod,
+  computePeriodProgressByMedia,
   normalizeListScoreToPoint10,
   buildPeriodDeltaAudit,
   collectPeriodWorksStartedEntries,
@@ -205,6 +206,23 @@ describe("stats", () => {
     expect(daily[2]).toBe(56);
     expect(daily[3]).toBe(61);
     expect(computePeriodDeltaFromActivities(acts, 2026, 5, "manga")).toBe(117);
+  });
+
+  it("aggregates period progress by media including ranges", () => {
+    const tMay2 = Math.floor(new Date(2026, 4, 2, 19, 34, 8).getTime() / 1000);
+    const tMay3 = Math.floor(new Date(2026, 4, 3, 22, 30, 5).getTime() / 1000);
+    const tJune = Math.floor(new Date(2026, 5, 1, 10, 0, 0).getTime() / 1000);
+    const acts = [
+      { id: 50, createdAt: tMay2, status: "read chapter", progress: "10 - 15", media: { id: 30012, chapters: 706 } },
+      { id: 51, createdAt: tMay3, status: "read chapter", progress: "16", media: { id: 30012, chapters: 706 } },
+      { id: 52, createdAt: tMay3, status: "read chapter", progress: "1 - 3", media: { id: 400, chapters: 12 } },
+      { id: 53, createdAt: tJune, status: "read chapter", progress: "17", media: { id: 30012, chapters: 706 } },
+    ];
+
+    const byMedia = computePeriodProgressByMedia(acts, 2026, 5, "manga");
+
+    expect(byMedia.get(30012)).toBe(7);
+    expect(byMedia.get(400)).toBe(3);
   });
 
   it("distant reread range still counts as read chapters", () => {

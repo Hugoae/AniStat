@@ -29,11 +29,13 @@ export function MediaCard({
   entry,
   type,
   deferCover = false,
+  periodProgress = 0,
 }: {
   entry: MediaCardEntry;
   type: string;
   /** N’affiche la jaquette qu’à l’approche du viewport (grilles longues). */
   deferCover?: boolean;
+  periodProgress?: number;
 }) {
   /*
    * Tous les hooks doivent être appelés de manière inconditionnelle avant
@@ -70,6 +72,11 @@ export function MediaCard({
     type === "ANIME"
       ? `${progressCur} / ${progressTotal} épisodes`
       : `${progressCur} / ${progressTotal} chapitres`;
+  const periodProgressRounded = Math.max(0, Math.trunc(Number(periodProgress) || 0));
+  const periodProgressLabel =
+    type === "ANIME"
+      ? `+${periodProgressRounded} épisode${periodProgressRounded > 1 ? "s" : ""}`
+      : `+${periodProgressRounded} chapitre${periodProgressRounded > 1 ? "s" : ""}`;
   const scoreLabel = formatMediaListScore(entry.score);
   const formatLabel = mediaFormatShortLabel(m.format);
 
@@ -122,6 +129,9 @@ export function MediaCard({
       </div>
       <div className="media-card-body">
         <div className="media-card-title">{title}</div>
+        {periodProgressRounded > 0 ? (
+          <div className="media-card-period-progress">{periodProgressLabel}</div>
+        ) : null}
         <div className="media-card-progress">{prog}</div>
       </div>
     </div>

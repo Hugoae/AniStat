@@ -98,6 +98,7 @@ export type AnimeTabProps = {
   animeDailyTotalsForYear: DailyTotalsByIso;
   /** Évite de mesurer la grille quand l’onglet est masqué (largeur 0). */
   animeListLayoutActive: boolean;
+  animePeriodProgressByMedia: Map<number, number>;
 };
 
 export function AnimeTab({
@@ -128,6 +129,7 @@ export function AnimeTab({
   animeRecords,
   animeDailyTotalsForYear,
   animeListLayoutActive,
+  animePeriodProgressByMedia,
 }: AnimeTabProps) {
   /* ─── État local : UI-only (toggles, filtres, tri, largeur mesurée) ──
    * Tout le « métier » (entrées, stats, tops) arrive via les props, calculé
@@ -767,7 +769,13 @@ export function AnimeTab({
           }
         >
           {animeListToShow.map((e) => (
-            <MediaCard key={e.id} entry={e} type="ANIME" deferCover />
+            <MediaCard
+              key={e.id}
+              entry={e}
+              type="ANIME"
+              deferCover
+              periodProgress={animePeriodProgressByMedia.get(e.media?.id || 0) || 0}
+            />
           ))}
         </div>
         {(animeListNeedsMoreLess && !animeListExpanded) || animeCanRevealPlanning ? (
