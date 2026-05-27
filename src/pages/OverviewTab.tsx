@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { memo, type RefObject } from "react";
 import {
   StatCard,
   ChartCard,
@@ -9,6 +9,7 @@ import {
 import { OverviewActivityLineChart } from "../components/OverviewActivityLineChart";
 import { ActivityHeatmap, type DailyTotalsByIso } from "../components/ActivityHeatmap";
 import { CarouselNavButtons } from "../components/appUi/CarouselNavButtons";
+import { useProfilePeriod } from "../contexts/profilePeriodCore";
 import type { AniListEntry } from "../types/domain";
 
 export type CompareAvailability = {
@@ -19,8 +20,6 @@ export type CompareAvailability = {
 };
 
 export type OverviewTabProps = {
-  year: number;
-  month: number;
   totalAnime: number;
   totalManga: number;
   totalEp: number;
@@ -58,9 +57,7 @@ export type OverviewTabProps = {
   mangaDailyTotalsForYear: DailyTotalsByIso;
 };
 
-export function OverviewTab({
-  year,
-  month,
+export const OverviewTab = memo(function OverviewTab({
   totalAnime,
   totalManga,
   totalEp,
@@ -93,8 +90,8 @@ export function OverviewTab({
   animeDailyTotalsForYear,
   mangaDailyTotalsForYear,
 }: OverviewTabProps) {
-  const periodYearLabel = year === 0 ? "All Time" : String(year);
-  const isAllTime = year === 0;
+  const { year, month, isAllTime } = useProfilePeriod();
+  const periodYearLabel = isAllTime ? "All Time" : String(year);
   return (
     <div className="overview-page">
       <div className="overview-stats-cluster">
@@ -298,4 +295,4 @@ export function OverviewTab({
       </div>
     </div>
   );
-}
+});

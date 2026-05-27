@@ -1,18 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { MONTHS, MONTHS_FULL } from "../../config/constants";
-
-export type PeriodFloatingChipProps = {
-  /** Années pour lesquelles le profil dispose d'activités ; borne la navigation. */
-  years: number[];
-  /** Année sélectionnée (pilotée par l'appelant). */
-  year: number;
-  /** Mois sélectionné : 0 = « Toute l'année », 1..12 = mois classique. */
-  month: number;
-  /** Callback pour changer d'année, validée contre `years`. */
-  changeYear: (y: number) => void;
-  /** Callback pour changer de mois (0..12). */
-  setMonth: (m: number) => void;
-};
+import { useProfilePeriod } from "../../contexts/profilePeriodCore";
 
 const ALL_TIME_YEAR = 0;
 
@@ -39,13 +27,8 @@ function capitalize(label: string): string {
  * Le popover se ferme sur Escape, clic extérieur, ou second clic sur
  * « Modifier ». Le focus retourne sur le déclencheur à la fermeture Escape.
  */
-export function PeriodFloatingChip({
-  years,
-  year,
-  month,
-  changeYear,
-  setMonth,
-}: PeriodFloatingChipProps) {
+export function PeriodFloatingChip() {
+  const { years, year, month, isAllTime, changeYear, setMonth } = useProfilePeriod();
   const [popoverOpen, setPopoverOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const modifyBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -54,7 +37,6 @@ export function PeriodFloatingChip({
   const sortedYears = useMemo(() => [...years].sort((a, b) => a - b), [years]);
   const minYear = sortedYears[0] ?? year;
   const maxYear = sortedYears[sortedYears.length - 1] ?? year;
-  const isAllTime = year === ALL_TIME_YEAR;
 
   const monthLabel = useMemo(() => {
     if (isAllTime) return "";

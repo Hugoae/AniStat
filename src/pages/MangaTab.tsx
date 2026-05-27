@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   BarChart,
@@ -19,6 +19,7 @@ import {
   LabelList,
 } from "recharts";
 import { C, STATUS_LABELS, STATUS_COLORS } from "../config/constants";
+import type { MangaTopAuthorRow } from "../lib/periodRankings";
 import {
   StatCard,
   ChartCard,
@@ -43,6 +44,7 @@ import { ActivityHeatmap, type DailyTotalsByIso } from "../components/ActivityHe
 import { CollapsibleChartBlock } from "../components/appUi/CollapsibleChartBlock";
 import { ChartCollapseToggle } from "../components/appUi/ChartCollapseToggle";
 import { useCollapsedChart } from "../hooks/useCollapsedChart";
+import { useProfilePeriod } from "../contexts/profilePeriodCore";
 import {
   ANIME_GENRE_RADAR_TOP_N,
   LIST_TAB_ANIME_CARD_WIDTH,
@@ -59,9 +61,6 @@ import {
 import type { AniListEntry, PeriodRecordsBundle } from "../types/domain";
 
 export type MangaTabProps = {
-  year: number;
-  month: number;
-  setMonth: (m: number) => void;
   mangaEntriesLength: number;
   totalCh: number;
   totalVol: number;
@@ -79,22 +78,7 @@ export type MangaTabProps = {
   mangaChaptersByCountryData: { code: string; chapters: number }[];
   mangaReleaseYearHistogram: { yearLabel: string; count: number }[];
   /** Top auteurs (mangakas, scénaristes, illustrateurs, créateurs originaux) sur la période. */
-  mangaTopAuthors: {
-    id: number;
-    name: string;
-    imageUrl: string | null;
-    siteUrl: string | null;
-    primaryRoleLabel: string;
-    count: number;
-    meanUserScore: number;
-    chaptersRead: number;
-    carouselMedia: Array<{
-      id: number;
-      title: string;
-      coverImageUrl: string | null;
-      anilistUrl: string | null;
-    }>;
-  }[];
+  mangaTopAuthors: MangaTopAuthorRow[];
   mangaRecords: PeriodRecordsBundle;
   /** Activité quotidienne manga de l'année courante (clé YYYY-MM-DD → chapitres). */
   mangaDailyTotalsForYear: DailyTotalsByIso;
@@ -103,10 +87,7 @@ export type MangaTabProps = {
   mangaPeriodProgressByMedia: Map<number, number>;
 };
 
-export function MangaTab({
-  year,
-  month,
-  setMonth,
+export const MangaTab = memo(function MangaTab({
   mangaEntriesLength,
   totalCh,
   totalVol,
@@ -129,14 +110,14 @@ export function MangaTab({
   mangaListLayoutActive,
   mangaPeriodProgressByMedia,
 }: MangaTabProps) {
+  const { year, month, isAllTime, setMonth } = useProfilePeriod();
   const viewFullYearCta =
     month !== 0 ? (
       <button type="button" className="list-tab-empty-cta" onClick={() => setMonth(0)}>
         Voir toute l&apos;année {year}
       </button>
     ) : null;
-  const periodYearLabel = year === 0 ? "All Time" : String(year);
-  const isAllTime = year === 0;
+  const periodYearLabel = isAllTime ? "All Time" : String(year);
 
   const mangaAuthorsCollapse = useCollapsedChart("manga.authors");
   const [authorsExpanded, setAuthorsExpanded] = useState(false);
@@ -1326,7 +1307,7 @@ export function MangaTab({
     </div>
     </div>
   );
-}
+});
 
 function MangaRecordsSection({ records }: { records: PeriodRecordsBundle }) {
   const cards: ReactNode[] = [];

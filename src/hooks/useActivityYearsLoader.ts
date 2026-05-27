@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { devLog, fetchActivitiesWithRetry } from "../lib/profileLocalCache";
 import type { ActivityCacheByYear, ActivityItem, AniListUser } from "../types/domain";
@@ -39,6 +39,50 @@ function archiveActivitiesToSupabase(
 
 const supabaseActivityKey = (userId: number, activityType: ActivitySnapshotType, year: number) =>
   `${userId}:${activityType}:${year}`;
+
+function scopeYearsForPeriod(year: number): number[] {
+  const yearsNeeded = new Set([year]);
+  if (year !== ALL_TIME_YEAR && year > 1970) yearsNeeded.add(year - 1);
+  return [...yearsNeeded].filter(isFetchableActivityYear);
+}
+
+/** Signature stable : ne change que quand une année/type manque encore dans le cache. */
+function missingSupabaseActivitySignature(
+  ownerId: number | undefined,
+  loaded: boolean,
+  year: number,
+  animeCache: ActivityCacheByYear,
+  mangaCache: ActivityCacheByYear
+): string {
+  if (!loaded || !ownerId) return "";
+  const parts: string[] = [];
+  for (const scopeYear of scopeYearsForPeriod(year)) {
+    if (animeCache[scopeYear] === undefined) parts.push(`A:${scopeYear}`);
+    if (mangaCache[scopeYear] === undefined) parts.push(`M:${scopeYear}`);
+  }
+  return parts.join(",");
+}
+
+function collectSupabaseHydrationTargets(
+  ownerId: number,
+  year: number,
+  animeCache: ActivityCacheByYear,
+  mangaCache: ActivityCacheByYear,
+  hydrationSet: Set<string>
+): Array<{ type: ActivitySnapshotType; year: number }> {
+  const targets: Array<{ type: ActivitySnapshotType; year: number }> = [];
+  for (const scopeYear of scopeYearsForPeriod(year)) {
+    if (animeCache[scopeYear] === undefined) {
+      const key = supabaseActivityKey(ownerId, "ANIME_LIST", scopeYear);
+      if (!hydrationSet.has(key)) targets.push({ type: "ANIME_LIST", year: scopeYear });
+    }
+    if (mangaCache[scopeYear] === undefined) {
+      const key = supabaseActivityKey(ownerId, "MANGA_LIST", scopeYear);
+      if (!hydrationSet.has(key)) targets.push({ type: "MANGA_LIST", year: scopeYear });
+    }
+  }
+  return targets;
+}
 const shouldAutoRefreshYear = (targetYear: number) =>
   targetYear === ALL_TIME_YEAR || targetYear >= new Date().getFullYear();
 
@@ -134,7 +178,6 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     loaded,
     user,
     year,
-    month,
     animeActivityCache,
     mangaActivityCache,
     setAnimeActivityCache,
@@ -165,6 +208,19 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
   useEffect(() => {
     mangaActivityCacheRef.current = mangaActivityCache;
   }, [mangaActivityCache]);
+
+  useEffect(() => {
+    supabaseActivityHydrationRef.current.clear();
+  }, [user?.id]);
+
+  const missingSupabaseSignature = useMemo(
+    () =>
+      missingSupabaseActivitySignature(user?.id, loaded, year, animeActivityCache, mangaActivityCache),
+    [animeActivityCache, loaded, mangaActivityCache, user?.id, year]
+  );
+
+  const currentYearAnime = animeActivityCache[year];
+  const currentYearManga = mangaActivityCache[year];
 
   /**
    * Hydrate uniquement depuis Supabase (`getActivities`), sans AniList.
@@ -399,32 +455,22 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
   }, [retryYearNow, year]);
 
   useEffect(() => {
-    if (!loaded || !user?.id) return undefined;
+    if (!loaded || !user?.id || !missingSupabaseSignature) return undefined;
     const ownerId = user.id;
     const hydrationSet = supabaseActivityHydrationRef.current;
-    const yearsNeeded = new Set([year]);
-    if (year !== ALL_TIME_YEAR && year > 1970) yearsNeeded.add(year - 1);
-    const scopeYears = [...yearsNeeded].filter(isFetchableActivityYear);
-    const targets: Array<{ type: ActivitySnapshotType; year: number }> = [];
-
-    scopeYears.forEach((scopeYear) => {
-      if (animeActivityCache[scopeYear] === undefined) {
-        const key = supabaseActivityKey(ownerId, "ANIME_LIST", scopeYear);
-        if (!hydrationSet.has(key)) {
-          hydrationSet.add(key);
-          targets.push({ type: "ANIME_LIST", year: scopeYear });
-        }
-      }
-      if (mangaActivityCache[scopeYear] === undefined) {
-        const key = supabaseActivityKey(ownerId, "MANGA_LIST", scopeYear);
-        if (!hydrationSet.has(key)) {
-          hydrationSet.add(key);
-          targets.push({ type: "MANGA_LIST", year: scopeYear });
-        }
-      }
-    });
+    const targets = collectSupabaseHydrationTargets(
+      ownerId,
+      year,
+      animeActivityCacheRef.current,
+      mangaActivityCacheRef.current,
+      hydrationSet
+    );
 
     if (targets.length === 0) return undefined;
+
+    for (const t of targets) {
+      hydrationSet.add(supabaseActivityKey(ownerId, t.type, t.year));
+    }
 
     let cancelled = false;
     const targetsSnapshot = [...targets];
@@ -491,12 +537,10 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
       }
     };
   }, [
-    animeActivityCache,
     loaded,
-    mangaActivityCache,
-    mediaBitsByIdRef,
-    month,
+    missingSupabaseSignature,
     latestUserIdRef,
+    mediaBitsByIdRef,
     setAnimeActivityCache,
     setMangaActivityCache,
     user?.id,
@@ -506,26 +550,18 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
   useEffect(() => {
     if (!loaded || !user?.id) return;
     const ownerId = user.id;
-
-    const yearsNeeded = new Set([year]);
-    if (year !== ALL_TIME_YEAR && year > 1970) yearsNeeded.add(year - 1);
-    const scopeYears = [...yearsNeeded].filter(isFetchableActivityYear);
+    const scopeYears = scopeYearsForPeriod(year);
+    const animeCache = animeActivityCacheRef.current;
+    const mangaCache = mangaActivityCacheRef.current;
 
     scopeYears.forEach((y) => {
-      if (animeActivityCache[y] !== undefined && mangaActivityCache[y] !== undefined) {
+      if (animeCache[y] !== undefined && mangaCache[y] !== undefined) {
         setResource(`activity:${ownerId}:ANIME_LIST:${y}`, "success");
         setResource(`activity:${ownerId}:MANGA_LIST:${y}`, "success");
       }
     });
 
-    const hydrating = scopeYears.some(
-      (y) =>
-        (animeActivityCache[y] === undefined || mangaActivityCache[y] === undefined) &&
-        (supabaseActivityHydrationRef.current.has(supabaseActivityKey(ownerId, "ANIME_LIST", y)) ||
-          supabaseActivityHydrationRef.current.has(supabaseActivityKey(ownerId, "MANGA_LIST", y)))
-    );
-
-    if (hydrating) {
+    if (missingSupabaseSignature) {
       setActivityLoadingMessage("Lecture des activites depuis Supabase…");
       setLoadingActivities(true);
       setActivityWarning(null);
@@ -537,7 +573,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     if (
       compareYear != null &&
       compareYear >= 1970 &&
-      (animeActivityCache[compareYear] === undefined || mangaActivityCache[compareYear] === undefined)
+      (animeCache[compareYear] === undefined || mangaCache[compareYear] === undefined)
     ) {
       setActivityWarning(`Comparaison ${compareYear} indisponible : données N-1 non synchronisées.`);
       return;
@@ -545,10 +581,9 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     setActivityWarning(null);
   }, [
     loaded,
+    missingSupabaseSignature,
     user?.id,
     year,
-    animeActivityCache,
-    mangaActivityCache,
     setResource,
     setLoadingActivities,
     setActivityLoadingMessage,
@@ -558,11 +593,19 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
   useEffect(() => {
     if (!user?.id) return;
     if (latestUserIdRef.current !== user.id) return;
-    if (animeActivityCache[year] !== undefined && mangaActivityCache[year] !== undefined) {
-      setAnimeActivities(animeActivityCache[year]);
-      setMangaActivities(mangaActivityCache[year]);
+    if (currentYearAnime !== undefined && currentYearManga !== undefined) {
+      setAnimeActivities(currentYearAnime);
+      setMangaActivities(currentYearManga);
     }
-  }, [year, animeActivityCache, mangaActivityCache, user?.id, latestUserIdRef, setAnimeActivities, setMangaActivities]);
+  }, [
+    year,
+    currentYearAnime,
+    currentYearManga,
+    user?.id,
+    latestUserIdRef,
+    setAnimeActivities,
+    setMangaActivities,
+  ]);
 
   const refreshCurrentActivities = useCallback(async () => {
     if (!user?.id || !loaded) return;

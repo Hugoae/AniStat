@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -22,6 +23,25 @@ type RechartsTooltipProps = TooltipProps<
 
 type OverviewCompareSelectOption = { value: string; label: string };
 
+function usePrefersReducedMotion(): boolean {
+  const [prefersReduced, setPrefersReduced] = useState(() =>
+    typeof window !== "undefined"
+      ? window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
+      : false
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = () => setPrefersReduced(mediaQuery.matches);
+    onChange();
+    mediaQuery.addEventListener?.("change", onChange);
+    return () => mediaQuery.removeEventListener?.("change", onChange);
+  }, []);
+
+  return prefersReduced;
+}
+
 function OverviewChartLegend({
   legendCurrent,
   compareValue,
@@ -36,7 +56,7 @@ function OverviewChartLegend({
   compareEmptyLabel?: string | null;
 }) {
   return (
-    <div className="overview-chart-legend flex flex-row items-center gap-4">
+    <div className="overview-chart-legend">
       <div className="overview-chart-legend__row">
         <span className="period-compare-legend__swatch period-compare-legend__swatch--current" />
         <span className="period-compare-legend__label period-compare-legend__label--current">{legendCurrent}</span>
@@ -47,7 +67,7 @@ function OverviewChartLegend({
         <label className="overview-chart-legend__select-wrap">
           <span className="visually-hidden">Période de comparaison</span>
           <select
-            className="overview-chart-legend__select bg-slate-800 text-slate-200 border border-slate-700/60 outline-none cursor-pointer"
+            className="overview-chart-legend__select"
             value={compareValue}
             disabled={compareOptions.length === 0}
             onChange={(e) => onCompareChange(e.target.value)}
@@ -122,6 +142,8 @@ export function OverviewActivityLineChart({
   const showCompare = year !== 0;
   const compareStrokeOpacity = compareLineDimmed ? 0.18 : 0.42;
   const legendOptions = compareOptions ?? [];
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const animateCharts = !prefersReducedMotion;
   return (
     <ResponsiveContainer width="100%" height={240}>
       <LineChart data={data} margin={{ top: 8, right: 34, left: 8, bottom: 6 }}>
@@ -170,7 +192,15 @@ export function OverviewActivityLineChart({
             )}
           />
         ) : null}
-        <Area type="monotone" dataKey="current" stroke="none" fill={`url(#${fillGradientId})`} isAnimationActive={false} />
+        <Area
+          type="monotone"
+          dataKey="current"
+          stroke="none"
+          fill={`url(#${fillGradientId})`}
+          isAnimationActive={animateCharts}
+          animationDuration={420}
+          animationEasing="ease-out"
+        />
         <Line
           type="monotone"
           dataKey="current"
@@ -183,7 +213,9 @@ export function OverviewActivityLineChart({
             strokeWidth: 1,
           }}
           activeDot={{ r: 7, fill: "rgba(61, 180, 242, 0.95)", stroke: "#0d1621", strokeWidth: 1 }}
-          isAnimationActive={false}
+          isAnimationActive={animateCharts}
+          animationDuration={520}
+          animationEasing="ease-out"
         >
           <LabelList
             dataKey="current"
@@ -204,7 +236,9 @@ export function OverviewActivityLineChart({
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4, fill: "rgba(74, 93, 110, 0.68)" }}
-            isAnimationActive={false}
+            isAnimationActive={animateCharts}
+            animationDuration={640}
+            animationEasing="ease-out"
           />
         ) : null}
       </LineChart>

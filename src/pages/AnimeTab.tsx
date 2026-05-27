@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   BarChart,
@@ -20,6 +20,7 @@ import {
   LabelList,
 } from "recharts";
 import { C, STATUS_LABELS, STATUS_COLORS } from "../config/constants";
+import type { AnimeTopStudioRow } from "../lib/periodRankings";
 import {
   StatCard,
   ChartCard,
@@ -58,12 +59,10 @@ import { ScoreScatterCard } from "../components/ScoreScatterCard";
 import { TopTagsCard, type TopTagsRow } from "../components/TopTagsCard";
 import { ActivityHeatmap, type DailyTotalsByIso } from "../components/ActivityHeatmap";
 import { resolveLocalStudioLogoUrl } from "../lib/studioLogos";
+import { useProfilePeriod } from "../contexts/profilePeriodCore";
 import type { AniListEntry, PeriodRecordsBundle } from "../types/domain";
 
 export type AnimeTabProps = {
-  year: number;
-  month: number;
-  setMonth: (m: number) => void;
   animeEntriesLength: number;
   totalEp: number;
   totalMin: number;
@@ -82,15 +81,7 @@ export type AnimeTabProps = {
   animeMinutesByFormatData: { name: string; minutes: number }[];
   animeEpisodesByCountryData: { code: string; episodes: number }[];
   animeMinutesByCountryData: { code: string; minutes: number }[];
-  animeTopStudios: {
-    name: string;
-    anilistStudioId: number | null;
-    count: number;
-    meanUserScore: number;
-    minutesWatched: number;
-    topMedia: { id: number; title: string; coverImageUrl: string | null; anilistUrl: string | null }[];
-    carouselMedia: { id: number; title: string; coverImageUrl: string | null; anilistUrl: string | null }[];
-  }[];
+  animeTopStudios: AnimeTopStudioRow[];
   animeReleaseYearHistogram: { yearLabel: string; count: number }[];
   animeSeasonHistogram: { key: string; name: string; count: number }[];
   animeRecords: PeriodRecordsBundle;
@@ -101,10 +92,7 @@ export type AnimeTabProps = {
   animePeriodProgressByMedia: Map<number, number>;
 };
 
-export function AnimeTab({
-  year,
-  month,
-  setMonth,
+export const AnimeTab = memo(function AnimeTab({
   animeEntriesLength,
   totalEp,
   totalMin,
@@ -131,6 +119,7 @@ export function AnimeTab({
   animeListLayoutActive,
   animePeriodProgressByMedia,
 }: AnimeTabProps) {
+  const { year, month, isAllTime, setMonth } = useProfilePeriod();
   /* ─── État local : UI-only (toggles, filtres, tri, largeur mesurée) ──
    * Tout le « métier » (entrées, stats, tops) arrive via les props, calculé
    * en amont par `App.tsx`. Ici on ne gère que l'état d'affichage propre à
@@ -156,8 +145,7 @@ export function AnimeTab({
         Voir toute l&apos;année {year}
       </button>
     ) : null;
-  const periodYearLabel = year === 0 ? "All Time" : String(year);
-  const isAllTime = year === 0;
+  const periodYearLabel = isAllTime ? "All Time" : String(year);
 
   const animeSearchNormalized = useMemo(
     () => normalizeAnimeSearchText(animeSearchQuery),
@@ -1431,7 +1419,7 @@ export function AnimeTab({
     </div>
     </div>
   );
-}
+});
 
 function AnimeRecordsSection({ records }: { records: PeriodRecordsBundle }) {
   const cards: ReactNode[] = [];

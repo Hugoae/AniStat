@@ -1035,4 +1035,5 @@ export {
   getComparisonPeriodMeta,
   mergeActivitiesForDelta,
   buildPeriodDeltaAudit,
+  buildActivityDeltaRows,
 };

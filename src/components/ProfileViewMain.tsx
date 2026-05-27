@@ -7,6 +7,7 @@ import {
   subscribeProfileFetchStats,
   type ProfileFetchStats,
 } from "../lib/profileFetchStats";
+import { useProfilePeriod } from "../contexts/profilePeriodCore";
 
 /**
  * Messages narratifs pour le loader principal : un enchaînement court qui
@@ -147,13 +148,9 @@ export type ProfileViewMainProps = {
   animeEntriesCount: number;
   mangaEntriesCount: number;
   tabs: ProfileTabDef[];
-  tab: string;
-  setTab: (k: string) => void;
-  periodYears: number[];
-  periodYear: number;
-  periodMonth: number;
-  periodChangeYear: (y: number) => void;
-  periodSetMonth: (m: number) => void;
+  wrappedActive?: boolean;
+  dashboardHref?: string | null;
+  wrappedHref?: string | null;
   children: ReactNode;
 };
 
@@ -188,15 +185,12 @@ export function ProfileViewMain({
   animeEntriesCount,
   mangaEntriesCount,
   tabs,
-  tab,
-  setTab,
-  periodYears,
-  periodYear,
-  periodMonth,
-  periodChangeYear,
-  periodSetMonth,
+  wrappedActive = false,
+  dashboardHref = null,
+  wrappedHref = null,
   children,
 }: ProfileViewMainProps) {
+  const { tab, setTab } = useProfilePeriod();
   /**
    * Stats de session des derniers fetchs profil complets.
    * Sert à projeter un ETA « reste ~Xs » dans le loader
@@ -323,24 +317,33 @@ export function ProfileViewMain({
       {loaded && !loading && (
         <>
           <div className="profile-tabs">
-            {tabs.map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                className={`tab-btn ${tab === t.key ? "active" : ""}`}
-                onClick={() => setTab(t.key)}
-              >
-                {t.label}
-              </button>
-            ))}
+            {wrappedActive ? (
+              <a className="tab-btn tab-btn--link active" href={wrappedHref ?? undefined}>
+                Wrapped
+              </a>
+            ) : (
+              tabs.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  className={`tab-btn ${tab === t.key ? "active" : ""}`}
+                  onClick={() => setTab(t.key)}
+                >
+                  {t.label}
+                </button>
+              ))
+            )}
+            {wrappedActive ? (
+              <a className="tab-btn tab-btn--link" href={dashboardHref ?? undefined}>
+                Retour dashboard
+              </a>
+            ) : wrappedHref ? (
+              <a className="tab-btn tab-btn--link tab-btn--wrapped" href={wrappedHref}>
+                Wrapped
+              </a>
+            ) : null}
           </div>
-          <PeriodFloatingChip
-            years={periodYears}
-            year={periodYear}
-            month={periodMonth}
-            changeYear={periodChangeYear}
-            setMonth={periodSetMonth}
-          />
+          <PeriodFloatingChip />
           {children}
         </>
       )}

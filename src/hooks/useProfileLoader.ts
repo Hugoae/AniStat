@@ -529,6 +529,13 @@ export function useProfileLoader(
 
   useEffect(() => {
     if (!loaded || !user?.name) return;
+    const currentRoute = parseRouteFromHash();
+    if (
+      currentRoute.type === "user" &&
+      normalizeName(currentRoute.name) === normalizeName(user.name)
+    ) {
+      return;
+    }
     const want = profileHashForUserName(user.name);
     if (want === window.location.hash) return;
     try {

@@ -54,25 +54,28 @@ import {
   resetFetchLog,
   type FetchLogEntry,
 } from './api/anilistClient';
+import { computeAnimeTopStudios, computeMangaTopAuthors } from "./lib/periodRankings";
 import { buildAnimeHalfScoreDistributionFullRange } from "./lib/animeScoreUtils";
 import { compareEntriesByUserScoreThenAverage } from "./lib/compareEntries";
 import {
   buildMediaBitsIndex,
   type ActivityMediaBits,
 } from "./lib/activityEnrichment";
-import { anilistMediaUrl } from "./components/appUi/mediaDisplayHelpers";
 import { HomePage } from "./pages/HomePage";
 import { OverviewTab } from "./pages/OverviewTab";
 import { AnimeTab } from "./pages/AnimeTab";
 import { MangaTab } from "./pages/MangaTab";
+import { WrappedPage } from "./pages/WrappedPage";
 import { PeriodEmptyBanner } from "./pages/PeriodEmptyBanner";
 import {
   IS_DEV_LOCAL,
 } from "./lib/profileLocalCache";
 import {
+  buildProfileHash,
   parseRouteFromHash,
   profileHashForUserName,
 } from "./lib/routing";
+import { buildWrappedSummary } from "./lib/wrapped";
 import { recordProfileFetch } from "./lib/profileFetchStats";
 import { useProfileLoader } from "./hooks/useProfileLoader";
 import { useActivityYearsLoader } from "./hooks/useActivityYearsLoader";
@@ -87,6 +90,8 @@ import {
 import { ProfileAppHeader } from "./components/ProfileAppHeader";
 import { ProfileViewMain } from "./components/ProfileViewMain";
 import { BackToTopButton } from "./components/BackToTopButton";
+import { ProfilePeriodProvider } from "./contexts/ProfilePeriodContext";
+import type { ProfilePeriodValue } from "./contexts/profilePeriodCore";
 import type { ActivityCacheByYear, ActivityItem, AniListEntry, AniListUser } from "./types/domain";
 
 const ALL_TIME_YEAR = 0;
@@ -375,6 +380,55 @@ function App() {
   const appUser = user as AniListUser | null;
   const isAllTime = year === ALL_TIME_YEAR;
 
+  /* ─── Deep links : URL → state ────────────────────────────────────────
+   * À chaque `hashchange` (incrémente `hashTick`), on relit la route et on
+   * applique tab / year / month s'ils sont explicitement présents dans la
+   * query string. Les valeurs absentes (`null`) laissent l'état courant
+   * intact — typique d'une navigation utilisateur basique `#/user/Bob`
+   * qui ne doit pas écraser une période choisie auparavant pendant la même
+   * session si la logique amont l'a déjà réinitialisée.
+   *
+   * On garde un ref `hashTickAppliedRef` pour ne pas re-appliquer les
+   * valeurs URL après un changement de state local (ce qui créerait des
+   * boucles ou des écrasements indésirables). */
+  const hashTickAppliedRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (hashTickAppliedRef.current === hashTick) return;
+    hashTickAppliedRef.current = hashTick;
+    const r = parseRouteFromHash();
+    if (r.type !== "user") return;
+    if (r.tab) setTab(r.tab);
+    if (r.year != null) setYear(r.year);
+    if (r.month != null) setMonth(r.month);
+  }, [hashTick]);
+
+  /* ─── Deep links : state → URL ────────────────────────────────────────
+   * Quand tab / year / month changent côté UI (chip de période, onglets,
+   * etc.), on réécrit la query string du hash via `history.replaceState`.
+   * `replaceState` ne déclenche pas `hashchange`, donc pas de boucle.
+   *
+   * On utilise `parseRouteFromHash()` au lieu de `currentRoute` (mémoïsé
+   * via `hashTick`) parce que la donnée importante ici est la route
+   * actuelle telle que stockée dans l'URL, pas un snapshot React. */
+  useEffect(() => {
+    const r = parseRouteFromHash();
+    if (r.type !== "user") return;
+    const isWrapped = r.view === "wrapped";
+    const want = buildProfileHash(r.name, {
+      view: r.view,
+      tab: isWrapped ? null : tab,
+      year,
+      month: isWrapped ? null : month,
+    });
+    if (window.location.hash === want) return;
+    try {
+      const path = `${window.location.pathname}${window.location.search}${want}`;
+      window.history.replaceState(null, "", path);
+    } catch {
+      /* ignore */
+    }
+  }, [tab, year, month, hashTick]);
+
   useEffect(() => {
     if (!IS_DEV_LOCAL) return;
     window.AniListStatDebug = {
@@ -511,11 +565,14 @@ function App() {
     return () => clearInterval(id);
   }, [showDevPanel]);
 
-  /* Setter simple pour le sélecteur de période (chips + floating chip). */
-  const changeYear = (y: number) => {
+  /* Setter unique pour le sélecteur de période (chips + floating chip).
+   * Mémoïsé pour rester identique entre renders : `periodValue` (voir plus
+   * bas) en dépend, et toute nouvelle identité ferait re-render tous les
+   * consommateurs du contexte. */
+  const changeYear = useCallback((y: number) => {
     setYear(y);
     if (y === ALL_TIME_YEAR) setMonth(0);
-  };
+  }, []);
 
   /**
    * Soumission du champ de recherche du header : on blurre l'input pour
@@ -1178,453 +1235,15 @@ function App() {
     [mangaTabEntries, mergedMangaForTabTotals, mangaPlanningEntries, buildPeriodRecordsBundle]
   );
 
-  /* ─── Top studios anime ───────────────────────────────────────────────
-   * Agrégation du nombre d'épisodes regardés par studio d'animation sur
-   * la période. AniList distingue main / non-main studio sur ses edges
-   * mais taggue parfois incorrectement `isAnimationStudio: false` sur le
-   * main studio. La logique locale ci-dessous privilégie `isMain: true`
-   * quoi qu'il arrive pour rester proche de la vérité éditoriale. */
-  const animeTopStudios = useMemo(() => {
-    function animationStudioNameToId(
-      edges:
-        | Array<{
-            isMain?: boolean | null;
-            node?: {
-              id?: number | null;
-              name?: string | null;
-              isAnimationStudio?: boolean | null;
-            } | null;
-          }>
-        | undefined
-    ): Map<string, number> {
-      const main = new Map<string, number>();
-      const other = new Map<string, number>();
-      for (const edge of edges || []) {
-        const node = edge?.node;
-        if (!node) continue;
-        const name = String(node.name || "").trim();
-        if (!name) continue;
-        const id = Number(node.id);
-        if (!Number.isFinite(id)) continue;
-        const isMainEdge = edge?.isMain === true;
-        /*
-         * AniList taggue parfois à tort le studio principal d'un anime avec
-         * `isAnimationStudio: false` (ex. Lapin Track sur "Seihantai na Kimi to
-         * Boku"). On accorde la confiance à `isMain: true` quoi qu'il arrive :
-         * par convention AniList, le main studio d'un anime est le studio
-         * d'animation principal. Les autres edges restent filtrés strictement
-         * pour ne pas remonter des producteurs (Dentsu, Shueisha, AbemaTV…).
-         */
-        if (isMainEdge) {
-          if (!main.has(name)) main.set(name, id);
-        } else if (node.isAnimationStudio === true) {
-          if (!other.has(name)) other.set(name, id);
-        }
-      }
-      /*
-       * Si au moins un main existe, on l'utilise seul ; sinon, on retombe sur
-       * les autres studios d'animation déclarés comme tels par AniList.
-       */
-      return new Map(main.size > 0 ? main : other);
-    }
-    const progressRangeDelta = (raw: unknown) => {
-      const txt = String(raw ?? "").trim();
-      const m = txt.match(/(\d+)\s*-\s*(\d+)/);
-      if (!m) return null;
-      const a = Number(m[1]);
-      const b = Number(m[2]);
-      if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-      return Math.max(0, Math.abs(b - a) + 1);
-    };
-    const progressNumber = (raw: unknown) => {
-      const nums = String(raw ?? "").match(/\d+/g);
-      if (!nums || nums.length === 0) return 0;
-      return Math.max(...nums.map((n) => Number(n) || 0));
-    };
-    const rows = new Map<
-      string,
-      {
-        anilistStudioId: number | null;
-        count: number;
-        scoreSum: number;
-        scoreCount: number;
-        minutesWatched: number;
-        medias: Map<
-          number,
-          {
-            id: number;
-            title: string;
-            coverImageUrl: string | null;
-            anilistUrl: string | null;
-            userScore: number;
-            averageScore: number;
-          }
-        >;
-      }
-    >();
-    for (const entry of animeTabEntries) {
-      const edges = entry.media?.studios?.edges || [];
-      const mediaId = Number(entry.media?.id || 0);
-      if (!mediaId) continue;
-      const coverImageUrl =
-        String(entry.media?.coverImage?.large || entry.media?.coverImage?.medium || "").trim() || null;
-      const mediaTitle =
-        String(entry.media?.title?.romaji || entry.media?.title?.english || "").trim() || "Titre inconnu";
-      const userScore = Number(entry.score || 0);
-      const averageScore = Number(entry.media?.averageScore || 0);
-      const nameToId = animationStudioNameToId(edges);
-      const anilistUrl = anilistMediaUrl({ siteUrl: entry.media?.siteUrl, id: mediaId }, "ANIME");
-      for (const name of nameToId.keys()) {
-        const sid = nameToId.get(name)!;
-        const prev = rows.get(name) || {
-          anilistStudioId: null,
-          count: 0,
-          scoreSum: 0,
-          scoreCount: 0,
-          minutesWatched: 0,
-          medias: new Map(),
-        };
-        if (prev.anilistStudioId == null) prev.anilistStudioId = sid;
-        prev.count += 1;
-        if (userScore > 0) {
-          prev.scoreSum += userScore;
-          prev.scoreCount += 1;
-        }
-        if (isAllTime) {
-          const episodes = entryProgressTotal(entry, "anime");
-          const duration = Number(entry.media?.duration || 24) || 24;
-          prev.minutesWatched += episodes * duration;
-        }
-        if (!prev.medias.has(mediaId)) {
-          prev.medias.set(mediaId, {
-            id: mediaId,
-            title: mediaTitle,
-            coverImageUrl,
-            anilistUrl,
-            userScore: Number.isFinite(userScore) ? userScore : 0,
-            averageScore: Number.isFinite(averageScore) ? averageScore : 0,
-          });
-        }
-        rows.set(name, prev);
-      }
-    }
-    if (!isAllTime) {
-      const chronological = [...mergedAnimeForTabTotals].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-      const lastByMedia = new Map<number, number>();
-      for (const a of chronological) {
-        const mediaId = Number(a?.media?.id || 0);
-        if (!mediaId) continue;
-        const prev = lastByMedia.has(mediaId) ? (lastByMedia.get(mediaId) || 0) : 0;
-        const parsed = progressNumber(a?.progress);
-        let current = parsed;
-        if (!current) {
-          const status = String(a?.status || "").toUpperCase();
-          if (status === "COMPLETED") {
-            const cap = Number(a?.media?.episodes || 0);
-            current = cap > 0 ? Math.max(prev, cap) : prev > 0 ? prev + 1 : 1;
-          }
-        }
-        const explicitDelta = progressRangeDelta(a?.progress);
-        const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-        const mins = delta * (Number(a?.media?.duration || 24) || 24);
-        const studioEdges = a?.media?.studios?.edges || [];
-        const nameToIdM = animationStudioNameToId(studioEdges);
-        for (const name of nameToIdM.keys()) {
-          const row = rows.get(name);
-          if (row) row.minutesWatched += mins;
-        }
-        lastByMedia.set(mediaId, current);
-      }
-    }
-    return [...rows.entries()]
-      .map(([name, row]) => {
-        const mediasSorted = [...row.medias.values()]
-          .sort((a, b) => {
-            if (b.userScore !== a.userScore) return b.userScore - a.userScore;
-            if (b.averageScore !== a.averageScore) return b.averageScore - a.averageScore;
-            return a.title.localeCompare(b.title);
-          });
-        return {
-          name,
-          anilistStudioId: row.anilistStudioId,
-          count: row.count,
-          meanUserScore: row.scoreCount > 0 ? row.scoreSum / row.scoreCount : 0,
-          minutesWatched: Math.max(0, Math.round(row.minutesWatched)),
-          topMedia: mediasSorted.slice(0, 2),
-          carouselMedia: mediasSorted.slice(0, 16),
-        };
-      })
-      .sort((a, b) => {
-        if (b.count !== a.count) return b.count - a.count;
-        if (b.meanUserScore !== a.meanUserScore) return b.meanUserScore - a.meanUserScore;
-        if (b.minutesWatched !== a.minutesWatched) return b.minutesWatched - a.minutesWatched;
-        return a.name.localeCompare(b.name);
-      });
-  }, [animeTabEntries, isAllTime, mergedAnimeForTabTotals]);
+  const animeTopStudios = useMemo(
+    () => computeAnimeTopStudios(animeTabEntries, mergedAnimeForTabTotals, isAllTime),
+    [animeTabEntries, isAllTime, mergedAnimeForTabTotals]
+  );
 
-  /**
-   * Top auteurs (manga) — pendant naturel du module « Studios » côté anime.
-   *
-   * On agrège par identifiant AniList du staff (plus stable que le nom, qui peut
-   * varier selon la romanisation). Pour chaque auteur on conserve :
-   * - `count` : nombre de manga uniques sur la période où il/elle est crédité·e ;
-   * - `meanUserScore` : moyenne des notes utilisateur sur ces manga ;
-   * - `chaptersRead` : somme des deltas de chapitres lus sur la période (équivalent
-   *   du `minutesWatched` côté studios) ;
-   * - `primaryRoleLabel` : libellé FR du rôle dominant (Mangaka, Scénariste,
-   *   Illustrateur, Créateur original) ;
-   * - `carouselMedia` : top 16 manga associés (triés note user puis communautaire).
-   *
-   * Les rôles non-créatifs (translator, editor, letterer, assistant, design…) sont
-   * filtrés en amont pour ne pas polluer le classement avec des contributeurs
-   * secondaires.
-   */
-  const mangaTopAuthors = useMemo(() => {
-    /**
-     * Classifie un rôle libre AniList en libellé FR. Renvoie `null` si le rôle
-     * n'est pas considéré comme créatif (et doit être ignoré).
-     */
-    const classifyAuthorRole = (raw: string | null | undefined): string | null => {
-      const role = String(raw || "").trim().toLowerCase();
-      if (!role) return null;
-      /* Exclusions : rôles techniques / d'édition. */
-      if (
-        role.includes("translator") ||
-        role.includes("translation") ||
-        role.includes("editor") ||
-        role.includes("letterer") ||
-        role.includes("lettering") ||
-        role.includes("assistant") ||
-        role.includes("design") ||
-        role.includes("publisher") ||
-        role.includes("publication")
-      ) {
-        return null;
-      }
-      const hasStory = role.includes("story") || role.includes("script") || role.includes("writer");
-      const hasArt = role.includes("art") || role.includes("illustration") || role.includes("illustrator");
-      if (hasStory && hasArt) return "Mangaka";
-      if (role.includes("original creator") || role.includes("original story") || role.includes("creator")) {
-        return "Créateur original";
-      }
-      if (hasStory) return "Scénariste";
-      if (hasArt) return "Illustrateur";
-      /* Autres rôles créatifs non reconnus : on les ignore pour limiter le bruit. */
-      return null;
-    };
-
-    /** Priorité d'un libellé de rôle pour départager le rôle dominant d'un auteur. */
-    const ROLE_PRIORITY: Record<string, number> = {
-      Mangaka: 4,
-      Scénariste: 3,
-      Illustrateur: 2,
-      "Créateur original": 1,
-    };
-
-    const progressRangeDelta = (raw: unknown): number | null => {
-      const txt = String(raw ?? "").trim();
-      const m = txt.match(/(\d+)\s*-\s*(\d+)/);
-      if (!m) return null;
-      const a = Number(m[1]);
-      const b = Number(m[2]);
-      if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-      return Math.max(0, Math.abs(b - a) + 1);
-    };
-    const progressNumber = (raw: unknown): number => {
-      const nums = String(raw ?? "").match(/\d+/g);
-      if (!nums || nums.length === 0) return 0;
-      return Math.max(...nums.map((n) => Number(n) || 0));
-    };
-
-    type MediaRef = {
-      id: number;
-      title: string;
-      coverImageUrl: string | null;
-      anilistUrl: string | null;
-      userScore: number;
-      averageScore: number;
-    };
-    type AuthorRow = {
-      id: number;
-      name: string;
-      imageUrl: string | null;
-      siteUrl: string | null;
-      count: number;
-      scoreSum: number;
-      scoreCount: number;
-      chaptersRead: number;
-      /** Histogramme des libellés de rôle observés pour cet auteur (toutes œuvres). */
-      roleLabelCounts: Map<string, number>;
-      medias: Map<number, MediaRef>;
-    };
-
-    const rows = new Map<number, AuthorRow>();
-
-    for (const entry of mangaTabEntries) {
-      const edges = entry.media?.staff?.edges || [];
-      const mediaId = Number(entry.media?.id || 0);
-      if (!mediaId) continue;
-      const coverImageUrl =
-        String(entry.media?.coverImage?.large || entry.media?.coverImage?.medium || "").trim() || null;
-      const mediaTitle =
-        String(entry.media?.title?.romaji || entry.media?.title?.english || "").trim() || "Titre inconnu";
-      const userScore = Number(entry.score || 0);
-      const averageScore = Number(entry.media?.averageScore || 0);
-      const anilistUrl = anilistMediaUrl({ siteUrl: entry.media?.siteUrl, id: mediaId }, "MANGA");
-
-      /*
-       * Un même auteur peut apparaître plusieurs fois sur une œuvre (ex. crédité
-       * en « Story » ET « Art »). On déduplique par auteur tout en conservant le
-       * rôle « le plus fort » trouvé pour cette œuvre (Story+Art → Mangaka).
-       */
-      const roleByAuthorOnThisMedia = new Map<number, { name: string; imageUrl: string | null; siteUrl: string | null; roleLabel: string }>();
-      for (const edge of edges) {
-        const node = edge?.node;
-        const id = Number(node?.id);
-        if (!Number.isFinite(id) || id <= 0) continue;
-        const roleLabel = classifyAuthorRole(edge?.role);
-        if (!roleLabel) continue;
-        const name = String(
-          node?.name?.userPreferred || node?.name?.full || node?.name?.native || ""
-        ).trim();
-        if (!name) continue;
-        const imageUrl =
-          String(node?.image?.large || node?.image?.medium || "").trim() || null;
-        const siteUrl = String(node?.siteUrl || "").trim() || null;
-        const prev = roleByAuthorOnThisMedia.get(id);
-        if (!prev || (ROLE_PRIORITY[roleLabel] || 0) > (ROLE_PRIORITY[prev.roleLabel] || 0)) {
-          roleByAuthorOnThisMedia.set(id, { name, imageUrl, siteUrl, roleLabel });
-        }
-      }
-
-      for (const [authorId, info] of roleByAuthorOnThisMedia.entries()) {
-        const prev =
-          rows.get(authorId) ||
-          ({
-            id: authorId,
-            name: info.name,
-            imageUrl: info.imageUrl,
-            siteUrl: info.siteUrl,
-            count: 0,
-            scoreSum: 0,
-            scoreCount: 0,
-            chaptersRead: 0,
-            roleLabelCounts: new Map<string, number>(),
-            medias: new Map<number, MediaRef>(),
-          } as AuthorRow);
-        /* On garde le 1er nom/image/url rencontrés (stables tant que l'auteur reste). */
-        if (!prev.imageUrl && info.imageUrl) prev.imageUrl = info.imageUrl;
-        if (!prev.siteUrl && info.siteUrl) prev.siteUrl = info.siteUrl;
-        prev.count += 1;
-        if (userScore > 0) {
-          prev.scoreSum += userScore;
-          prev.scoreCount += 1;
-        }
-        if (isAllTime) {
-          prev.chaptersRead += entryProgressTotal(entry, "manga");
-        }
-        prev.roleLabelCounts.set(
-          info.roleLabel,
-          (prev.roleLabelCounts.get(info.roleLabel) || 0) + 1
-        );
-        if (!prev.medias.has(mediaId)) {
-          prev.medias.set(mediaId, {
-            id: mediaId,
-            title: mediaTitle,
-            coverImageUrl,
-            anilistUrl,
-            userScore: Number.isFinite(userScore) ? userScore : 0,
-            averageScore: Number.isFinite(averageScore) ? averageScore : 0,
-          });
-        }
-        rows.set(authorId, prev);
-      }
-    }
-
-    /*
-     * Calcul des chapitres lus par auteur sur la période : on parcourt les
-     * activités triées chronologiquement, on en déduit le delta par media, puis
-     * on l'attribue à tous les auteurs créditeurs de ce media. Les activités
-     * `LIST_ACTIVITY_QUERY` n'embarquent pas le staff, donc on récupère le
-     * mapping media→auteurs depuis `rows.medias`.
-     */
-    if (!isAllTime) {
-      const authorsByMediaId = new Map<number, number[]>();
-      for (const [authorId, row] of rows.entries()) {
-        for (const mediaId of row.medias.keys()) {
-          const list = authorsByMediaId.get(mediaId);
-          if (list) list.push(authorId);
-          else authorsByMediaId.set(mediaId, [authorId]);
-        }
-      }
-      const chronological = [...mergedMangaForTabTotals].sort(
-        (a, b) => (a.createdAt || 0) - (b.createdAt || 0)
-      );
-      const lastByMedia = new Map<number, number>();
-      for (const a of chronological) {
-        const mediaId = Number(a?.media?.id || 0);
-        if (!mediaId) continue;
-        const prev = lastByMedia.get(mediaId) || 0;
-        const parsed = progressNumber(a?.progress);
-        let current = parsed;
-        if (!current) {
-          const status = String(a?.status || "").toUpperCase();
-          if (status === "COMPLETED") {
-            const cap = Number(a?.media?.chapters || 0);
-            current = cap > 0 ? Math.max(prev, cap) : prev > 0 ? prev + 1 : 1;
-          }
-        }
-        const explicitDelta = progressRangeDelta(a?.progress);
-        const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
-        const authorIds = authorsByMediaId.get(mediaId);
-        if (authorIds) {
-          for (const aid of authorIds) {
-            const row = rows.get(aid);
-            if (row) row.chaptersRead += delta;
-          }
-        }
-        lastByMedia.set(mediaId, current);
-      }
-    }
-
-    return [...rows.values()]
-      .map((row) => {
-        const mediasSorted = [...row.medias.values()].sort((a, b) => {
-          if (b.userScore !== a.userScore) return b.userScore - a.userScore;
-          if (b.averageScore !== a.averageScore) return b.averageScore - a.averageScore;
-          return a.title.localeCompare(b.title);
-        });
-        /* Rôle dominant : on prend le libellé le plus fréquent, départage par priorité. */
-        let primaryRoleLabel = "";
-        let bestCount = -1;
-        let bestPriority = -1;
-        for (const [label, c] of row.roleLabelCounts.entries()) {
-          const pr = ROLE_PRIORITY[label] || 0;
-          if (c > bestCount || (c === bestCount && pr > bestPriority)) {
-            primaryRoleLabel = label;
-            bestCount = c;
-            bestPriority = pr;
-          }
-        }
-        return {
-          id: row.id,
-          name: row.name,
-          imageUrl: row.imageUrl,
-          siteUrl: row.siteUrl,
-          primaryRoleLabel,
-          count: row.count,
-          meanUserScore: row.scoreCount > 0 ? row.scoreSum / row.scoreCount : 0,
-          chaptersRead: Math.max(0, Math.round(row.chaptersRead)),
-          carouselMedia: mediasSorted.slice(0, 16),
-        };
-      })
-      .sort((a, b) => {
-        if (b.count !== a.count) return b.count - a.count;
-        if (b.meanUserScore !== a.meanUserScore) return b.meanUserScore - a.meanUserScore;
-        if (b.chaptersRead !== a.chaptersRead) return b.chaptersRead - a.chaptersRead;
-        return a.name.localeCompare(b.name);
-      });
-  }, [isAllTime, mangaTabEntries, mergedMangaForTabTotals]);
+  const mangaTopAuthors = useMemo(
+    () => computeMangaTopAuthors(mangaTabEntries, mergedMangaForTabTotals, isAllTime),
+    [isAllTime, mangaTabEntries, mergedMangaForTabTotals]
+  );
 
   const animeReleaseYearHistogram = useMemo(() => {
     const bins = new Map<number, number>();
@@ -2155,7 +1774,54 @@ function App() {
    * `parseRouteFromHash` lit `window.location.hash`, donc la dep `hashTick`
    * est bien nécessaire côté comportement même si ESLint ne la voit pas. */
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const isLandingHome = useMemo(() => parseRouteFromHash().type === "home", [hashTick]);
+  const currentRoute = useMemo(() => parseRouteFromHash(), [hashTick]);
+  const isLandingHome = currentRoute.type === "home";
+  const isWrappedRoute = currentRoute.type === "user" && currentRoute.view === "wrapped";
+  /* `dashboardHref` est utilisé depuis Wrapped pour revenir sur le
+   * dashboard ; on y embarque la période courante pour qu'un retour
+   * conserve l'onglet/année/mois sélectionnés. `wrappedHref` ne porte que
+   * l'année — le tab/mois n'ont pas de sens dans la vue Wrapped. */
+  const dashboardHref = appUser?.name
+    ? buildProfileHash(appUser.name, { view: "dashboard", tab, year, month })
+    : null;
+  const wrappedHref = appUser?.name
+    ? buildProfileHash(appUser.name, { view: "wrapped", year })
+    : null;
+
+  /* Valeur agrégée du contexte de période. Memoïsée pour que l'identité
+   * reste stable tant que rien ne change : sans ça, on recréerait l'objet
+   * à chaque render et tous les consommateurs (`PeriodFloatingChip`,
+   * `OverviewTab`, `AnimeTab`, `MangaTab`) re-rendraient inutilement.
+   * Les setters React (`setTab`, `setMonth`) sont stables, mais
+   * `changeYear` est défini en clôture sur `setYear`/`setMonth` ; il est
+   * stable lui aussi tant que les setters ne changent pas. */
+  const periodValue = useMemo<ProfilePeriodValue>(
+    () => ({
+      tab,
+      year,
+      month,
+      years,
+      isAllTime,
+      setTab,
+      changeYear,
+      setMonth,
+    }),
+    [tab, year, month, years, isAllTime, changeYear]
+  );
+
+  const wrappedYear = year === ALL_TIME_YEAR ? new Date().getFullYear() : year;
+  const wrappedSummary = useMemo(
+    () =>
+      buildWrappedSummary({
+        user: appUser,
+        year: wrappedYear,
+        allAnime,
+        allManga,
+        animeActivityCache: effectiveAnimeActivityCache,
+        mangaActivityCache: effectiveMangaActivityCache,
+      }),
+    [appUser, wrappedYear, allAnime, allManga, effectiveAnimeActivityCache, effectiveMangaActivityCache]
+  );
 
   /** Le loader global ne doit bloquer que tant que le profil de base n'est pas affichable. */
   const primaryProfileLoader = useMemo(
@@ -2205,6 +1871,7 @@ function App() {
         onRefreshProfile={handleManualRefreshProfile}
       />
 
+      <ProfilePeriodProvider value={periodValue}>
       <ProfileViewMain
         C={C}
         loaded={loaded}
@@ -2238,19 +1905,18 @@ function App() {
         animeEntriesCount={allAnime.length}
         mangaEntriesCount={allManga.length}
         tabs={tabs}
-        tab={tab}
-        setTab={setTab}
-        periodYears={years}
-        periodYear={year}
-        periodMonth={month}
-        periodChangeYear={changeYear}
-        periodSetMonth={setMonth}
+        wrappedActive={isWrappedRoute}
+        dashboardHref={dashboardHref}
+        wrappedHref={wrappedHref}
       >
             <div key={tab} className="tab-transition-wrapper">
-            {tab === "overview" && (
+            {isWrappedRoute ? (
+              <WrappedPage
+                summary={wrappedSummary}
+                dashboardHref={dashboardHref ?? "#/"}
+              />
+            ) : tab === "overview" && (
               <OverviewTab
-                year={year}
-                month={month}
                 totalEp={totalEp}
                 totalAnime={animeTabEntries.length}
                 totalManga={mangaTabEntries.length}
@@ -2289,11 +1955,8 @@ function App() {
               />
             )}
 
-            {tab === "anime" && (
+            {!isWrappedRoute && tab === "anime" && (
               <AnimeTab
-                year={year}
-                month={month}
-                setMonth={setMonth}
                 animeEntriesLength={animeTabEntries.length}
                 totalEp={totalEpAnimeTab}
                 totalMin={totalMinAnimeTab}
@@ -2322,11 +1985,8 @@ function App() {
               />
             )}
 
-            {tab === "manga" && (
+            {!isWrappedRoute && tab === "manga" && (
               <MangaTab
-                year={year}
-                month={month}
-                setMonth={setMonth}
                 mangaEntriesLength={mangaTabEntries.length}
                 totalCh={totalChMangaTab}
                 totalVol={totalVol}
@@ -2352,16 +2012,19 @@ function App() {
             )}
             </div>
 
-            <PeriodEmptyBanner
-              year={year}
-              month={month}
-              animeEntriesLength={animeTabEntries.length}
-              mangaEntriesLength={mangaTabEntries.length}
-              loadingActivities={loadingActivities}
-              comparisonYearMissing={compareAvailability.missing}
-              hasProfileData={Boolean(appUser?.id)}
-            />
+            {!isWrappedRoute ? (
+              <PeriodEmptyBanner
+                year={year}
+                month={month}
+                animeEntriesLength={animeTabEntries.length}
+                mangaEntriesLength={mangaTabEntries.length}
+                loadingActivities={loadingActivities}
+                comparisonYearMissing={compareAvailability.missing}
+                hasProfileData={Boolean(appUser?.id)}
+              />
+            ) : null}
       </ProfileViewMain>
+      </ProfilePeriodProvider>
 
       </>
       )}

@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.0",
+    "html-to-image": "^1.11.13",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recharts": "^2.12.7"
