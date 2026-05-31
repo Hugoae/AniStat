@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { devLog, fetchActivitiesWithRetry } from "../lib/profileLocalCache";
+import {
+  reportPersistenceFailure,
+  reportPersistenceSuccess,
+} from "../lib/persistenceStatus";
 import type { ActivityCacheByYear, ActivityItem, AniListUser } from "../types/domain";
 import {
   enrichActivitiesWithMediaBits,
@@ -30,9 +34,9 @@ function archiveActivitiesToSupabase(
       await saveActivities(userId, activityType, activities);
       await updateActivitySyncState(userId, activityType, activities);
       devLog("supabase activities archive", `${activityType}:${activities.length}`);
+      reportPersistenceSuccess(`activités ${activityType}`);
     } catch (err: unknown) {
-      const e = err as { message?: string };
-      devLog("supabase activities archive failed", activityType, e?.message || err);
+      reportPersistenceFailure(`activités ${activityType}`, err);
     }
   })();
 }
@@ -119,8 +123,10 @@ function archiveSyncRunToSupabase(args: {
         errorMessage: args.errorMessage ?? null,
         metadata: { year: args.year, source: "useActivityYearsLoader" },
       });
-    } catch {
-      // Sync logs are diagnostic only and must never affect rendering.
+    } catch (err: unknown) {
+      // Diagnostic uniquement : ne doit pas affecter le rendu, mais on logge
+      // explicitement car un échec ici signale aussi un endpoint cassé.
+      console.error("[AniListStat] recordSyncRun a échoué:", err);
     }
   })();
 }

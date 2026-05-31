@@ -12,6 +12,10 @@ import {
   normalizeName,
 } from "../lib/profileLocalCache";
 import {
+  reportPersistenceFailure,
+  reportPersistenceSuccess,
+} from "../lib/persistenceStatus";
+import {
   parseRouteFromHash,
   profileHashForUserName,
   initialLoadingFromHash,
@@ -68,9 +72,9 @@ function archiveUserToSupabase(user: AniListUser | null | undefined) {
   void (async () => {
     try {
       await upsertUser(user);
+      reportPersistenceSuccess("profil");
     } catch (err: unknown) {
-      const e = err as { message?: string };
-      devLog("supabase user archive failed", e?.message || err);
+      reportPersistenceFailure("profil (tracked_users)", err);
     }
   })();
 }
@@ -87,9 +91,9 @@ function archiveMediaListsToSupabase(
         saveMediaListSnapshot(userId, "ANIME", animeEntries),
         saveMediaListSnapshot(userId, "MANGA", mangaEntries),
       ]);
+      reportPersistenceSuccess("listes");
     } catch (err: unknown) {
-      const e = err as { message?: string };
-      devLog("supabase media list archive failed", e?.message || err);
+      reportPersistenceFailure("listes (media_list_snapshots)", err);
     }
   })();
 }

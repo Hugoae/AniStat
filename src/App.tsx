@@ -76,6 +76,7 @@ import {
   profileHashForUserName,
 } from "./lib/routing";
 import { buildWrappedSummary } from "./lib/wrapped";
+import { usePersistenceStatus, clearPersistenceError } from "./lib/persistenceStatus";
 import { recordProfileFetch } from "./lib/profileFetchStats";
 import { useProfileLoader } from "./hooks/useProfileLoader";
 import { useActivityYearsLoader } from "./hooks/useActivityYearsLoader";
@@ -553,6 +554,7 @@ function App() {
     () => formatSyncAbsoluteDate(lastSupabaseSyncAt),
     [lastSupabaseSyncAt]
   );
+  const persistenceStatus = usePersistenceStatus();
 
   useEffect(() => {
     if (!IS_DEV_LOCAL || !showDevPanel) return undefined;
@@ -1870,6 +1872,26 @@ function App() {
         syncRefreshing={backgroundRefreshing}
         onRefreshProfile={handleManualRefreshProfile}
       />
+
+      {persistenceStatus.lastError && (
+        <div className="persistence-error-banner" role="alert">
+          <span className="persistence-error-banner__text">
+            Échec de sauvegarde Supabase : tes données ne sont pas enregistrées
+            (un rafraîchissement reviendra à l'état précédent).{" "}
+            <span className="persistence-error-banner__detail">
+              {persistenceStatus.lastError}
+            </span>
+          </span>
+          <button
+            type="button"
+            className="persistence-error-banner__close"
+            onClick={clearPersistenceError}
+            aria-label="Fermer l'alerte"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <ProfilePeriodProvider value={periodValue}>
       <ProfileViewMain

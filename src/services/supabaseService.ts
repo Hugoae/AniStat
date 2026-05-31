@@ -1,4 +1,3 @@
-import { postSupabaseSyncAction } from "../api/supabaseSyncClient";
 import { supabase } from "../lib/supabaseClient";
 import type { ActivityItem, AniListEntry, AniListUser } from "../types/domain";
 
@@ -128,18 +127,6 @@ export async function getLatestActivityId(
   return Number.isFinite(id) && id > 0 ? id : null;
 }
 
-export async function upsertUser(user: AniListUser): Promise<void> {
-  await postSupabaseSyncAction("upsertUser", { user });
-}
-
-export async function saveMediaListSnapshot(
-  userId: number,
-  type: MediaListSnapshotType,
-  entries: AniListEntry[]
-): Promise<void> {
-  await postSupabaseSyncAction("saveMediaListSnapshot", { userId, type, entries });
-}
-
 function chunkArray<T>(rows: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < rows.length; i += size) {
@@ -148,14 +135,114 @@ function chunkArray<T>(rows: T[], size: number): T[][] {
   return chunks;
 }
 
+function activityCreatedAtIso(createdAtUnix: number): string {
+  return new Date(createdAtUnix * 1000).toISOString();
+}
+
+function mediaListSourceVersion(type: MediaListSnapshotType): string {
+  return type === "ANIME" ? "anime_cov5" : "manga_cov3";
+}
+
+function maxUpdatedAt(entries: AniListEntry[]): number | null {
+  const max = entries.reduce((acc, entry) => {
+    const updatedAt = Number((entry as { updatedAt?: number })?.updatedAt || 0);
+    return Number.isFinite(updatedAt) && updatedAt > acc ? updatedAt : acc;
+  }, 0);
+  return max > 0 ? max : null;
+}
+
+type ActivityRow = {
+  id: number;
+  anilist_user_id: number;
+  activity_type: ActivitySnapshotType;
+  media_id: number | null;
+  created_at_unix: number;
+  created_at_ts: string;
+  status: string | null;
+  progress: string | null;
+  payload_jsonb: ActivityItem;
+  fetched_at: string;
+};
+
+function mapActivitiesToRows(
+  userId: number,
+  activityType: ActivitySnapshotType,
+  activities: ActivityItem[]
+): ActivityRow[] {
+  const rows: ActivityRow[] = [];
+  for (const activity of activities) {
+    const id = Number(activity?.id || 0);
+    const createdAtUnix = Number(activity?.createdAt || 0);
+    if (!Number.isFinite(id) || id <= 0) continue;
+    if (!Number.isFinite(createdAtUnix) || createdAtUnix <= 0) continue;
+    rows.push({
+      id,
+      anilist_user_id: userId,
+      activity_type: activityType,
+      media_id: activity.media?.id ?? null,
+      created_at_unix: createdAtUnix,
+      created_at_ts: activityCreatedAtIso(createdAtUnix),
+      status: activity.status ?? null,
+      progress: activity.progress == null ? null : String(activity.progress),
+      payload_jsonb: activity,
+      fetched_at: new Date().toISOString(),
+    });
+  }
+  return rows;
+}
+
+export async function upsertUser(user: AniListUser): Promise<void> {
+  const userId = Number(user?.id || 0);
+  const name = String(user?.name || "").trim();
+  if (!Number.isFinite(userId) || userId <= 0 || !name) {
+    throw new Error("Invalid user payload (id/name)");
+  }
+  const { error } = await supabase.from("tracked_users").upsert(
+    {
+      anilist_user_id: userId,
+      anilist_name: name,
+      avatar_url: user.avatar?.large || user.avatar?.medium || null,
+      banner_image: user.bannerImage || null,
+      sync_status: "ready",
+      last_profile_sync_at: new Date().toISOString(),
+    },
+    { onConflict: "anilist_user_id" }
+  );
+  if (error) throw error;
+}
+
+export async function saveMediaListSnapshot(
+  userId: number,
+  type: MediaListSnapshotType,
+  entries: AniListEntry[]
+): Promise<void> {
+  if (!Array.isArray(entries)) throw new Error("Invalid entries");
+  const { error } = await supabase.from("media_list_snapshots").upsert(
+    {
+      anilist_user_id: userId,
+      media_type: type,
+      payload_jsonb: entries,
+      source_query_version: mediaListSourceVersion(type),
+      fetched_at: new Date().toISOString(),
+      entry_count: entries.length,
+      max_updated_at: maxUpdatedAt(entries),
+    },
+    { onConflict: "anilist_user_id,media_type" }
+  );
+  if (error) throw error;
+}
+
 export async function saveActivities(
   userId: number,
   activityType: ActivitySnapshotType,
   activities: ActivityItem[]
 ): Promise<void> {
   if (activities.length === 0) return;
-  for (const chunk of chunkArray(activities, ACTIVITY_UPSERT_CHUNK_SIZE)) {
-    await postSupabaseSyncAction("saveActivities", { userId, activityType, activities: chunk });
+  const rows = mapActivitiesToRows(userId, activityType, activities);
+  if (rows.length === 0) return;
+  for (const chunk of chunkArray(rows, ACTIVITY_UPSERT_CHUNK_SIZE)) {
+    const { error } = await supabase.from("activities").upsert(chunk, { onConflict: "id" });
+    if (error) throw error;
   }
 }
 
@@ -164,11 +251,43 @@ export async function updateActivitySyncState(
   activityType: ActivitySnapshotType,
   activities: ActivityItem[]
 ): Promise<void> {
-  await postSupabaseSyncAction("updateActivitySyncState", {
-    userId,
-    activityType,
-    activities,
-  });
+  const valid = activities
+    .map((activity) => ({
+      id: Number(activity?.id || 0),
+      createdAtUnix: Number(activity?.createdAt || 0),
+    }))
+    .filter(
+      (activity) =>
+        Number.isFinite(activity.id) &&
+        activity.id > 0 &&
+        Number.isFinite(activity.createdAtUnix) &&
+        activity.createdAtUnix > 0
+    );
+  if (valid.length === 0) return;
+
+  const latest = valid.reduce((best, activity) => {
+    if (activity.createdAtUnix > best.createdAtUnix) return activity;
+    if (activity.createdAtUnix === best.createdAtUnix && activity.id > best.id) return activity;
+    return best;
+  }, valid[0]);
+  const oldest = valid.reduce(
+    (best, activity) => (activity.createdAtUnix < best.createdAtUnix ? activity : best),
+    valid[0]
+  );
+
+  const { error } = await supabase.from("activity_sync_state").upsert(
+    {
+      anilist_user_id: userId,
+      activity_type: activityType,
+      latest_activity_id: latest.id,
+      latest_created_at_unix: latest.createdAtUnix,
+      oldest_created_at_unix: oldest.createdAtUnix,
+      last_delta_sync_at: new Date().toISOString(),
+      last_error: null,
+    },
+    { onConflict: "anilist_user_id,activity_type" }
+  );
+  if (error) throw error;
 }
 
 export async function recordSyncRun(args: {
@@ -180,13 +299,17 @@ export async function recordSyncRun(args: {
   errorMessage?: string | null;
   metadata?: Record<string, unknown>;
 }): Promise<void> {
-  await postSupabaseSyncAction("recordSyncRun", {
-    userId: args.userId,
+  const finishedAt = new Date().toISOString();
+  const { error } = await supabase.from("sync_runs").insert({
+    anilist_user_id: args.userId,
     kind: args.kind,
     status: args.status,
-    pagesFetched: args.pagesFetched ?? 0,
-    rowsUpserted: args.rowsUpserted ?? 0,
-    errorMessage: args.errorMessage ?? null,
+    started_at: finishedAt,
+    finished_at: finishedAt,
+    pages_fetched: args.pagesFetched ?? 0,
+    rows_upserted: args.rowsUpserted ?? 0,
+    error_message: args.errorMessage ?? null,
     metadata: args.metadata ?? {},
   });
+  if (error) throw error;
 }

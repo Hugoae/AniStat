@@ -1,59 +1,9 @@
-import { defineConfig, loadEnv, type Plugin } from "vite";
+import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-function readRequestBody(req: import("http").IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
-  });
-}
-
-/** Expose /api/supabase-sync in `vite dev` (same contract as Vercel serverless). */
-function supabaseSyncDevMiddleware(env: Record<string, string>): Plugin {
+export default defineConfig(() => {
   return {
-    name: "supabase-sync-dev",
-    configureServer(server) {
-      server.middlewares.use(async (req, res, next) => {
-        const path = req.url?.split("?")[0];
-        if (path !== "/api/supabase-sync" || req.method !== "POST") {
-          next();
-          return;
-        }
-
-        process.env.SUPABASE_URL = env.SUPABASE_URL || env.VITE_SUPABASE_URL || "";
-        process.env.SUPABASE_SERVICE_ROLE_KEY = env.SUPABASE_SERVICE_ROLE_KEY || "";
-
-        try {
-          const raw = await readRequestBody(req);
-          const body = JSON.parse(raw) as { action?: string; payload?: unknown };
-          const { handleSyncAction } = await import("./api/lib/supabaseWriteCore.js");
-          await handleSyncAction(body.action, body.payload);
-          res.statusCode = 200;
-          res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify({ ok: true }));
-        } catch (err) {
-          const message = err instanceof Error ? err.message : "Sync failed";
-          const isClient =
-            message.startsWith("Invalid") ||
-            message.startsWith("Unknown") ||
-            message.startsWith("Too many") ||
-            message.includes("Missing");
-          res.statusCode = isClient ? 400 : 500;
-          res.setHeader("Content-Type", "application/json");
-          res.end(JSON.stringify({ error: message }));
-        }
-      });
-    },
-  };
-}
-
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), "");
-
-  return {
-    plugins: [react(), supabaseSyncDevMiddleware(env)],
+    plugins: [react()],
     build: {
       /*
        * Code-splitting manuel du bundle. L'objectif est de sortir les libs
