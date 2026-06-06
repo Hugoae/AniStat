@@ -209,8 +209,8 @@ query UserProfile($name: String!) {
 
 /**
  * Version allégée : on ne récupère que l'identifiant du media pour chaque
- * activité. Les métadonnées (durée, épisodes, chapitres, format, pays, titre,
- * cover, studios, etc.) sont déjà présentes dans `MediaListCollection` chargé
+ * activité. Les métadonnées (durée, épisodes, chapitres, format, pays, genres,
+ * titre, cover, studios, etc.) sont déjà présentes dans `MediaListCollection` chargé
  * au login, et jointes côté client via `mediaByIdRef` dans useActivityYearsLoader.
  *
  * Gain : ~70-80 % du payload des activités retiré (1 activité = ~60 octets au

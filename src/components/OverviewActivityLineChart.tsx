@@ -146,7 +146,7 @@ export function OverviewActivityLineChart({
   const animateCharts = !prefersReducedMotion;
   return (
     <ResponsiveContainer width="100%" height={240}>
-      <LineChart data={data} margin={{ top: 8, right: 34, left: 8, bottom: 6 }}>
+      <LineChart data={data} margin={{ top: 30, right: 34, left: 8, bottom: 6 }}>
         <defs>
           <linearGradient id={fillGradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={C.accent} stopOpacity={0.5} />

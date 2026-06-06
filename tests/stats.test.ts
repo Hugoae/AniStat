@@ -12,6 +12,8 @@ import {
   collectPeriodWorksStartedEntries,
   collectPeriodWorksCompletedEntries,
   pickSpotlightEntriesFromWorks,
+  computePeriodGenreDistribution,
+  computeGenreDistributionFromEntries,
 } from "../src/lib/stats";
 
 describe("stats", () => {
@@ -24,6 +26,28 @@ describe("stats", () => {
     expect(ids.has(100)).toBe(true);
     const delta = computePeriodDeltaFromActivities(activities, 2025, 1, "anime");
     expect(delta).toBe(10);
+  });
+
+  it("computePeriodGenreDistribution counts genres once per work in period", () => {
+    const activities = [
+      { id: 1, createdAt: 1735689600, progress: 1, media: { id: 100, genres: ["Action"] } },
+      { id: 2, createdAt: 1735776000, progress: 5, media: { id: 100, genres: ["Action"] } },
+      { id: 3, createdAt: 1735776000, progress: 1, media: { id: 200, genres: ["Fantasy", "Action"] } },
+    ];
+    const out = computePeriodGenreDistribution(activities, 2025, 1, "anime");
+    expect(out.find((row) => row.name === "Action")?.count).toBe(2);
+    expect(out.find((row) => row.name === "Fantasy")?.count).toBe(1);
+  });
+
+  it("computePeriodGenreDistribution prefers lookup genres over stale activity media", () => {
+    const activities = [
+      { id: 1, createdAt: 1735689600, progress: 1, media: { id: 100, genres: ["Stale"] } },
+    ];
+    const lookup = new Map([[100, { genres: ["Action", "Comedy"] }]]);
+    const out = computePeriodGenreDistribution(activities, 2025, 1, "anime", lookup);
+    expect(out.find((row) => row.name === "Action")?.count).toBe(1);
+    expect(out.find((row) => row.name === "Comedy")?.count).toBe(1);
+    expect(out.find((row) => row.name === "Stale")).toBeUndefined();
   });
 
   it("filters future activities", () => {

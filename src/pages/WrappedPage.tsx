@@ -1,18 +1,9 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { toPng } from "html-to-image";
-import type { WrappedSummary } from "../lib/wrapped";
+import type { WrappedSummary, WrappedMedia } from "../lib/wrapped";
 
 type WrappedPageProps = {
   summary: WrappedSummary;
-  dashboardHref: string;
-};
-
-type WrappedSlide = {
-  key: string;
-  eyebrow: string;
-  title: string;
-  kicker: string;
-  body: string;
 };
 
 function downloadDataUrl(dataUrl: string, filename: string) {
@@ -34,94 +25,121 @@ function coverAlt(title: string): string {
   return `Cover ${title}`;
 }
 
-function WrappedMediaSpotlight({
-  label,
-  media,
-}: {
-  label: string;
-  media: WrappedSummary["topAnime"];
-}) {
-  if (!media) return null;
+function WrappedProfileHeader({ summary }: { summary: WrappedSummary }) {
   return (
-    <div className="wrapped-media-spotlight">
-      {media.coverImageUrl ? (
-        <img className="wrapped-media-spotlight__cover" src={media.coverImageUrl} alt={coverAlt(media.title)} />
-      ) : (
-        <div className="wrapped-media-spotlight__cover wrapped-media-spotlight__cover--empty" aria-hidden />
-      )}
-      <div>
-        <div className="wrapped-media-spotlight__label">{label}</div>
-        <div className="wrapped-media-spotlight__title">{media.title}</div>
-        {media.score ? <div className="wrapped-media-spotlight__score">Note {media.score}/10</div> : null}
+    <header className="wrapped-card__header">
+      <div className="wrapped-card__banner">
+        {summary.bannerImage ? (
+          <img src={summary.bannerImage} alt="" className="wrapped-card__banner-img" />
+        ) : (
+          <div className="wrapped-card__banner-fallback" aria-hidden />
+        )}
+        <div className="wrapped-card__banner-fade" aria-hidden />
+        <div className="wrapped-card__banner-overlay">
+          <div className="wrapped-card__profile-block">
+            {summary.avatarUrl ? (
+              <img src={summary.avatarUrl} alt="" className="wrapped-card__avatar" />
+            ) : (
+              <div className="wrapped-card__avatar wrapped-card__avatar--fallback" aria-hidden />
+            )}
+            <span className="wrapped-card__username">{summary.userName}</span>
+          </div>
+          <p className="wrapped-card__signature">AniStat Wrapped {summary.year}</p>
+        </div>
       </div>
+    </header>
+  );
+}
+
+function WrappedBentoBox({
+  title,
+  className,
+  children,
+}: {
+  title: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className={["wrapped-bento-box", className].filter(Boolean).join(" ")}>
+      <h3 className="wrapped-bento-box__title">{title}</h3>
+      <div className="wrapped-bento-box__content">{children}</div>
     </div>
   );
 }
 
-export function WrappedPage({ summary, dashboardHref }: WrappedPageProps) {
-  const [activeIndex, setActiveIndex] = useState(0);
+function WrappedTopMediaList({ items, emptyLabel }: { items: WrappedMedia[]; emptyLabel: string }) {
+  if (items.length === 0) {
+    return <p className="wrapped-bento-box__empty">{emptyLabel}</p>;
+  }
+  return (
+    <ol className="wrapped-bento-top-list">
+      {items.map((media, index) => (
+        <li key={media.id} className="wrapped-bento-top-list__item">
+          <span className="wrapped-bento-top-list__rank">{index + 1}</span>
+          {media.coverImageUrl ? (
+            <img
+              className="wrapped-bento-top-list__cover"
+              src={media.coverImageUrl}
+              alt={coverAlt(media.title)}
+            />
+          ) : (
+            <div className="wrapped-bento-top-list__cover wrapped-bento-top-list__cover--empty" aria-hidden />
+          )}
+          <div className="wrapped-bento-top-list__meta">
+            <span className="wrapped-bento-top-list__title">{media.title}</span>
+            {media.score ? (
+              <span className="wrapped-bento-top-list__score">{media.score}/10</span>
+            ) : null}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+function buildTopMediaList(
+  primary: WrappedMedia | null,
+  pool: readonly WrappedMedia[],
+  max: number
+): WrappedMedia[] {
+  const out: WrappedMedia[] = [];
+  const seen = new Set<number>();
+  if (primary) {
+    out.push(primary);
+    seen.add(primary.id);
+  }
+  for (const media of pool) {
+    if (out.length >= max) break;
+    if (seen.has(media.id)) continue;
+    seen.add(media.id);
+    out.push(media);
+  }
+  return out.slice(0, max);
+}
+
+export function WrappedPage({ summary }: WrappedPageProps) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const exportRef = useRef<HTMLDivElement | null>(null);
 
-  const slides = useMemo<WrappedSlide[]>(() => {
-    const topStudio = summary.topStudio
-      ? `${summary.topStudio.name} domine ton année anime avec ${Math.round(summary.topStudio.minutesWatched / 60)} h.`
-      : "Aucun studio dominant net cette année.";
-    const topAuthor = summary.topAuthor
-      ? `${summary.topAuthor.name}${summary.topAuthor.role ? ` (${summary.topAuthor.role})` : ""} ressort côté manga.`
-      : "Aucun auteur dominant net cette année.";
-    return [
-      {
-        key: "intro",
-        eyebrow: `${summary.userName} · ${summary.year}`,
-        title: "Ton année AniStat",
-        kicker: `${summary.totals.animeCount + summary.totals.mangaCount} œuvres actives`,
-        body: `${summary.totals.activeDays} jours actifs, ${summary.totals.episodes} épisodes et ${summary.totals.chapters} chapitres dans le rétro.`,
-      },
-      {
-        key: "anime",
-        eyebrow: "Anime",
-        title: `${Math.round(summary.totals.minutes / 60)} heures devant l'écran`,
-        kicker: `${summary.totals.episodes} épisodes vus`,
-        body: topStudio,
-      },
-      {
-        key: "manga",
-        eyebrow: "Manga",
-        title: `${summary.totals.chapters} chapitres lus`,
-        kicker: `${summary.totals.mangaCount} manga actifs`,
-        body: topAuthor,
-      },
-      {
-        key: "taste",
-        eyebrow: "Signature de goût",
-        title: summary.topGenre?.name || summary.topTag?.name || "Un profil éclectique",
-        kicker: summary.topTag ? `Tag dominant : ${summary.topTag.name}` : "Aucun tag dominant",
-        body: summary.topGenre
-          ? `${summary.topGenre.count} œuvres de ton année portent ce genre.`
-          : "Tes goûts sont trop dispersés pour laisser un seul genre gagner.",
-      },
-      {
-        key: "highlights",
-        eyebrow: "Moments forts",
-        title: summary.highlights[3]?.value || summary.highlights[0]?.value || "Année consolidée",
-        kicker: summary.highlights[3]?.label || summary.highlights[0]?.label || "Highlight",
-        body: summary.highlights.map((h) => `${h.label}: ${h.value}`).join(" · "),
-      },
-      {
-        key: "favorites",
-        eyebrow: "Têtes d'affiche",
-        title: summary.topAnime?.title || summary.topManga?.title || "Tes favoris",
-        kicker: "Top scores personnels",
-        body: [summary.topAnime?.title, summary.topManga?.title].filter(Boolean).join(" · ") || "Pas assez de notes cette année.",
-      },
-    ];
-  }, [summary]);
+  const topAnimeList = useMemo(
+    () => buildTopMediaList(summary.topAnime, summary.covers, 5),
+    [summary.topAnime, summary.covers]
+  );
+  const topMangaList = useMemo(
+    () => buildTopMediaList(summary.topManga, summary.covers, 5),
+    [summary.topManga, summary.covers]
+  );
 
-  const activeSlide = slides[activeIndex] ?? slides[0];
+  const topStudioLabel = summary.topStudio
+    ? `${summary.topStudio.name} · ${Math.round(summary.topStudio.minutesWatched / 60)} h`
+    : "—";
+  const topAuthorLabel = summary.topAuthor
+    ? `${summary.topAuthor.name}${summary.topAuthor.role ? ` (${summary.topAuthor.role})` : ""}`
+    : "—";
 
-  const exportActiveSlide = async () => {
+  const exportIntroCard = async () => {
     if (!exportRef.current) return;
     setExporting(true);
     setExportError(null);
@@ -129,11 +147,11 @@ export function WrappedPage({ summary, dashboardHref }: WrappedPageProps) {
       const dataUrl = await toPng(exportRef.current, {
         pixelRatio: 2,
         cacheBust: true,
-        backgroundColor: "#0b1622",
+        backgroundColor: "#0f1824",
       });
       downloadDataUrl(
         dataUrl,
-        `anistat-wrapped-${safeFilePart(summary.userName)}-${summary.year}-${activeSlide.key}.png`
+        `anistat-wrapped-${safeFilePart(summary.userName)}-${summary.year}-intro.png`
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : "Export impossible";
@@ -150,9 +168,6 @@ export function WrappedPage({ summary, dashboardHref }: WrappedPageProps) {
           <p className="wrapped-kicker">AniStat Wrapped</p>
           <h1 id="wrapped-title">Pas encore assez de données pour {summary.year}</h1>
           <p>{summary.emptyReason}</p>
-          <a className="wrapped-button wrapped-button--secondary" href={dashboardHref}>
-            Retour au dashboard
-          </a>
         </div>
       </section>
     );
@@ -167,78 +182,81 @@ export function WrappedPage({ summary, dashboardHref }: WrappedPageProps) {
           <p className="wrapped-page__subtitle">Une carte partageable, générée à partir de ton historique AniList.</p>
         </div>
         <div className="wrapped-actions">
-          <a className="wrapped-button wrapped-button--secondary" href={dashboardHref}>
-            Dashboard
-          </a>
-          <button className="wrapped-button" type="button" onClick={exportActiveSlide} disabled={exporting}>
+          <button className="wrapped-button" type="button" onClick={exportIntroCard} disabled={exporting}>
             {exporting ? "Export…" : "Télécharger PNG"}
           </button>
         </div>
       </div>
 
-      <div className="wrapped-layout">
-        <div
-          ref={exportRef}
-          className="wrapped-card"
-          style={
-            summary.bannerImage
-              ? {
-                  backgroundImage: `linear-gradient(135deg, rgba(11,22,34,0.92), rgba(11,22,34,0.62)), url(${summary.bannerImage})`,
-                }
-              : undefined
-          }
-        >
-          <div className="wrapped-card__topline">
-            <span>AniStat Wrapped</span>
-            <span>{summary.year}</span>
-          </div>
-          <div className="wrapped-profile-line">
-            {summary.avatarUrl ? <img src={summary.avatarUrl} alt="" className="wrapped-profile-line__avatar" /> : null}
-            <span>{summary.userName}</span>
-          </div>
-          <p className="wrapped-card__eyebrow">{activeSlide.eyebrow}</p>
-          <h2>{activeSlide.title}</h2>
-          <p className="wrapped-card__kicker">{activeSlide.kicker}</p>
-          <p className="wrapped-card__body">{activeSlide.body}</p>
+      <div ref={exportRef} className="wrapped-export-canvas">
+        <WrappedProfileHeader summary={summary} />
 
-          <div className="wrapped-metric-grid">
-            {summary.highlights.slice(0, 4).map((highlight) => (
-              <div key={highlight.label} className="wrapped-metric">
-                <span>{highlight.label}</span>
-                <strong>{highlight.value}</strong>
-                <small>{highlight.detail}</small>
-              </div>
-            ))}
-          </div>
+        <div className="wrapped-bento-grid">
+          <WrappedBentoBox title="Anime Stats" className="wrapped-bento-box--anime-stats">
+            <p className="wrapped-bento-stat">
+              <strong>{Math.round(summary.totals.minutes / 60)} h</strong>
+              <span>de visionnage</span>
+            </p>
+            <p className="wrapped-bento-stat">
+              <strong>{summary.totals.episodes}</strong>
+              <span>épisodes vus</span>
+            </p>
+            <p className="wrapped-bento-stat">
+              <strong>{summary.totals.animeCount}</strong>
+              <span>anime actifs</span>
+            </p>
+            <p className="wrapped-bento-meta">Studio · {topStudioLabel}</p>
+          </WrappedBentoBox>
 
-          <div className="wrapped-media-row">
-            <WrappedMediaSpotlight label="Anime favori" media={summary.topAnime} />
-            <WrappedMediaSpotlight label="Manga favori" media={summary.topManga} />
-          </div>
+          <WrappedBentoBox title="Manga Stats" className="wrapped-bento-box--manga-stats">
+            <p className="wrapped-bento-stat">
+              <strong>{summary.totals.chapters}</strong>
+              <span>chapitres lus</span>
+            </p>
+            <p className="wrapped-bento-stat">
+              <strong>{summary.totals.mangaCount}</strong>
+              <span>manga actifs</span>
+            </p>
+            <p className="wrapped-bento-stat">
+              <strong>{summary.totals.activeDays}</strong>
+              <span>jours actifs</span>
+            </p>
+            <p className="wrapped-bento-meta">Auteur · {topAuthorLabel}</p>
+          </WrappedBentoBox>
 
-          {summary.covers.length > 0 ? (
-            <div className="wrapped-cover-strip" aria-label="Covers marquantes">
-              {summary.covers.slice(0, 6).map((media) =>
-                media.coverImageUrl ? (
-                  <img key={media.id} src={media.coverImageUrl} alt={coverAlt(media.title)} />
-                ) : null
-              )}
-            </div>
-          ) : null}
-        </div>
+          <WrappedBentoBox title="Top 5 Anime" className="wrapped-bento-box--top-anime">
+            <WrappedTopMediaList items={topAnimeList} emptyLabel="Pas assez de notes anime." />
+          </WrappedBentoBox>
 
-        <div className="wrapped-slide-list" aria-label="Slides Wrapped">
-          {slides.map((slide, idx) => (
-            <button
-              key={slide.key}
-              type="button"
-              className={`wrapped-slide-pill${idx === activeIndex ? " wrapped-slide-pill--active" : ""}`}
-              onClick={() => setActiveIndex(idx)}
-            >
-              <span>{String(idx + 1).padStart(2, "0")}</span>
-              {slide.eyebrow}
-            </button>
-          ))}
+          <WrappedBentoBox title="Graphiques / Radar" className="wrapped-bento-box--charts">
+            <p className="wrapped-bento-meta">Genre dominant</p>
+            <p className="wrapped-bento-highlight">
+              {summary.topGenre?.name ?? "—"}
+              {summary.topGenre ? ` (${summary.topGenre.count} titres)` : ""}
+            </p>
+            <p className="wrapped-bento-meta">Tag dominant</p>
+            <p className="wrapped-bento-highlight">
+              {summary.topTag?.name ?? "—"}
+              {summary.topTag ? ` (${summary.topTag.count}×)` : ""}
+            </p>
+            <div className="wrapped-bento-chart-placeholder" aria-hidden />
+          </WrappedBentoBox>
+
+          <WrappedBentoBox title="Top 5 Manga" className="wrapped-bento-box--top-manga">
+            <WrappedTopMediaList items={topMangaList} emptyLabel="Pas assez de notes manga." />
+          </WrappedBentoBox>
+
+          <WrappedBentoBox title="Awards / Fun Stats" className="wrapped-bento-box--awards">
+            <ul className="wrapped-bento-awards">
+              {summary.highlights.map((highlight) => (
+                <li key={highlight.label} className="wrapped-bento-awards__item">
+                  <span className="wrapped-bento-awards__label">{highlight.label}</span>
+                  <strong className="wrapped-bento-awards__value">{highlight.value}</strong>
+                  <small className="wrapped-bento-awards__detail">{highlight.detail}</small>
+                </li>
+              ))}
+            </ul>
+          </WrappedBentoBox>
         </div>
       </div>
 

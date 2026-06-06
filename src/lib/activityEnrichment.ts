@@ -3,9 +3,9 @@ import type { ActivityItem, AniListEntry } from "../types/domain";
 /**
  * Sous-ensemble minimal des champs `media` nécessaires au calcul des stats
  * d'activité (minutes regardées, chapitres lus, répartitions par format /
- * pays, détection des fins automatiques). Le reste des métadonnées d'un
- * media (titres, covers, studios, tags…) n'est PAS utilisé par les fonctions
- * de `lib/stats.ts` pour les activités, on ne le rejoint donc pas.
+ * pays / genres, détection des fins automatiques). Le reste des métadonnées
+ * d'un media (titres, covers, studios, tags…) n'est PAS utilisé par les
+ * fonctions de `lib/stats.ts` pour les activités, on ne le rejoint donc pas.
  */
 export type ActivityMediaBits = {
   id: number;
@@ -14,6 +14,7 @@ export type ActivityMediaBits = {
   chapters?: number | null;
   format?: string | null;
   countryOfOrigin?: string | null;
+  genres?: string[] | null;
 };
 
 /**
@@ -44,6 +45,9 @@ export function buildMediaBitsIndex(
           (media as { chapters?: number | null } | undefined)?.chapters ?? null,
         format: media?.format ?? null,
         countryOfOrigin: media?.countryOfOrigin ?? null,
+        genres: Array.isArray(media?.genres)
+          ? media.genres.filter((g): g is string => typeof g === "string" && g.length > 0)
+          : null,
       });
     }
   }

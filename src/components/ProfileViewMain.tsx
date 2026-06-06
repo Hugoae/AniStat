@@ -99,7 +99,7 @@ type DeltaAuditPayload = {
   };
 } | null;
 
-export type ProfileTabDef = { key: string; label: string };
+export type ProfileTabDef = { key: string; label: string; className?: string };
 
 export type ProfileViewMainProps = {
   C: typeof C;
@@ -148,9 +148,6 @@ export type ProfileViewMainProps = {
   animeEntriesCount: number;
   mangaEntriesCount: number;
   tabs: ProfileTabDef[];
-  wrappedActive?: boolean;
-  dashboardHref?: string | null;
-  wrappedHref?: string | null;
   children: ReactNode;
 };
 
@@ -185,9 +182,6 @@ export function ProfileViewMain({
   animeEntriesCount,
   mangaEntriesCount,
   tabs,
-  wrappedActive = false,
-  dashboardHref = null,
-  wrappedHref = null,
   children,
 }: ProfileViewMainProps) {
   const { tab, setTab } = useProfilePeriod();
@@ -317,31 +311,16 @@ export function ProfileViewMain({
       {loaded && !loading && (
         <>
           <div className="profile-tabs">
-            {wrappedActive ? (
-              <a className="tab-btn tab-btn--link active" href={wrappedHref ?? undefined}>
-                Wrapped
-              </a>
-            ) : (
-              tabs.map((t) => (
-                <button
-                  key={t.key}
-                  type="button"
-                  className={`tab-btn ${tab === t.key ? "active" : ""}`}
-                  onClick={() => setTab(t.key)}
-                >
-                  {t.label}
-                </button>
-              ))
-            )}
-            {wrappedActive ? (
-              <a className="tab-btn tab-btn--link" href={dashboardHref ?? undefined}>
-                Retour dashboard
-              </a>
-            ) : wrappedHref ? (
-              <a className="tab-btn tab-btn--link tab-btn--wrapped" href={wrappedHref}>
-                Wrapped
-              </a>
-            ) : null}
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                className={`tab-btn${t.className ? ` ${t.className}` : ""}${tab === t.key ? " active" : ""}`}
+                onClick={() => setTab(t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
           <PeriodFloatingChip />
           {children}

@@ -2,16 +2,18 @@
  * Routage SPA basé sur le hash. Formats supportés :
  *  - `#/` ou `#/home`            → accueil
  *  - `#/user/Pseudo`             → dashboard
- *  - `#/user/Pseudo/wrapped`     → vue Wrapped
  *
  * En plus du chemin, des « deep links » sont supportés via une query string
  * placée après le hash, par exemple :
  *  - `#/user/Pseudo?tab=anime&year=2024`
  *  - `#/user/Pseudo?tab=overview&year=2024&month=3`
- *  - `#/user/Pseudo/wrapped?year=2024`
+ *  - `#/user/Pseudo?tab=wrapped&year=2024`
+ *
+ * Ancien format (rétrocompatibilité en lecture) :
+ *  - `#/user/Pseudo/wrapped?year=2024` → interprété comme `?tab=wrapped`
  *
  * Paramètres :
- *  - `tab`   : `overview` | `anime` | `manga`
+ *  - `tab`   : `overview` | `anime` | `manga` | `wrapped`
  *  - `year`  : `0` (= all time) ou année 4 chiffres entre 1970 et 2100
  *  - `month` : `0`..`12` (0 = toute l'année)
  *
@@ -22,14 +24,11 @@
  * lisible et stable.
  */
 
-export type RouteView = "dashboard" | "wrapped";
-
 export type ParsedHomeRoute = { type: "home" };
 
 export type ParsedUserRoute = {
   type: "user";
   name: string;
-  view: RouteView;
   tab: string | null;
   year: number | null;
   month: number | null;
@@ -37,7 +36,7 @@ export type ParsedUserRoute = {
 
 export type ParsedRoute = ParsedHomeRoute | ParsedUserRoute;
 
-const VALID_TABS: ReadonlySet<string> = new Set(["overview", "anime", "manga"]);
+const VALID_TABS: ReadonlySet<string> = new Set(["overview", "anime", "manga", "wrapped"]);
 const DEFAULT_TAB = "overview";
 const DEFAULT_MONTH = 0;
 const ALL_TIME_YEAR = 0;
@@ -83,14 +82,14 @@ export function parseRouteFromHash(): ParsedRoute {
     const name = decodeURIComponent(m[1].replace(/\/$/, "")).trim();
     if (!name) return { type: "home" };
 
-    const view: RouteView = m[2]?.toLowerCase() === "wrapped" ? "wrapped" : "dashboard";
-
+    const legacyWrapped = m[2]?.toLowerCase() === "wrapped";
     const params = new URLSearchParams(queryPart);
+    const tabFromQuery = parseTabParam(params.get("tab"));
+
     return {
       type: "user",
       name,
-      view,
-      tab: parseTabParam(params.get("tab")),
+      tab: tabFromQuery ?? (legacyWrapped ? "wrapped" : null),
       year: parseYearParam(params.get("year")),
       month: parseMonthParam(params.get("month")),
     };
@@ -100,7 +99,6 @@ export function parseRouteFromHash(): ParsedRoute {
 }
 
 export type BuildHashOptions = {
-  view?: RouteView;
   tab?: string | null;
   year?: number | null;
   month?: number | null;
@@ -116,15 +114,10 @@ export function buildProfileHash(name: string, options: BuildHashOptions = {}): 
   const n = String(name || "").trim();
   if (!n) return "#/";
 
-  const view: RouteView = options.view ?? "dashboard";
-  const base =
-    view === "wrapped"
-      ? `#/user/${encodeURIComponent(n)}/wrapped`
-      : `#/user/${encodeURIComponent(n)}`;
-
+  const base = `#/user/${encodeURIComponent(n)}`;
   const params = new URLSearchParams();
 
-  if (view !== "wrapped" && options.tab && VALID_TABS.has(options.tab) && options.tab !== DEFAULT_TAB) {
+  if (options.tab && VALID_TABS.has(options.tab) && options.tab !== DEFAULT_TAB) {
     params.set("tab", options.tab);
   }
 
@@ -135,7 +128,7 @@ export function buildProfileHash(name: string, options: BuildHashOptions = {}): 
     }
   }
 
-  if (view !== "wrapped" && options.month != null && options.month !== DEFAULT_MONTH) {
+  if (options.month != null && options.month !== DEFAULT_MONTH) {
     params.set("month", String(options.month));
   }
 
@@ -144,11 +137,11 @@ export function buildProfileHash(name: string, options: BuildHashOptions = {}): 
 }
 
 export function profileHashForUserName(name: string): string {
-  return buildProfileHash(name, { view: "dashboard" });
+  return buildProfileHash(name);
 }
 
-export function wrappedHashForUserName(name: string): string {
-  return buildProfileHash(name, { view: "wrapped" });
+export function wrappedHashForUserName(name: string, year?: number | null): string {
+  return buildProfileHash(name, { tab: "wrapped", year });
 }
 
 export function initialLoadingFromHash(): boolean {

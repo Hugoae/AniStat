@@ -21,6 +21,8 @@ import {
   computePeriodWatchEpisodesByCountry,
   computePeriodReadChaptersByFormat,
   computePeriodReadChaptersByCountry,
+  computePeriodGenreDistribution,
+  computeGenreDistributionFromEntries,
   computePeriodTopTags,
   computePeriodBiggestSession,
   computePeriodLongestStreak,
@@ -76,6 +78,7 @@ import {
   profileHashForUserName,
 } from "./lib/routing";
 import { buildWrappedSummary } from "./lib/wrapped";
+import { buildOverviewRecentActivities } from "./lib/overviewRecentActivities";
 import { usePersistenceStatus, clearPersistenceError } from "./lib/persistenceStatus";
 import { recordProfileFetch } from "./lib/profileFetchStats";
 import { useProfileLoader } from "./hooks/useProfileLoader";
@@ -414,13 +417,7 @@ function App() {
   useEffect(() => {
     const r = parseRouteFromHash();
     if (r.type !== "user") return;
-    const isWrapped = r.view === "wrapped";
-    const want = buildProfileHash(r.name, {
-      view: r.view,
-      tab: isWrapped ? null : tab,
-      year,
-      month: isWrapped ? null : month,
-    });
+    const want = buildProfileHash(r.name, { tab, year, month });
     if (window.location.hash === want) return;
     try {
       const path = `${window.location.pathname}${window.location.search}${want}`;
@@ -654,9 +651,14 @@ function App() {
    * activités fetchées avec les champs nécessaires aux stats (durée, format,
    * pays…), sans avoir à les demander à chaque activité côté GraphQL.
    */
+  const mediaBitsForStats = useMemo(
+    () => buildMediaBitsIndex([allAnime, allManga]),
+    [allAnime, allManga]
+  );
+
   useEffect(() => {
-    mediaBitsByIdRef.current = buildMediaBitsIndex([allAnime, allManga]);
-  }, [allAnime, allManga]);
+    mediaBitsByIdRef.current = mediaBitsForStats;
+  }, [mediaBitsForStats]);
 
   const activityLoaderRefs = {
     latestUserIdRef,
@@ -919,18 +921,20 @@ function App() {
     [mangaTabEntries]
   );
 
-  /** Genres (onglet Anime) : entrées anime de la période uniquement. */
-  const animeGenrePeriodData = useMemo(() => {
-    const genreCount: Record<string, number> = {};
-    animeTabEntries.forEach((e) =>
-      (e.media?.genres || []).forEach((g) => {
-        genreCount[g] = (genreCount[g] || 0) + 1;
-      })
-    );
-    return Object.entries(genreCount)
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, count]) => ({ name, count }));
-  }, [animeTabEntries]);
+  /** Genres (onglet Anime) : activités de la période (ou entrées en All Time). */
+  const animeGenrePeriodData = useMemo(
+    () =>
+      isAllTime
+        ? computeGenreDistributionFromEntries(animeTabEntries)
+        : computePeriodGenreDistribution(
+            mergedAnimeForTabTotals,
+            year,
+            month,
+            "anime",
+            mediaBitsForStats
+          ),
+    [animeTabEntries, isAllTime, mergedAnimeForTabTotals, year, month, mediaBitsForStats]
+  );
 
   /** Répartition des scores : tranches 1 à 10 par pas de 0,5 (effectifs, y compris 0). */
   const animeScoreHalfDistributionRows = useMemo(() => {
@@ -999,18 +1003,20 @@ function App() {
     [animeTabEntries, isAllTime, mergedAnimeForTabTotals, year, month]
   );
 
-  /** Genres (onglet Manga) : entrées manga de la période uniquement. */
-  const mangaGenrePeriodData = useMemo(() => {
-    const genreCount: Record<string, number> = {};
-    mangaTabEntries.forEach((e) =>
-      (e.media?.genres || []).forEach((g) => {
-        genreCount[g] = (genreCount[g] || 0) + 1;
-      })
-    );
-    return Object.entries(genreCount)
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, count]) => ({ name, count }));
-  }, [mangaTabEntries]);
+  /** Genres (onglet Manga) : activités de la période (ou entrées en All Time). */
+  const mangaGenrePeriodData = useMemo(
+    () =>
+      isAllTime
+        ? computeGenreDistributionFromEntries(mangaTabEntries)
+        : computePeriodGenreDistribution(
+            mergedMangaForTabTotals,
+            year,
+            month,
+            "manga",
+            mediaBitsForStats
+          ),
+    [mangaTabEntries, isAllTime, mergedMangaForTabTotals, year, month, mediaBitsForStats]
+  );
 
   /** Répartition des scores manga : tranches 1 à 10 par pas de 0,5 (effectifs, y compris 0). */
   const mangaScoreHalfDistributionRows = useMemo(() => {
@@ -1584,6 +1590,20 @@ function App() {
       ? `${year}`
       : `${MONTHS_FULL[month - 1]} ${year}`;
 
+  const overviewRecentActivities = useMemo(
+    () =>
+      buildOverviewRecentActivities({
+        animeActivities: mergedAnimeForTotals,
+        mangaActivities: mergedMangaForTotals,
+        allAnime,
+        allManga,
+        year,
+        month,
+        limit: 30,
+      }),
+    [mergedAnimeForTotals, mergedMangaForTotals, allAnime, allManga, year, month]
+  );
+
   const {
     overviewMangaTopScrollRef,
     overviewAnimeTopScrollRef,
@@ -1638,9 +1658,10 @@ function App() {
   );
 
   const tabs = [
-    {key:"overview",label:"Vue d'ensemble"},
-    {key:"manga",label:`Manga (${mangaTabEntries.length})`},
-    {key:"anime",label:`Anime (${animeTabEntries.length})`},
+    { key: "overview", label: "Vue d'ensemble" },
+    { key: "manga", label: `Manga (${mangaTabEntries.length})` },
+    { key: "anime", label: `Anime (${animeTabEntries.length})` },
+    { key: "wrapped", label: "Wrapped", className: "tab-btn--wrapped" },
   ];
 
   const chartPeriodLegend = useMemo(() => getComparisonPeriodMeta(year, month), [year, month]);
@@ -1778,17 +1799,6 @@ function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const currentRoute = useMemo(() => parseRouteFromHash(), [hashTick]);
   const isLandingHome = currentRoute.type === "home";
-  const isWrappedRoute = currentRoute.type === "user" && currentRoute.view === "wrapped";
-  /* `dashboardHref` est utilisé depuis Wrapped pour revenir sur le
-   * dashboard ; on y embarque la période courante pour qu'un retour
-   * conserve l'onglet/année/mois sélectionnés. `wrappedHref` ne porte que
-   * l'année — le tab/mois n'ont pas de sens dans la vue Wrapped. */
-  const dashboardHref = appUser?.name
-    ? buildProfileHash(appUser.name, { view: "dashboard", tab, year, month })
-    : null;
-  const wrappedHref = appUser?.name
-    ? buildProfileHash(appUser.name, { view: "wrapped", year })
-    : null;
 
   /* Valeur agrégée du contexte de période. Memoïsée pour que l'identité
    * reste stable tant que rien ne change : sans ça, on recréerait l'objet
@@ -1927,17 +1937,9 @@ function App() {
         animeEntriesCount={allAnime.length}
         mangaEntriesCount={allManga.length}
         tabs={tabs}
-        wrappedActive={isWrappedRoute}
-        dashboardHref={dashboardHref}
-        wrappedHref={wrappedHref}
       >
             <div key={tab} className="tab-transition-wrapper">
-            {isWrappedRoute ? (
-              <WrappedPage
-                summary={wrappedSummary}
-                dashboardHref={dashboardHref ?? "#/"}
-              />
-            ) : tab === "overview" && (
+            {tab === "overview" && (
               <OverviewTab
                 totalEp={totalEp}
                 totalAnime={animeTabEntries.length}
@@ -1974,10 +1976,13 @@ function App() {
                 overviewDailyTotalsForYear={overviewDailyTotalsForYear}
                 animeDailyTotalsForYear={animeDailyTotalsForYear}
                 mangaDailyTotalsForYear={mangaDailyTotalsForYear}
+                overviewRecentActivities={overviewRecentActivities}
               />
             )}
 
-            {!isWrappedRoute && tab === "anime" && (
+            {tab === "wrapped" && <WrappedPage summary={wrappedSummary} />}
+
+            {tab === "anime" && (
               <AnimeTab
                 animeEntriesLength={animeTabEntries.length}
                 totalEp={totalEpAnimeTab}
@@ -2007,7 +2012,7 @@ function App() {
               />
             )}
 
-            {!isWrappedRoute && tab === "manga" && (
+            {tab === "manga" && (
               <MangaTab
                 mangaEntriesLength={mangaTabEntries.length}
                 totalCh={totalChMangaTab}
@@ -2034,7 +2039,7 @@ function App() {
             )}
             </div>
 
-            {!isWrappedRoute ? (
+            {tab !== "wrapped" ? (
               <PeriodEmptyBanner
                 year={year}
                 month={month}

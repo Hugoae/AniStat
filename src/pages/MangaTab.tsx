@@ -110,6 +110,14 @@ export const MangaTab = memo(function MangaTab({
   mangaListLayoutActive,
   mangaPeriodProgressByMedia,
 }: MangaTabProps) {
+  const genreRadarKey = useMemo(
+    () =>
+      mangaGenrePeriodData
+        .slice(0, ANIME_GENRE_RADAR_TOP_N)
+        .map((row) => `${row.name}:${row.count}`)
+        .join("|"),
+    [mangaGenrePeriodData]
+  );
   const { year, month, isAllTime, setMonth } = useProfilePeriod();
   const viewFullYearCta =
     month !== 0 ? (
@@ -792,7 +800,7 @@ export const MangaTab = memo(function MangaTab({
                       <ResponsiveContainer width="100%" height={260}>
                         <BarChart
                           data={mangaScoreHalfDistributionVisibleRows}
-                          margin={{ top: 22, right: 8, left: 4, bottom: 2 }}
+                          margin={{ top: 30, right: 8, left: 4, bottom: 2 }}
                           barCategoryGap="12%"
                         >
                           <CartesianGrid
@@ -849,7 +857,7 @@ export const MangaTab = memo(function MangaTab({
                 {mangaGenrePeriodData.length > 0 ? (
                   <RechartsWhenVisible height={260} className="list-tab-anime-recharts-mount">
                     <ResponsiveContainer width="100%" height={260}>
-                      <RadarChart data={mangaGenrePeriodData.slice(0, ANIME_GENRE_RADAR_TOP_N)} outerRadius="88%">
+                      <RadarChart key={genreRadarKey} data={mangaGenrePeriodData.slice(0, ANIME_GENRE_RADAR_TOP_N)} outerRadius="88%">
                         <PolarGrid stroke={C.border} strokeOpacity={0.65} />
                         <PolarAngleAxis dataKey="name" tick={{ fill: "rgba(237, 241, 245, 0.9)", fontSize: 10 }} />
                         <PolarRadiusAxis tick={false} axisLine={false} />
@@ -908,7 +916,7 @@ export const MangaTab = memo(function MangaTab({
                 {mangaReleaseYearHistogram.length > 0 ? (
                   <RechartsWhenVisible height={212} className="list-tab-anime-recharts-mount">
                     <ResponsiveContainer width="100%" height={212}>
-                      <LineChart data={mangaReleaseYearHistogram} margin={{ top: 14, right: 12, left: 0, bottom: 4 }}>
+                      <LineChart data={mangaReleaseYearHistogram} margin={{ top: 30, right: 12, left: 0, bottom: 4 }}>
                         <defs>
                           <linearGradient id="manga-release-year-fill" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor="#2A3A4D" stopOpacity={0.62} />
@@ -1074,7 +1082,7 @@ export const MangaTab = memo(function MangaTab({
                     <div className="list-tab-anime-score-chart-wrap">
                       <RechartsWhenVisible height={212} className="list-tab-anime-recharts-mount">
                         <ResponsiveContainer width="100%" height={212}>
-                          <BarChart data={mangaChapterVolumeBuckets} margin={{ top: 22, right: 8, left: 4, bottom: 2 }} barCategoryGap="18%">
+                          <BarChart data={mangaChapterVolumeBuckets} margin={{ top: 30, right: 8, left: 4, bottom: 2 }} barCategoryGap="18%">
                             <CartesianGrid strokeDasharray="3 6" horizontal vertical={false} stroke="rgba(139, 160, 178, 0.12)" />
                             <XAxis
                               dataKey="label"

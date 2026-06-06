@@ -1,4 +1,4 @@
-import { memo, type RefObject } from "react";
+import { memo, useEffect, useState, type RefObject } from "react";
 import {
   StatCard,
   ChartCard,
@@ -11,6 +11,10 @@ import { ActivityHeatmap, type DailyTotalsByIso } from "../components/ActivityHe
 import { CarouselNavButtons } from "../components/appUi/CarouselNavButtons";
 import { useProfilePeriod } from "../contexts/profilePeriodCore";
 import type { AniListEntry } from "../types/domain";
+import type { OverviewRecentActivity } from "../lib/overviewRecentActivities";
+
+const OVERVIEW_RECENT_INITIAL = 10;
+const OVERVIEW_RECENT_MAX = 30;
 
 export type CompareAvailability = {
   missing: boolean;
@@ -55,6 +59,7 @@ export type OverviewTabProps = {
   animeDailyTotalsForYear: DailyTotalsByIso;
   /** Activité quotidienne manga seule, pour le détail dans le tooltip. */
   mangaDailyTotalsForYear: DailyTotalsByIso;
+  overviewRecentActivities: OverviewRecentActivity[];
 };
 
 export const OverviewTab = memo(function OverviewTab({
@@ -89,8 +94,19 @@ export const OverviewTab = memo(function OverviewTab({
   overviewDailyTotalsForYear,
   animeDailyTotalsForYear,
   mangaDailyTotalsForYear,
+  overviewRecentActivities,
 }: OverviewTabProps) {
   const { year, month, isAllTime } = useProfilePeriod();
+  const [recentExpanded, setRecentExpanded] = useState(false);
+
+  useEffect(() => {
+    setRecentExpanded(false);
+  }, [year, month, overviewRecentActivities]);
+
+  const recentVisibleCount = recentExpanded ? OVERVIEW_RECENT_MAX : OVERVIEW_RECENT_INITIAL;
+  const recentVisible = overviewRecentActivities.slice(0, recentVisibleCount);
+  const recentHasToggle = overviewRecentActivities.length > OVERVIEW_RECENT_INITIAL;
+
   const periodYearLabel = isAllTime ? "All Time" : String(year);
   return (
     <div className="overview-page">
@@ -290,6 +306,84 @@ export const OverviewTab = memo(function OverviewTab({
                 )}
               </div>
             </div>
+          </div>
+
+          <div className="overview-recent-activities fade-in fade-in-delay-5">
+            <SectionTitle as="h3" size="lg">
+              Dernières activités
+            </SectionTitle>
+            {overviewRecentActivities.length > 0 ? (
+              <>
+                <ul className="overview-recent-activities-grid">
+                  {recentVisible.map((item) => (
+                    <li key={item.key} className="overview-recent-activity">
+                      {item.coverUrl ? (
+                        <img
+                          className="overview-recent-activity__cover"
+                          src={item.coverUrl}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      ) : (
+                        <div className="overview-recent-activity__cover overview-recent-activity__cover--fallback" aria-hidden />
+                      )}
+                      <div className="overview-recent-activity__body">
+                        <p className="overview-recent-activity__text">
+                          {item.prefix}
+                          <a
+                            className="overview-recent-activity__title-link"
+                            href={item.mediaUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {item.title}
+                          </a>
+                        </p>
+                        <time
+                          className="overview-recent-activity__date"
+                          dateTime={new Date(item.createdAt * 1000).toISOString()}
+                        >
+                          {item.formattedAt}
+                        </time>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {recentHasToggle ? (
+                  <div className="overview-recent-activities-actions">
+                    <button
+                      type="button"
+                      className={`list-tab-anime-more-btn${recentExpanded ? " list-tab-anime-more-btn--collapse" : ""}`}
+                      onClick={() => setRecentExpanded((prev) => !prev)}
+                      aria-expanded={recentExpanded}
+                    >
+                      <span>{recentExpanded ? "Voir moins" : "Voir plus"}</span>
+                      <svg
+                        className="list-tab-anime-more-btn__icon"
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden
+                      >
+                        <path d={recentExpanded ? "M18 15l-6-6-6 6" : "M6 9l6 6 6-6"} />
+                      </svg>
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <EmptyState
+                compact
+                icon="calendar"
+                title="Aucune activité récente pour cette période."
+              />
+            )}
           </div>
         </div>
       </div>

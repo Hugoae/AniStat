@@ -599,6 +599,61 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
     return mediaIds;
   }
 
+  /**
+   * Genres les plus fréquents sur la période, dérivés des activités (delta > 0).
+   * Chaque œuvre compte une fois, même si plusieurs épisodes/chapitres ont été
+   * consommés durant la période. Les genres sont lus depuis `mediaLookup`
+   * (liste utilisateur) quand disponible, sinon depuis `activity.media`.
+   */
+  function computePeriodGenreDistribution(
+    activities,
+    year,
+    month,
+    kind = "anime",
+    mediaLookup: Map<number, { genres?: string[] | null }> | null = null
+  ) {
+    const rows = buildActivityDeltaRows(activities, kind);
+    const seenMedia = new Set();
+    const genreCount: Record<string, number> = {};
+
+    rows.forEach((row) => {
+      if (row.delta <= 0 || !isTsInPeriod(row.createdAt || 0, year, month)) return;
+      if (seenMedia.has(row.mediaId)) return;
+      seenMedia.add(row.mediaId);
+
+      const fromLookup = mediaLookup?.get(row.mediaId)?.genres;
+      const fromActivity = row.activity?.media?.genres;
+      const genres = Array.isArray(fromLookup) && fromLookup.length > 0
+        ? fromLookup
+        : Array.isArray(fromActivity)
+          ? fromActivity
+          : [];
+
+      genres.forEach((g) => {
+        if (!g) return;
+        genreCount[g] = (genreCount[g] || 0) + 1;
+      });
+    });
+
+    return Object.entries(genreCount)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({ name, count }));
+  }
+
+  /** Genres agrégés sur un tableau d'entrées liste (mode « All Time »). */
+  function computeGenreDistributionFromEntries(entries) {
+    const genreCount: Record<string, number> = {};
+    (entries || []).forEach((e) =>
+      (e.media?.genres || []).forEach((g) => {
+        if (!g) return;
+        genreCount[g] = (genreCount[g] || 0) + 1;
+      })
+    );
+    return Object.entries(genreCount)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({ name, count }));
+  }
+
   function computePeriodProgressByMedia(activities, year, month, kind = "anime") {
     const rows = buildActivityDeltaRows(activities, kind);
     const byMedia = new Map();
@@ -1027,6 +1082,8 @@ export {
   computeDailyDeltasInMonth,
   computeDailyDeltasInYear,
   getMediaIdsWithProgressInPeriod,
+  computePeriodGenreDistribution,
+  computeGenreDistributionFromEntries,
   computePeriodProgressByMedia,
   normalizeEntry,
   normalizeEntries,
