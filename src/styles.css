@@ -3036,6 +3036,20 @@ a:focus-visible,
   margin: 0 auto;
   padding: 0 var(--space-6) 60px;
 }
+/* Réserve de l'espace à droite quand le sélecteur de période flotte (≥1024px
+ * et tant que la marge naturelle est trop étroite), pour éviter que les
+ * graphiques ne passent sous le widget. Au-delà de 1480px, le gap latéral
+ * suffit : on garde le design centré intact. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .profile-view-main {
+    padding-right: 192px;
+  }
+}
+@media (min-width: 1280px) and (max-width: 1480px) {
+  .profile-view-main {
+    padding-right: 256px;
+  }
+}
 
 .loading-block {
   display: flex;
@@ -3693,7 +3707,9 @@ a:focus-visible,
    * Retombe sur 12 px du bord si l'espace n'est pas assez large. */
   right: max(12px, calc((100vw - 1100px) / 4 - 95px));
   top: 50%;
-  transform: translateY(-50%);
+  transform: translateY(-50%) scale(1);
+  transform-origin: top right;
+  transition: transform var(--duration-base) var(--ease-out);
   z-index: 80;
   display: flex;
   flex-direction: column;
@@ -3847,7 +3863,18 @@ a:focus-visible,
 .period-floating-chip__popover .period-panel-title {
   margin-bottom: 8px;
 }
-@media (max-width: 1480px) {
+/* Laptops 13" (≈1024–1279px) : on conserve le sélecteur ancré à droite
+ * (au lieu de le renvoyer en haut), mais réduit à 90 % pour ne pas empiéter
+ * sur le contenu central. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .period-floating-chip {
+    right: 12px;
+    transform: translateY(-50%) scale(0.9);
+  }
+}
+/* En dessous de lg (1024px) : retour dans le flux normal, centré au-dessus
+ * du contenu (comportement d'origine sur petits écrans). */
+@media (max-width: 1023px) {
   .period-floating-chip {
     position: relative;
     top: auto;

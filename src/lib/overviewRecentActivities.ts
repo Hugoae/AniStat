@@ -4,6 +4,7 @@ import type { ActivityItem, AniListEntry } from "../types/domain";
 export type OverviewRecentActivity = {
   key: string;
   kind: "anime" | "manga";
+  mediaId: number;
   coverUrl: string | null;
   /** Texte avant le lien, terminé par " de " (ex. "Lu Chapitres 135–158 de "). */
   prefix: string;
@@ -12,6 +13,8 @@ export type OverviewRecentActivity = {
   formattedAt: string;
   createdAt: number;
 };
+
+const ACTIVITY_SESSION_WINDOW_HOURS = 6;
 
 type BuildOverviewRecentActivitiesArgs = {
   animeActivities: readonly ActivityItem[];
@@ -127,6 +130,7 @@ export function buildOverviewRecentActivities({
     rows.push({
       key: dedupeKey,
       kind,
+      mediaId,
       coverUrl: media?.coverUrl ?? null,
       prefix: buildActivityPrefix(activity, kind),
       title: media?.title ?? "Sans titre",
@@ -140,4 +144,28 @@ export function buildOverviewRecentActivities({
   for (const activity of mangaActivities) pushActivity(activity, "manga");
 
   return rows.sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
+}
+
+export function mergeRecentActivities(
+  activities: readonly OverviewRecentActivity[]
+): OverviewRecentActivity[] {
+  const sorted = [...activities].sort((a, b) => b.createdAt - a.createdAt);
+  const mergedActivities: OverviewRecentActivity[] = [];
+
+  for (const activity of sorted) {
+    const previousSameMedia = [...mergedActivities]
+      .reverse()
+      .find((merged) => merged.mediaId === activity.mediaId);
+
+    if (previousSameMedia) {
+      const diffHours = Math.abs(previousSameMedia.createdAt - activity.createdAt) / 3600;
+      // AniList regroupe les updates d'une même œuvre dans une session de 6h :
+      // la plus récente porte la progression complète, donc on masque l'ancienne.
+      if (diffHours <= ACTIVITY_SESSION_WINDOW_HOURS) continue;
+    }
+
+    mergedActivities.push(activity);
+  }
+
+  return mergedActivities;
 }

@@ -11,7 +11,10 @@ import { ActivityHeatmap, type DailyTotalsByIso } from "../components/ActivityHe
 import { CarouselNavButtons } from "../components/appUi/CarouselNavButtons";
 import { useProfilePeriod } from "../contexts/profilePeriodCore";
 import type { AniListEntry } from "../types/domain";
-import type { OverviewRecentActivity } from "../lib/overviewRecentActivities";
+import {
+  mergeRecentActivities,
+  type OverviewRecentActivity,
+} from "../lib/overviewRecentActivities";
 
 const OVERVIEW_RECENT_INITIAL = 10;
 const OVERVIEW_RECENT_MAX = 30;
@@ -103,9 +106,10 @@ export const OverviewTab = memo(function OverviewTab({
     setRecentExpanded(false);
   }, [year, month, overviewRecentActivities]);
 
+  const mergedRecentActivities = mergeRecentActivities(overviewRecentActivities);
   const recentVisibleCount = recentExpanded ? OVERVIEW_RECENT_MAX : OVERVIEW_RECENT_INITIAL;
-  const recentVisible = overviewRecentActivities.slice(0, recentVisibleCount);
-  const recentHasToggle = overviewRecentActivities.length > OVERVIEW_RECENT_INITIAL;
+  const recentVisible = mergedRecentActivities.slice(0, recentVisibleCount);
+  const recentHasToggle = mergedRecentActivities.length > OVERVIEW_RECENT_INITIAL;
 
   const periodYearLabel = isAllTime ? "All Time" : String(year);
   return (
@@ -312,7 +316,7 @@ export const OverviewTab = memo(function OverviewTab({
             <SectionTitle as="h3" size="lg">
               Dernières activités
             </SectionTitle>
-            {overviewRecentActivities.length > 0 ? (
+            {mergedRecentActivities.length > 0 ? (
               <>
                 <ul className="overview-recent-activities-grid">
                   {recentVisible.map((item) => (
