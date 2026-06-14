@@ -1,4 +1,3 @@
-import { STATUS_LABELS } from "../config/constants";
 import type { ActivityItem, AniListEntry } from "../types/domain";
 
 export type OverviewRecentActivity = {
@@ -87,21 +86,24 @@ function formatProgressLabel(progressRaw: string | null | undefined, kind: "anim
   return null;
 }
 
+/** Conserve uniquement les activités de consommation (lu / relu / regardé / revu). */
+function isConsumptiveActivity(activity: ActivityItem, kind: "anime" | "manga"): boolean {
+  const status = String(activity.status ?? "").toUpperCase();
+  if (status === "PLANNING") return false;
+  if (formatProgressLabel(activity.progress, kind)) return true;
+  return status === "REPEATING";
+}
+
 /** Construit le préfixe d'activité terminé par " de ", à coller devant le lien œuvre. */
 function buildActivityPrefix(activity: ActivityItem, kind: "anime" | "manga"): string {
   const status = String(activity.status ?? "").toUpperCase();
   const progressLabel = formatProgressLabel(activity.progress, kind);
+  const verb = actionVerb(kind, status);
 
   if (progressLabel) {
-    return `${actionVerb(kind, status)} ${progressLabel} de `;
+    return `${verb} ${progressLabel} de `;
   }
-  if (status === "COMPLETED") {
-    return "Terminé de ";
-  }
-  if (status && STATUS_LABELS[status]) {
-    return `${STATUS_LABELS[status]} de `;
-  }
-  return `${actionVerb(kind, status)} de `;
+  return `${verb} de `;
 }
 
 export function buildOverviewRecentActivities({
@@ -118,6 +120,8 @@ export function buildOverviewRecentActivities({
   const rows: OverviewRecentActivity[] = [];
 
   const pushActivity = (activity: ActivityItem, kind: "anime" | "manga") => {
+    if (!isConsumptiveActivity(activity, kind)) return;
+
     const createdAt = Number(activity.createdAt || 0);
     const mediaId = activity.media?.id;
     if (!createdAt || !mediaId || !isTsInPeriod(createdAt, year, month)) return;
