@@ -1,23 +1,70 @@
-# OS files
+# ───────────────────────── OS ─────────────────────────
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
 Thumbs.db
+ehthumbs.db
+Desktop.ini
 
-# Node dependencies
+# ──────────────────── Dependencies ────────────────────
 node_modules/
+.pnp
+.pnp.js
 
-# Vite
+# ─────────────────────── Build ────────────────────────
 dist/
+dist-ssr/
+build/
+*.local
 
-# Environment files
+# ─────────── Secrets / environment (NEVER commit) ───────
+# Toute variante de fichier d'environnement est ignorée,
+# sauf l'exemple (sans valeurs réelles).
 .env
 .env.*
 !.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.cert
+secrets.json
+credentials.json
+service-account*.json
 
-# Logs
+# ─────────────────────── Logs ─────────────────────────
+logs/
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
 
-# Vercel
+# ───────────────── Tests / coverage ───────────────────
+coverage/
+.nyc_output/
+*.lcov
+
+# ──────────────────── Tooling cache ───────────────────
+.cache/
+.temp/
+.tmp/
+.eslintcache
+.vite/
+*.tsbuildinfo
+
+# ───────────────────── Editors / IDE ──────────────────
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.idea/
+*.swp
+*.swo
+*~
+
+# ────────────────────── Deploy ────────────────────────
 .vercel
+.netlify

@@ -1,77 +1,75 @@
-# AniStat Supabase Setup
+# AniStat — Supabase
 
-AniStat uses Supabase as the source of truth for AniList profiles, media list
-snapshots, activities, and sync diagnostics.
+AniStat utilise Supabase comme source de vérité pour les profils AniList, les
+snapshots de listes, les activités et les diagnostics de synchronisation.
 
-## Access Model
+## Modèle d'accès
 
-- Browser (`VITE_SUPABASE_ANON_KEY`): read-only access through public `SELECT`
-  policies.
-- Server (`SUPABASE_SERVICE_ROLE_KEY`): writes only through
-  `POST /api/supabase-sync`.
-- Do not expose `SUPABASE_SERVICE_ROLE_KEY` with a `VITE_` prefix.
+AniStat est une application **100 % front-end** : le navigateur lit **et écrit**
+directement dans Supabase avec la clé `anon`.
 
-## Local Environment
+- **Clé `anon` (`VITE_SUPABASE_ANON_KEY`)** : publique par conception, injectée
+  dans le bundle navigateur. Lectures via les politiques `SELECT`, écritures de
+  cache via les politiques `INSERT`/`UPDATE` réservées au rôle `anon`.
+- **Aucune clé `service_role` n'est utilisée côté application.** Ne jamais
+  exposer un `SUPABASE_SERVICE_ROLE_KEY` avec un préfixe `VITE_`.
 
-Create `.env.local` from `.env.example`:
+> **Compromis de sécurité assumé.** Les politiques RLS autorisent l'écriture
+> anonyme sur les tables de cache (`tracked_users`, `media_list_snapshots`,
+> `activities`, `activity_sync_state`, `sync_runs`). Le contenu se limitant à
+> des **statistiques AniList publiques**, ce choix est acceptable pour ce
+> projet. Aucune donnée privée ou personnelle n'y est stockée.
+
+## Environnement local
+
+Créer `.env.local` à partir de `.env.example` :
 
 ```env
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
-
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
 
-`npm run dev` exposes the same `/api/supabase-sync` contract as Vercel through
-the Vite middleware in `vite.config.ts`.
+## Production (Vercel)
 
-## Production Environment
-
-Set these variables in Vercel:
+Définir ces variables dans Vercel :
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
-
-Deploy the API route before locking anon writes. The current migrations already
-assume writes are routed through `/api/supabase-sync`.
 
 ## Migrations
 
-Migration order:
+Ordre d'application :
 
 1. `20260527100000_initial_anistat_schema.sql`
-   - Tables, constraints, indexes, `updated_at` triggers, RLS, public read
-     policies.
+   - Tables, contraintes, index, triggers `updated_at`, RLS, politiques de
+     lecture publique.
 2. `20260527120000_lock_anon_writes.sql`
-   - Removes permissive anon write policies.
+   - Retire les politiques d'écriture anonyme (variante « écritures serveur »).
 3. `20260527214500_optimize_supabase_reads.sql`
-   - Adds lowercase user lookup support and documents the activity read path.
+   - Lookup utilisateur en minuscules et documentation du chemin de lecture.
 4. `20260527215000_fix_updated_at_search_path.sql`
-   - Fixes the `set_updated_at()` trigger function `search_path` for the
-     Supabase security advisor.
+   - Corrige le `search_path` de `set_updated_at()` (advisor de sécurité).
+5. `20260531150000_allow_anon_cache_writes.sql`
+   - Réautorise les écritures anonymes de cache (modèle actuel, voir ci-dessus).
 
-Apply migrations with the Supabase CLI or via the dashboard/MCP in a controlled
-environment. Avoid applying schema changes directly without adding a migration
-file to this folder.
+Appliquer les migrations via la CLI Supabase ou le dashboard dans un
+environnement contrôlé. Ne pas modifier le schéma sans ajouter de fichier de
+migration dans ce dossier.
 
-## Read Paths Used by the App
+## Chemins de lecture utilisés par l'app
 
-- `tracked_users.anilist_name_lower = lower(username)` for profile lookup.
-- `media_list_snapshots (anilist_user_id, media_type)` for cached lists.
-- `activities (anilist_user_id, activity_type, created_at_unix desc)` for
-  yearly activity reads.
+- `tracked_users.anilist_name_lower = lower(username)` pour le profil.
+- `media_list_snapshots (anilist_user_id, media_type)` pour les listes en cache.
+- `activities (anilist_user_id, activity_type, created_at_unix desc)` pour les
+  activités annuelles.
 
-## Write Paths Used by the App
+## Chemins d'écriture utilisés par l'app
 
-`src/services/supabaseService.ts` keeps browser reads direct, but writes call:
+Toutes les écritures passent par `src/services/supabaseService.ts` avec la clé
+`anon` :
 
 - `upsertUser`
 - `saveMediaListSnapshot`
 - `saveActivities`
 - `updateActivitySyncState`
 - `recordSyncRun`
-
-All of these are handled server-side in `api/lib/supabaseWriteCore.js`.
