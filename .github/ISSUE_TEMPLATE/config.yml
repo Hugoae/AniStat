@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions générales
+    url: https://github.com/Hugoae/AniStat/discussions
+    about: Pour les questions ouvertes (si Discussions activées sur le repo)

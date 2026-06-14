@@ -1,0 +1,53 @@
+name: Feature request
+description: Proposer une amélioration ou une nouvelle fonctionnalité
+title: "[Idée] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problème ou besoin
+      description: Quel cas d'usage cette idée adresse-t-elle ?
+      placeholder: En tant qu'utilisateur, je voudrais…
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solution envisagée
+      placeholder: Comment imagines-tu la fonctionnalité ?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Zone concernée
+      options:
+        - Overview
+        - Anime
+        - Manga
+        - Wrapped
+        - UI / design
+        - Performance
+        - Autre
+    validations:
+      required: true
+
+  - type: textarea
+    id: mockup
+    attributes:
+      label: Maquette / inspiration
+      description: Lien ou capture d'écran optionnelle
+      render: image
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: willing
+    attributes:
+      label: Contribution
+      options:
+        - label: Je peux tester une preview si besoin
+        - label: Je peux proposer une PR si la direction est validée

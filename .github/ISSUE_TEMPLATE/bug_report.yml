@@ -1,0 +1,79 @@
+name: Bug report
+description: Signaler un comportement incorrect
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de vérifier que le profil AniList testé est **public** avant d'envoyer.
+
+  - type: input
+    id: profile
+    attributes:
+      label: Pseudo AniList (public)
+      placeholder: ex. Kirikou
+    validations:
+      required: true
+
+  - type: dropdown
+    id: tab
+    attributes:
+      label: Onglet concerné
+      options:
+        - Accueil
+        - Overview
+        - Anime
+        - Manga
+        - Wrapped
+        - Autre
+    validations:
+      required: true
+
+  - type: input
+    id: period
+    attributes:
+      label: Période sélectionnée
+      placeholder: ex. 2026 — toute l'année
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportement attendu
+      placeholder: Ce que tu pensais voir…
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Comportement observé
+      placeholder: Ce qui se passe réellement…
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Navigateur & OS
+      placeholder: ex. Chrome 137 / Windows 11
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Captures d'écran
+      description: Glisse une image ici ou colle un lien
+      render: image
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Contexte supplémentaire
+    validations:
+      required: false
