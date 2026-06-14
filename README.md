@@ -117,10 +117,9 @@
 Essayez avec un profil public, par exemple **`Kirikou`** — entrez le pseudo sur la page d’accueil ou ouvrez directement :
 
 ```
-https://ton-domaine.com/#/u/Kirikou
+https://ani-stat.vercel.app/#/u/Kirikou
 ```
 
-*(Remplace `ton-domaine.com` par l’URL de ta instance déployée.)*
 
 ---
 
