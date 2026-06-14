@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import {
   C,
   MONTHS,
@@ -64,11 +64,8 @@ import {
   type ActivityMediaBits,
 } from "./lib/activityEnrichment";
 import { HomePage } from "./pages/HomePage";
-import { OverviewTab } from "./pages/OverviewTab";
-import { AnimeTab } from "./pages/AnimeTab";
-import { MangaTab } from "./pages/MangaTab";
-import { WrappedPage } from "./pages/WrappedPage";
 import { PeriodEmptyBanner } from "./pages/PeriodEmptyBanner";
+import { LoadingBlock } from "./components/appUi/LoadingBlock";
 import {
   IS_DEV_LOCAL,
 } from "./lib/profileLocalCache";
@@ -97,6 +94,16 @@ import { BackToTopButton } from "./components/BackToTopButton";
 import { ProfilePeriodProvider } from "./contexts/ProfilePeriodContext";
 import type { ProfilePeriodValue } from "./contexts/profilePeriodCore";
 import type { ActivityCacheByYear, ActivityItem, AniListEntry, AniListUser } from "./types/domain";
+
+/*
+ * Onglets de profil chargés à la demande (React.lazy) : ils embarquent recharts
+ * (~160 ko gzip). Les sortir du bundle d'entrée évite de télécharger la lib de
+ * graphiques tant qu'aucun profil n'est ouvert — la page d'accueil reste légère.
+ */
+const OverviewTab = lazy(() => import("./pages/OverviewTab").then((m) => ({ default: m.OverviewTab })));
+const AnimeTab = lazy(() => import("./pages/AnimeTab").then((m) => ({ default: m.AnimeTab })));
+const MangaTab = lazy(() => import("./pages/MangaTab").then((m) => ({ default: m.MangaTab })));
+const WrappedPage = lazy(() => import("./pages/WrappedPage").then((m) => ({ default: m.WrappedPage })));
 
 const ALL_TIME_YEAR = 0;
 
@@ -1939,6 +1946,7 @@ function App() {
         tabs={tabs}
       >
             <div key={tab} className="tab-transition-wrapper">
+            <Suspense fallback={<LoadingBlock caption="Chargement de l'onglet…" />}>
             {tab === "overview" && (
               <OverviewTab
                 totalEp={totalEp}
@@ -2037,6 +2045,7 @@ function App() {
                 mangaPeriodProgressByMedia={mangaPeriodProgressByMedia}
               />
             )}
+            </Suspense>
             </div>
 
             {tab !== "wrapped" ? (

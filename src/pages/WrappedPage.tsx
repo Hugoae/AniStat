@@ -1,5 +1,4 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { toPng } from "html-to-image";
 import type { WrappedSummary, WrappedMedia } from "../lib/wrapped";
 
 type WrappedPageProps = {
@@ -144,6 +143,9 @@ export function WrappedPage({ summary }: WrappedPageProps) {
     setExporting(true);
     setExportError(null);
     try {
+      // Import à la demande : html-to-image n'est téléchargé qu'au moment de
+      // l'export, pas inclus dans le bundle de l'onglet Wrapped.
+      const { toPng } = await import("html-to-image");
       const dataUrl = await toPng(exportRef.current, {
         pixelRatio: 2,
         cacheBust: true,

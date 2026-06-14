@@ -8,12 +8,7 @@ export { ListTabSectionNav } from "./appUi/ListTabSectionNav";
 export type { ListTabSectionNavItem } from "./appUi/ListTabSectionNav";
 export { DevPanel } from "./appUi/DevPanel";
 export { MediaCard } from "./appUi/MediaCard";
-export {
-  CTooltip,
-  PeriodCompareLegend,
-  PeriodCompareLegendSelect,
-  CompareLineTooltip,
-} from "./appUi/ChartTooltips";
+export { CTooltip, CompareLineTooltip } from "./appUi/ChartTooltips";
 export { MediaOriginFlagSvg } from "./appUi/MediaOriginFlagSvg";
 /* Barrel file regroupant composants + quelques helpers utilisés en tandem.
  * Fast Refresh préférerait 100 % de composants, mais exposer ces deux

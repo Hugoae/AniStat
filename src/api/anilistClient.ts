@@ -224,7 +224,7 @@ query UserProfile($name: String!) {
  * les filtre via `normalizeActivitiesWithDiagnostics`) mais n'empêchent pas
  * les calculs sur les autres activités.
  */
-export const LIST_ACTIVITY_QUERY = gql`
+const LIST_ACTIVITY_QUERY = gql`
 query ListActivities($userId: Int!, $type: ActivityType!, $page: Int!, $perPage: Int!) {
   Page(page: $page, perPage: $perPage) {
     pageInfo {

@@ -1,8 +1,6 @@
 import { fetchListActivitiesForYear, sleep } from "../api/anilistClient";
 import type { ActivityItem } from "../types/domain";
 
-export const ACTIVITY_RATE_LIMIT_COOLDOWN_MS = 60 * 1000;
-export const ACTIVITY_MAX_AUTO_RETRY = 3;
 export const IS_DEV_LOCAL = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 
 export function devLog(...args) {

@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import { C, MONTHS, MONTHS_FULL } from "../../config/constants";
 
 type TooltipPayloadEntry = {
@@ -24,82 +23,6 @@ export function CTooltip({
       {payload.map((p, i) => (
         <div key={i} style={{ color: p.color || C.accent }}>{String(p.name ?? "")}: {String(p.value ?? "")}</div>
       ))}
-    </div>
-  );
-}
-
-export function PeriodCompareLegend({
-  legendCurrent,
-  legendCompare,
-  className,
-  style,
-}: {
-  legendCurrent: string;
-  legendCompare: string;
-  className?: string;
-  style?: CSSProperties;
-}) {
-  const cls = ["period-compare-legend", className].filter(Boolean).join(" ");
-  return (
-    <div className={cls} style={style}>
-      <span className="period-compare-legend__item">
-        <span className="period-compare-legend__swatch period-compare-legend__swatch--current" />
-        <span className="period-compare-legend__label period-compare-legend__label--current">{legendCurrent}</span>
-      </span>
-      <span className="period-compare-legend__item">
-        <span className="period-compare-legend__swatch period-compare-legend__swatch--compare" />
-        <span className="period-compare-legend__label period-compare-legend__label--compare">{legendCompare}</span>
-      </span>
-    </div>
-  );
-}
-
-/** Légende « période courante vs comparaison » avec sélecteur pour la période de comparaison (Overview). */
-export function PeriodCompareLegendSelect({
-  legendCurrent,
-  compareValue,
-  compareOptions,
-  onCompareChange,
-  className,
-  style,
-  disabled,
-}: {
-  legendCurrent: string;
-  compareValue: string;
-  compareOptions: { value: string; label: string }[];
-  onCompareChange: (value: string) => void;
-  className?: string;
-  style?: CSSProperties;
-  disabled?: boolean;
-}) {
-  const cls = ["period-compare-legend period-compare-legend--interactive", className].filter(Boolean).join(" ");
-  return (
-    <div className={cls} style={style}>
-      <span className="period-compare-legend__item">
-        <span className="period-compare-legend__swatch period-compare-legend__swatch--current" />
-        <span className="period-compare-legend__label period-compare-legend__label--current">{legendCurrent}</span>
-      </span>
-      <span className="period-compare-legend__vs" aria-hidden>
-        vs
-      </span>
-      <span className="period-compare-legend__item period-compare-legend__item--select">
-        <span className="period-compare-legend__swatch period-compare-legend__swatch--compare" />
-        <label className="period-compare-legend__select-wrap">
-          <span className="visually-hidden">Période de comparaison</span>
-          <select
-            className="period-compare-legend__select"
-            value={compareValue}
-            disabled={disabled || compareOptions.length === 0}
-            onChange={(e) => onCompareChange(e.target.value)}
-          >
-            {compareOptions.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </span>
     </div>
   );
 }

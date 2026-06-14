@@ -28,25 +28,53 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       /*
-       * Code-splitting manuel du bundle. L'objectif est de sortir les libs
-       * lourdes et peu couplées du chunk principal pour améliorer le cache
-       * long terme et paralléliser le téléchargement.
+       * Code-splitting manuel du bundle. Objectif : sortir les libs lourdes du
+       * chunk d'entrée pour améliorer le cache long terme et différer leur
+       * téléchargement.
        *
-       * - `recharts` représente à lui seul ≈ 75 % de l'ancien chunk principal ;
-       *   on l'isole dans `vendor-recharts` (≈ 590 kB, ≈ 162 kB gzip).
-       * - React est laissé dans le chunk applicatif : Vite l'inline via son
-       *   plugin officiel, le forcer dans un chunk séparé ne rend qu'un
-       *   fichier vide (≈ 40 octets).
+       * - `vendor-react` isole React/React-DOM. C'est indispensable ici : sans
+       *   ce chunk, Rollup co-localise React DANS `vendor-recharts` (recharts
+       *   dépend de React). Comme l'entrée a besoin de React, elle importerait
+       *   alors statiquement `vendor-recharts` et chargerait recharts (~162 kB
+       *   gzip) dès la page d'accueil. En isolant React, `vendor-recharts`
+       *   redevient purement asynchrone : il n'est chargé qu'à l'ouverture d'un
+       *   onglet de profil (charts montés en lazy via React.lazy).
+       * - `vendor-recharts` isole recharts (≈ 590 kB, ≈ 162 kB gzip), la lib de
+       *   dataviz, pour un cache stable indépendant des mises à jour applicatives.
        *
-       * `chunkSizeWarningLimit` est remonté à 650 kB : le chunk Recharts
-       * reste gros par nature (c'est une lib de dataviz complète), le
-       * warning par défaut à 500 kB n'apporte plus d'info utile ici.
+       * `chunkSizeWarningLimit` est remonté à 650 kB : le chunk recharts reste
+       * gros par nature, le warning par défaut à 500 kB n'apporte plus d'info ici.
        */
       chunkSizeWarningLimit: 650,
       rollupOptions: {
         output: {
-          manualChunks: {
-            "vendor-recharts": ["recharts"],
+          /*
+           * Forme fonction (et non objet) : indispensable pour router React
+           * AVANT recharts. Avec la forme tableau, Rollup co-localise React
+           * dans `vendor-recharts` (recharts en dépend) et l'entrée, qui a
+           * besoin de React, importe alors recharts de façon statique → tout
+           * recharts se charge dès l'accueil. En forçant React vers
+           * `vendor-react`, recharts ne contient plus React et `vendor-recharts`
+           * redevient purement asynchrone (chargé à l'ouverture d'un onglet).
+           */
+          manualChunks(id) {
+            if (!id.includes("node_modules")) return undefined;
+            if (
+              id.includes("/react-dom/") ||
+              id.includes("/react/") ||
+              id.includes("/scheduler/")
+            ) {
+              return "vendor-react";
+            }
+            if (
+              id.includes("/recharts/") ||
+              id.includes("/recharts-scale/") ||
+              id.includes("/victory-vendor/") ||
+              id.includes("/d3-")
+            ) {
+              return "vendor-recharts";
+            }
+            return undefined;
           },
         },
       },

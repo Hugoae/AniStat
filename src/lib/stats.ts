@@ -2,11 +2,6 @@ import { MONTHS } from '../config/constants';
 
   const NOW_UNIX = () => Math.floor(Date.now() / 1000);
 
-  const isInYear = (e, y) => y === 0 ? Boolean(e.updatedAt) : e.updatedAt && new Date(e.updatedAt * 1000).getFullYear() === y;
-  const isInMonth = (e, m) => {
-    if (!e.updatedAt) return false;
-    return new Date(e.updatedAt * 1000).getMonth() + 1 === m;
-  };
   const completedInYear = (e, y) => y === 0 ? Boolean(e.completedAt?.year) : e.completedAt?.year === y;
   const startedInYear = (e, y) => y === 0 ? Boolean(e.startedAt?.year) : e.startedAt?.year === y;
   const completedInMonth = (e, y, m) => e.completedAt?.year === y && e.completedAt?.month === m;
@@ -157,51 +152,6 @@ import { MONTHS } from '../config/constants';
     if (n >= 11 && n <= 100) return n / 10;
     if (n > 10 && n < 11) return Math.min(10, n);
     return Math.min(10, n);
-  }
-
-  function clampYmd(raw, nowDate = new Date()) {
-    const y = toFiniteNumber(raw?.year, 0);
-    const m = toFiniteNumber(raw?.month, 0);
-    const d = toFiniteNumber(raw?.day, 0);
-    if (y <= 0 || y > 3000) return { year: null, month: null, day: null };
-    if (m < 1 || m > 12) return { year: y, month: null, day: null };
-    const maxDay = new Date(y, m, 0).getDate();
-    if (d < 1 || d > maxDay) return { year: y, month: m, day: null };
-    const dt = new Date(y, m - 1, d, 23, 59, 59, 999);
-    if (dt.getTime() > nowDate.getTime()) return { year: null, month: null, day: null };
-    return { year: y, month: m, day: d };
-  }
-
-  function normalizeEntry(entry, nowDate = new Date()) {
-    const status = String(entry?.status || "").toUpperCase();
-    const safeStatus = status || "PLANNING";
-    const updatedAt = toFiniteNumber(entry?.updatedAt, 0);
-    const safeUpdatedAt = updatedAt > NOW_UNIX() ? 0 : updatedAt;
-    const normalized = {
-      ...entry,
-      id: toFiniteNumber(entry?.id, 0),
-      status: safeStatus,
-      score: normalizeListScoreToPoint10(toFiniteNumber(entry?.score, 0)),
-      progress: toFiniteNumber(entry?.progress, 0),
-      progressVolumes: toFiniteNumber(entry?.progressVolumes, 0),
-      updatedAt: safeUpdatedAt,
-      startedAt: clampYmd(entry?.startedAt, nowDate),
-      completedAt: clampYmd(entry?.completedAt, nowDate),
-      media: {
-        ...(entry?.media || {}),
-        id: toFiniteNumber(entry?.media?.id, 0),
-        episodes: toFiniteNumber(entry?.media?.episodes, 0),
-        chapters: toFiniteNumber(entry?.media?.chapters, 0),
-        volumes: toFiniteNumber(entry?.media?.volumes, 0),
-        duration: toFiniteNumber(entry?.media?.duration, 0),
-      },
-    };
-    return normalized;
-  }
-
-  function normalizeEntries(entries, nowDate = new Date()) {
-    if (!Array.isArray(entries)) return [];
-    return entries.map((e) => normalizeEntry(e, nowDate)).filter((e) => e?.media?.id);
   }
 
   function normalizeActivitiesWithDiagnostics(activities, nowUnix = NOW_UNIX()) {
@@ -1047,8 +997,6 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
   }
 export {
   normalizeListScoreToPoint10,
-  isInYear,
-  isInMonth,
   completedInYear,
   startedInYear,
   completedInMonth,
@@ -1085,8 +1033,6 @@ export {
   computePeriodGenreDistribution,
   computeGenreDistributionFromEntries,
   computePeriodProgressByMedia,
-  normalizeEntry,
-  normalizeEntries,
   normalizeActivitiesWithDiagnostics,
   dedupeEntriesByMedia,
   getComparisonPeriodMeta,

@@ -140,10 +140,6 @@ export function profileHashForUserName(name: string): string {
   return buildProfileHash(name);
 }
 
-export function wrappedHashForUserName(name: string, year?: number | null): string {
-  return buildProfileHash(name, { tab: "wrapped", year });
-}
-
 export function initialLoadingFromHash(): boolean {
   const r = parseRouteFromHash();
   return r.type === "user" && Boolean(r.name && r.name.trim());

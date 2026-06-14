@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { C, STATUS_COLORS, STATUS_LABELS } from "../../config/constants";
 import {
   anilistMediaUrl,
@@ -25,7 +25,7 @@ type MediaCardEntry = {
   };
 };
 
-export function MediaCard({
+function MediaCardComponent({
   entry,
   type,
   deferCover = false,
@@ -152,3 +152,11 @@ export function MediaCard({
   }
   return cardInner;
 }
+
+/*
+ * Mémoïsé : ces cartes sont rendues en grille (parfois plusieurs centaines).
+ * `entry` provient d'un tableau stable, donc tant que ses props ne changent
+ * pas, la carte ne se re-rend pas lors des updates parent non liés (chip de
+ * période, état de scroll, etc.).
+ */
+export const MediaCard = memo(MediaCardComponent);

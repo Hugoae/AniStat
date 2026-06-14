@@ -21,7 +21,7 @@ export function normalizeAnimeSearchText(s: string): string {
     .replace(/\p{M}/gu, "");
 }
 
-export function entryMatchesAnimeSearch(entry: AniListEntry, normalizedQuery: string): boolean {
+function entryMatchesAnimeSearch(entry: AniListEntry, normalizedQuery: string): boolean {
   if (!normalizedQuery) return true;
   const r = normalizeAnimeSearchText(entry.media?.title?.romaji || "");
   const e = normalizeAnimeSearchText(entry.media?.title?.english || "");
@@ -31,7 +31,7 @@ export function entryMatchesAnimeSearch(entry: AniListEntry, normalizedQuery: st
 const SEASON_ORDER: Record<string, number> = { WINTER: 1, SPRING: 2, SUMMER: 3, FALL: 4 };
 
 /** Plus la valeur est grande, plus la sortie est « récente » (année / saison / date). */
-export function animeReleaseSortKey(entry: AniListEntry): number {
+function animeReleaseSortKey(entry: AniListEntry): number {
   const m = entry.media;
   const y = Number(m?.seasonYear ?? m?.startDate?.year ?? 0);
   const s = String(m?.season || "").toUpperCase();

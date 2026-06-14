@@ -1,11 +1,11 @@
 /** Fichiers servis depuis `public/studio-logos/` (voir `scripts/process-studio-logos.mjs`). */
-export const STUDIO_LOGOS_PUBLIC_PATH = "/studio-logos";
+const STUDIO_LOGOS_PUBLIC_PATH = "/studio-logos";
 
 /**
  * Slug fichier = nom affiché AniList passé par la même règle que le script de traitement.
  * Ex. "Brain's Base" → "brains-base", "MAPPA" → "mappa"
  */
-export function studioNameToLogoSlug(name: string): string {
+function studioNameToLogoSlug(name: string): string {
   const s = String(name || "")
     .normalize("NFKD")
     .replace(/\p{M}/gu, "")
@@ -30,15 +30,11 @@ function localStudioLogoUrlForSlug(slug: string): string {
   return `${STUDIO_LOGOS_PUBLIC_PATH}/${slug}.png`;
 }
 
-export function localStudioLogoUrl(name: string): string {
-  return localStudioLogoUrlForSlug(studioNameToLogoSlug(name));
-}
-
 type Manifest = { version?: number; slugs?: string[] };
 
 let manifestSlugsPromise: Promise<Set<string>> | null = null;
 
-export function getStudioLogoSlugSet(): Promise<Set<string>> {
+function getStudioLogoSlugSet(): Promise<Set<string>> {
   if (!manifestSlugsPromise) {
     manifestSlugsPromise = (async () => {
       try {

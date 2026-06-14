@@ -1,4 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800;900&display=swap');
+/*
+ * La police Overpass est chargée via <link rel="preconnect"> + <link rel="stylesheet">
+ * dans index.html (chargement non bloquant). On évite ici un @import CSS, qui
+ * serait render-blocking et sérialisé après le téléchargement de cette feuille.
+ */
 
 /* ——— Bandeau d'échec de persistance Supabase ——— */
 .persistence-error-banner {
@@ -1068,6 +1072,17 @@ a:focus-visible,
   width: var(--anime-list-card-w);
   min-width: 0;
   box-sizing: border-box;
+}
+/*
+ * content-visibility : sur les longues grilles (gros profils), le navigateur
+ * saute le layout + paint des cartes hors écran. `contain-intrinsic-size`
+ * réserve une hauteur approximative (≈ 210px de jaquette + corps) pour éviter
+ * les sauts de scroll ; le mot-clé `auto` mémorise ensuite la taille réelle.
+ */
+.list-tab-media-grid > .media-card-link,
+.list-tab-media-grid > .media-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 280px;
 }
 .list-tab-anime-list {
   display: flex;

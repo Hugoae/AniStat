@@ -17,9 +17,3 @@ export const SITE = {
     favicon512: "/brand/favicon-512.png",
   },
 } as const;
-
-export function absoluteSiteUrl(path: string): string {
-  const base = SITE.url || (typeof window !== "undefined" ? window.location.origin : "");
-  if (!base) return path;
-  return `${base}${path.startsWith("/") ? path : `/${path}`}`;
-}

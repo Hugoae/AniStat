@@ -1,14 +1,12 @@
-import { C } from "../config/constants";
-
 /** Note liste → demi-point le plus proche (1, 1.5, … 10), hors plage / invalide → null. */
-export function roundAnimeListScoreToHalf(raw) {
+function roundAnimeListScoreToHalf(raw) {
   const n = Number(raw);
   if (!Number.isFinite(n) || n <= 0) return null;
   const half = Math.round(n * 2) / 2;
   return Math.min(10, Math.max(1, half));
 }
 
-export function formatHalfScoreLabel(v) {
+function formatHalfScoreLabel(v) {
   return new Intl.NumberFormat("fr-FR", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 1,
@@ -36,13 +34,4 @@ export function buildAnimeHalfScoreDistributionFullRange(scoredAnimeEntries) {
     });
   }
   return rows;
-}
-
-export function animeHalfScoreBarColor(bucket) {
-  const v = Number(bucket);
-  if (!Number.isFinite(v)) return C.accent;
-  if (v < 4) return C.red;
-  if (v < 6) return C.orange;
-  if (v < 8) return C.yellow;
-  return C.green;
 }
