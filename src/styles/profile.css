@@ -7,20 +7,10 @@
   margin: 0 auto;
   padding: 0 var(--space-6) 60px;
 }
-/* Réserve de l'espace à droite quand le sélecteur de période flotte (≥1024px
- * et tant que la marge naturelle est trop étroite), pour éviter que les
- * graphiques ne passent sous le widget. Au-delà de 1480px, le gap latéral
- * suffit : on garde le design centré intact. */
-@media (min-width: 1024px) and (max-width: 1279px) {
-  .profile-view-main {
-    padding-right: 192px;
-  }
-}
-@media (min-width: 1280px) and (max-width: 1480px) {
-  .profile-view-main {
-    padding-right: 256px;
-  }
-}
+/* Aucune réserve d'espace latérale : le contenu reste centré et pleine largeur
+ * à toutes les tailles d'écran. Le sélecteur de période ne flotte à droite que
+ * lorsque la marge naturelle est assez large (≥1480px) ; en dessous il repasse
+ * dans le flux, en barre au-dessus du contenu (voir period-chip.css). */
 
 .loading-block {
   display: flex;

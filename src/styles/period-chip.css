@@ -109,8 +109,10 @@
   /* Centré dans l'espace libre à droite du contenu (.profile-view-main
    * max-width: 1100 px). `(100vw - 1100px) / 4` = demi-espace, moins la
    * demi-largeur du chip (~80 px) aligne son centre sur le milieu du gap.
-   * Retombe sur 12 px du bord si l'espace n'est pas assez large. */
-  right: max(12px, calc((100vw - 1100px) / 4 - 95px));
+   * Retombe sur 12 px du bord si l'espace n'est pas assez large.
+   * N'est appliqué qu'au-dessus de 1480px (cf. media query plus bas) : en
+   * dessous, le gap latéral est trop étroit, le chip repasse dans le flux. */
+  right: max(12px, calc((100vw - 1100px) / 4 - 88px));
   top: 50%;
   transform: translateY(-50%) scale(1);
   transform-origin: top right;
@@ -120,8 +122,8 @@
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
-  padding: 10px;
-  min-width: 190px;
+  padding: 9px;
+  min-width: 176px;
   background: rgba(15, 24, 38, 0.92);
   border: 1px solid var(--surface-border);
   border-radius: var(--radius-card);
@@ -268,26 +270,49 @@
 .period-floating-chip__popover .period-panel-title {
   margin-bottom: 8px;
 }
-/* Laptops 13" (≈1024–1279px) : on conserve le sélecteur ancré à droite
- * (au lieu de le renvoyer en haut), mais réduit à 90 % pour ne pas empiéter
- * sur le contenu central. */
-@media (min-width: 1024px) and (max-width: 1279px) {
-  .period-floating-chip {
-    right: 12px;
-    transform: translateY(-50%) scale(0.9);
-  }
-}
-/* En dessous de lg (1024px) : retour dans le flux normal, centré au-dessus
- * du contenu (comportement d'origine sur petits écrans). */
-@media (max-width: 1023px) {
+/* En dessous de 1480px : le gap latéral devient trop étroit pour loger le chip
+ * sans réserver d'espace (ce qui décalait/rétrécissait le contenu). On le
+ * renvoie donc dans le flux normal, centré en barre au-dessus du contenu,
+ * pour garder le contenu centré pleine largeur et éviter tout chevauchement. */
+@media (max-width: 1479px) {
   .period-floating-chip {
     position: relative;
     top: auto;
     right: auto;
     margin: 0 auto 20px;
     transform: none;
-    width: min(100%, 220px);
-    min-width: 190px;
+    /* Barre horizontale compacte, centrée au-dessus du contenu. */
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    max-width: 100%;
+    min-width: 0;
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  /* Réordonne en ligne : Période · [▲ ▼ année] · [◀ valeur ▶ mois] · Modifier */
+  .period-floating-chip__label {
+    order: 1;
+  }
+  .period-floating-chip__nav-btn--up {
+    order: 2;
+  }
+  .period-floating-chip__nav-btn--down {
+    order: 3;
+  }
+  .period-floating-chip__value-row {
+    order: 4;
+  }
+  .period-floating-chip__modify-btn {
+    order: 5;
+    margin-top: 0;
+  }
+  /* Chevrons d'année en carrés compacts (plus de stretch vertical en ligne). */
+  .period-floating-chip__nav-btn {
+    width: 30px;
+    height: 30px;
   }
   .period-floating-chip__popover {
     top: calc(100% + 8px);
@@ -298,8 +323,8 @@
 }
 @media (max-width: 720px) {
   .period-floating-chip {
-    width: min(100%, 210px);
     padding: 8px;
+    gap: 6px;
   }
 }
 @media (max-width: 420px) {
