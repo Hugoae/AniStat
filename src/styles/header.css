@@ -1,0 +1,144 @@
+/* Header */
+.header-surface {
+  padding: 24px 24px 18px;
+  border-bottom: 1px solid #1f2d3d;
+}
+.header-surface--banner {
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+.header-surface--plain {
+  background-color: #0b1622;
+  background-image:
+    radial-gradient(ellipse 130% 90% at 12% -35%, rgba(61, 180, 242, 0.11), transparent 55%),
+    radial-gradient(ellipse 72% 45% at 96% 8%, rgba(255, 255, 255, 0.06), transparent 52%),
+    linear-gradient(168deg, #0e1b2d 0%, #0b1622 45%, #111f32 100%);
+}
+.header-top-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.header-brand {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.header-brand--home {
+  text-decoration: none;
+  color: inherit;
+  border-radius: 6px;
+  outline-offset: 2px;
+}
+.header-brand--home:hover .site-logo {
+  filter: brightness(1.08);
+}
+.header-brand--home:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inline);
+}
+.site-logo {
+  display: block;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.site-logo--header {
+  width: 42px;
+  height: 42px;
+}
+.site-logo--landing {
+  width: 44px;
+  height: 44px;
+}
+.header-home-link {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #8ba0b2;
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: var(--radius-chip);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.header-home-link:hover {
+  color: #edf1f5;
+  background: rgba(61, 180, 242, 0.1);
+}
+.header-home-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inline);
+}
+.header-container {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.header-search-input {
+  flex: 1;
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  border-right: none;
+  border-radius: var(--radius-control) 0 0 var(--radius-control);
+  padding: 10px 14px;
+  color: var(--color-text);
+  font-size: var(--font-size-base);
+  font-family: inherit;
+}
+.header-search-submit {
+  background: var(--color-accent);
+  color: #fff;
+  border: 1px solid var(--color-accent);
+  border-left: none;
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  padding: 10px 14px;
+  min-width: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.header-search-submit:not(:disabled) {
+  cursor: pointer;
+}
+.header-search-submit:not(:disabled):hover {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+  opacity: 1;
+}
+.header-api-badge {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-full);
+  padding: 6px 10px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+}
+.header-dev-toggle {
+  background: transparent;
+  border: 1px solid var(--surface-border);
+  color: var(--color-text-muted);
+  border-radius: var(--radius-control);
+  padding: 6px 10px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  font-family: inherit;
+  cursor: pointer;
+  transition: var(--transition-color);
+}
+.header-dev-toggle:hover {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+  opacity: 1;
+}
+.header-profile-avatar--accent {
+  border: 2px solid var(--color-accent);
+  /* Signature glow : halo qui respire lentement (3.8s) autour de l'avatar.
+   * Le `box-shadow` de base reste en place même sans animation (repli pour
+   * reduced-motion), donc l'anneau lumineux est toujours présent. */
+  box-shadow: var(--glow-accent);
+  animation: accentGlowBreath 3.8s var(--ease-in-out) infinite;
+}

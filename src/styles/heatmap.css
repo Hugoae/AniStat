@@ -1,0 +1,165 @@
+/* Heatmap d'activité (overview, anime, manga) */
+.activity-heatmap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.activity-heatmap__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  /*
+   * Sert de référent au positionnement absolu du tooltip survolant les cellules.
+   * Le tooltip est volontairement rendu hors du `.activity-heatmap__scroll` (qui a
+   * `overflow: hidden`) pour pouvoir déborder verticalement sans être tronqué.
+   */
+  position: relative;
+}
+.activity-heatmap__scroll {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Scroll horizontal subtil sur petits écrans. Variante « accent » assumée :
+   * la heatmap est un élément phare, teinter son thumb en bleu renforce
+   * l'identité sans polluer les autres scrollbars de l'app. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb-accent) var(--scrollbar-track);
+  padding-bottom: 4px;
+}
+.activity-heatmap__scroll::-webkit-scrollbar {
+  height: var(--scrollbar-size-md);
+}
+.activity-heatmap__scroll::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: var(--scrollbar-radius);
+}
+.activity-heatmap__scroll::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb-accent);
+  border-radius: var(--scrollbar-radius);
+}
+.activity-heatmap__scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-accent-hover);
+}
+.activity-heatmap__svg {
+  display: block;
+}
+.activity-heatmap__svg rect {
+  transition: transform 0.12s ease, filter 0.12s ease;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+.activity-heatmap__svg rect:hover {
+  transform: scale(1.18);
+  filter: brightness(1.18);
+}
+.activity-heatmap__tooltip {
+  position: absolute;
+  z-index: 5;
+  min-width: 160px;
+  max-width: 240px;
+  padding: 8px 10px;
+  background: #151f2e;
+  border: 1px solid #1f2d3d;
+  border-radius: 8px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.32);
+  font-size: 12px;
+  color: #edf1f5;
+  pointer-events: none;
+  /*
+   * Positionnement via deux variables CSS combinant l'axe horizontal et vertical.
+   * - `--tt-x` : décalage horizontal (centré, ancré à gauche, ou ancré à droite).
+   * - `--tt-y` : décalage vertical (au-dessus de la cellule, ou en-dessous).
+   * Un offset de 8px est gardé entre la cellule et le tooltip dans les deux sens.
+   */
+  --tt-x: -50%;
+  --tt-y: calc(-100% - 8px);
+  transform: translate(var(--tt-x), var(--tt-y));
+}
+.activity-heatmap__tooltip--left {
+  /* Sur la moitié droite de la grille, on déroule vers la gauche pour éviter de déborder */
+  --tt-x: -100%;
+}
+.activity-heatmap__tooltip--right {
+  --tt-x: 0;
+}
+.activity-heatmap__tooltip--above {
+  --tt-y: calc(-100% - 8px);
+}
+.activity-heatmap__tooltip--below {
+  /* Cellule trop haute dans la grille : on bascule le tooltip en-dessous pour ne pas être tronqué */
+  --tt-y: 8px;
+}
+.activity-heatmap__tooltip-date {
+  color: rgba(139, 160, 178, 0.95);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  text-transform: capitalize;
+  margin-bottom: 4px;
+}
+.activity-heatmap__tooltip-main {
+  font-size: 13px;
+  color: #edf1f5;
+  margin-bottom: 4px;
+}
+.activity-heatmap__tooltip-main strong {
+  color: #5bc4f7;
+  font-weight: 700;
+}
+.activity-heatmap__tooltip-breakdown {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 6px 0 0;
+  border-top: 1px solid rgba(139, 160, 178, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.activity-heatmap__tooltip-breakdown li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+}
+.activity-heatmap__tooltip-key {
+  color: rgba(139, 160, 178, 0.95);
+}
+.activity-heatmap__tooltip-val {
+  color: #edf1f5;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.activity-heatmap__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 12px;
+  color: rgba(139, 160, 178, 0.95);
+}
+.activity-heatmap__total strong {
+  color: #edf1f5;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.activity-heatmap__legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.activity-heatmap__legend-label {
+  font-size: 11px;
+  color: rgba(139, 160, 178, 0.85);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 4px;
+}
+.activity-heatmap__legend-cell {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+}

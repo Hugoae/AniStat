@@ -4,14 +4,14 @@
  *
  * Convention dossiers :
  *   studio-logos-source/   ← tu déposes tes fichiers sources (PNG, JPG, WebP, SVG)
- *   public/studio-logos/   ← sortie : PNG carré, + manifest.json (généré)
+ *   public/studio-logos/   ← sortie : WebP carré, + manifest.json (généré)
  *
  * Convention nommage des fichiers sources :
  *   Le nom SANS extension doit correspondre au slug du studio tel qu’affiché sur AniList,
  *   après normalisation (voir --slug ci-dessous). Exemples :
- *     MAPPA.png ou mappa.png        → public/studio-logos/mappa.png
- *     bones.webp                    → bones.png
- *     brains-base.png               → brains-base.png
+ *     MAPPA.png ou mappa.png        → public/studio-logos/mappa.webp
+ *     bones.webp                    → bones.webp
+ *     brains-base.png               → brains-base.webp
  *
  * Usage :
  *   npm run studio-logos
@@ -103,7 +103,7 @@ async function main() {
     const stem = path.basename(file, path.extname(file));
     const slug = slugifyStudioName(stem);
     const inPath = path.join(SOURCE_DIR, file);
-    const outPath = path.join(OUT_DIR, `${slug}.png`);
+    const outPath = path.join(OUT_DIR, `${slug}.webp`);
 
     await sharp(inPath)
       .trim()
@@ -112,7 +112,7 @@ async function main() {
         position: "centre",
         background: { r: 0, g: 0, b: 0, alpha: 0 },
       })
-      .png({ compressionLevel: 9, effort: 10 })
+      .webp({ quality: 90, effort: 6 })
       .toFile(outPath);
 
     slugsOut.add(slug);
@@ -121,14 +121,14 @@ async function main() {
 
   const existing = fs
     .readdirSync(OUT_DIR)
-    .filter((f) => f.endsWith(".png"))
-    .map((f) => path.basename(f, ".png"));
+    .filter((f) => f.endsWith(".webp"))
+    .map((f) => path.basename(f, ".webp"));
 
   const allSlugs = [...new Set([...existing, ...slugsOut])].sort();
 
   fs.writeFileSync(
     MANIFEST,
-    `${JSON.stringify({ version: 1, slugs: allSlugs, outputSize: size, fit }, null, 2)}\n`,
+    `${JSON.stringify({ version: 1, slugs: allSlugs, outputSize: size, fit, format: "webp" }, null, 2)}\n`,
     "utf8"
   );
   console.log(`Manifest : ${path.relative(ROOT, MANIFEST)} (${allSlugs.length} entrées)`);

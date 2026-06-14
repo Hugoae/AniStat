@@ -1,0 +1,288 @@
+/* Vue d’ensemble : titres de blocs (graphiques + tops) */
+.overview-block-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #8ba0b2;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  line-height: 1.25;
+  margin: 0 0 14px 2px;
+}
+
+.overview-page {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+.overview-stats-cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+.list-tab-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.list-tab-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: 0 minmax(0, 1fr);
+  align-items: start;
+}
+.list-tab-shell > .list-tab-section-nav {
+  grid-column: 1;
+}
+.list-tab-shell > .list-tab-page {
+  grid-column: 2;
+}
+.list-tab-section-nav {
+  position: sticky;
+  top: 92px;
+  z-index: var(--z-sticky);
+  width: 150px;
+  transform: translateX(calc(-100% - 24px));
+  padding: 4px 14px 4px 0;
+}
+.list-tab-section-nav::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1px;
+  height: 100%;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(139, 160, 178, 0.04) 12%,
+    rgba(139, 160, 178, 0.24) 50%,
+    rgba(139, 160, 178, 0.04) 88%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+.list-tab-section-nav__eyebrow {
+  margin: 0 0 8px;
+  color: var(--color-text-dim);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.list-tab-section-nav__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.list-tab-section-nav__link {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  line-height: 1.25;
+  text-align: left;
+  text-decoration: none;
+  background: transparent;
+  transition: var(--transition-color);
+}
+.list-tab-section-nav__link:hover {
+  color: var(--color-text);
+}
+.list-tab-section-nav__link.is-active {
+  color: var(--color-accent);
+}
+.list-tab-section-nav__link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inline);
+}
+@media (max-width: 1180px) {
+  .list-tab-shell {
+    display: block;
+  }
+  .list-tab-section-nav {
+    display: none;
+  }
+}
+/** Ligne de pastilles : une seule rangée, défilement horizontal si besoin (évite le retour à la ligne). */
+.list-tab-distro-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 6px;
+  margin-bottom: -2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  -webkit-overflow-scrolling: touch;
+}
+.list-tab-distro-row::-webkit-scrollbar {
+  height: var(--scrollbar-size-sm);
+}
+.list-tab-distro-row::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: var(--scrollbar-radius);
+}
+.list-tab-distro-row::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: var(--scrollbar-radius);
+}
+.list-tab-distro-row::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+.list-tab-status-pill {
+  background: rgba(15, 24, 36, 0.72);
+  border: 1px solid rgba(31, 45, 61, 0.55);
+  border-radius: var(--radius-control);
+  padding: 12px 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-shrink: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+.list-tab-status-pill__count {
+  font-size: clamp(22px, 2.2vw, 26px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.list-tab-status-pill__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #8ba0b2;
+}
+.list-tab-distribution-section .overview-block-title {
+  margin-bottom: 10px;
+  font-size: 12px;
+  letter-spacing: 0.07em;
+}
+.list-tab-distribution {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 14px;
+  align-items: start;
+}
+@media (max-width: 1020px) {
+  .list-tab-distribution {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+}
+.list-tab-distribution__col {
+  min-width: 0;
+}
+.list-tab-distribution-section .list-tab-status-pill,
+.list-tab-distribution-section .list-tab-origin-pill {
+  padding: 7px 9px;
+  gap: 6px;
+}
+.list-tab-distribution-section .list-tab-status-pill__count {
+  font-size: clamp(16px, 1.35vw, 19px);
+}
+.list-tab-distribution-section .list-tab-status-pill__label {
+  font-size: 11px;
+  font-weight: 600;
+}
+.list-tab-origin-pill {
+  background: rgba(15, 24, 36, 0.72);
+  border: 1px solid rgba(31, 45, 61, 0.55);
+  border-radius: var(--radius-control);
+  padding: 10px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex-shrink: 0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+.list-tab-distribution-section .list-tab-origin-pill {
+  gap: 6px;
+  padding: 7px 9px;
+}
+.list-tab-origin-pill__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.list-tab-origin-pill__name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8ba0b2;
+  white-space: nowrap;
+  line-height: 1.25;
+}
+.list-tab-origin-pill__flag {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  line-height: 0;
+}
+.list-tab-origin-pill__flag .media-origin-flag-svg {
+  display: block;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+.list-tab-origin-pill__flag-unknown {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 13px;
+  border-radius: 3px;
+  background: rgba(30, 42, 58, 0.95);
+  border: 1px solid rgba(61, 180, 242, 0.2);
+  font-size: 8px;
+  font-weight: 800;
+  color: #6b7f92;
+  line-height: 1;
+}
+.list-tab-media-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--anime-grid-gap, 14px);
+  width: 100%;
+  /*
+   * Une « colonne » = même largeur partout (ligne pleine ou non), dérivée du nombre de cartes
+   * qui tiennent à 155px + gap. Ligne complète touche les bords ; ligne incomplète reste à gauche
+   * sans étirer les cartes.
+   */
+  --anime-list-card-w: calc(
+    (100% - (var(--anime-grid-cols, 1) - 1) * var(--anime-grid-gap, 14px)) / var(--anime-grid-cols, 1)
+  );
+}
+.list-tab-media-grid > .media-card-link {
+  display: block;
+  flex: 0 0 var(--anime-list-card-w);
+  width: var(--anime-list-card-w);
+  min-width: 0;
+  box-sizing: border-box;
+}
+.list-tab-media-grid > .media-card-link .media-card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.list-tab-media-grid > .media-card {
+  flex: 0 0 var(--anime-list-card-w);
+  width: var(--anime-list-card-w);
+  min-width: 0;
+  box-sizing: border-box;
+}

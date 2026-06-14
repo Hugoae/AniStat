@@ -27,7 +27,7 @@ function studioNameToAltLogoSlug(name: string): string {
 }
 
 function localStudioLogoUrlForSlug(slug: string): string {
-  return `${STUDIO_LOGOS_PUBLIC_PATH}/${slug}.png`;
+  return `${STUDIO_LOGOS_PUBLIC_PATH}/${slug}.webp`;
 }
 
 type Manifest = { version?: number; slugs?: string[] };

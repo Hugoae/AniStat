@@ -1,0 +1,36 @@
+/* Retour en haut (après scroll) */
+.back-to-top-btn {
+  position: fixed;
+  right: max(20px, env(safe-area-inset-right, 0px));
+  bottom: max(22px, env(safe-area-inset-bottom, 0px));
+  z-index: 70;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--surface-border);
+  background: var(--surface-bg);
+  color: #edf1f5;
+  box-shadow: var(--shadow-hover);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+.back-to-top-btn:hover {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  transform: var(--lift-hover-sm);
+  box-shadow: var(--shadow-hover);
+}
+.back-to-top-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

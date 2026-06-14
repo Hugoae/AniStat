@@ -1,0 +1,207 @@
+/* Stats type AniList : pas de carte pleine, icône en bulle + valeur + libellé */
+.stat-stat-al-row--overview {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  column-gap: clamp(6px, 1.2vw, 14px);
+  row-gap: 8px;
+  align-items: center;
+  padding: 16px 0 12px;
+  box-sizing: border-box;
+  overflow: visible;
+  /* une seule ligne : pas de retour à la ligne sur la grille */
+}
+.stat-stat-al-row--overview .stat-stat-al {
+  gap: 12px;
+  min-width: 0;
+}
+.stat-stat-al-row--overview .stat-stat-al__bubble {
+  width: 48px;
+  height: 48px;
+}
+.stat-stat-al-row--overview .stat-stat-al__bubble svg {
+  width: 22px;
+  height: 22px;
+}
+.stat-stat-al-row--overview .stat-stat-al__value {
+  font-size: clamp(24px, 2.75vw, 30px);
+  font-weight: 800;
+  white-space: nowrap;
+}
+.stat-stat-al-row--overview .stat-stat-al__label {
+  font-size: 13px;
+}
+@media (max-width: 920px) {
+  .stat-stat-al-row--overview {
+    grid-template-columns: repeat(5, minmax(108px, 1fr));
+    overflow-x: auto;
+    overflow-y: visible;
+    padding-bottom: 10px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+}
+.stat-stat-al {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 2px 2px 2px 0;
+  background: transparent;
+  border: none;
+}
+.stat-stat-al__label--with-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.stat-stat-al__label-text {
+  min-width: 0;
+}
+.stat-label-hint-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  z-index: 2;
+}
+.stat-label-hint__btn {
+  box-sizing: border-box;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  margin: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(139, 160, 178, 0.32);
+  background: rgba(22, 32, 46, 0.55);
+  color: rgba(139, 160, 178, 0.82);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 0;
+  letter-spacing: 0;
+  cursor: help;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.68;
+  transition:
+    opacity 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+.stat-label-hint__btn:hover {
+  opacity: 1;
+  border-color: rgba(61, 180, 242, 0.38);
+  color: rgba(184, 201, 217, 0.95);
+}
+.stat-label-hint__glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  line-height: 1;
+  transform: translateY(0.45px);
+}
+.stat-stat-al__tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  top: auto;
+  min-width: 200px;
+  max-width: min(300px, 78vw);
+  padding: 10px 12px;
+  border-radius: var(--radius-card);
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--shadow-tooltip);
+  color: #8ba0b2;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+  text-align: left;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.14s ease,
+    visibility 0.14s ease;
+  z-index: 90;
+}
+.stat-stat-al__tooltip--open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+.stat-stat-al__tooltip--label.stat-stat-al__tooltip--open {
+  opacity: 0.88;
+}
+.stat-stat-al__tooltip--label {
+  min-width: 180px;
+  max-width: min(280px, 88vw);
+  padding: 6px 8px;
+  font-size: 11px;
+}
+/*
+ * Variante du tooltip rendue dans un portal vers <body> (StatLabelHint) : on
+ * neutralise les règles de positionnement CSS par défaut pour laisser le calcul
+ * JS piloter `top` / `left` en `position: fixed`. Sinon `bottom` + `transform`
+ * du style de base décaleraient/étireraient l'élément.
+ */
+.stat-stat-al__tooltip--portal {
+  position: fixed;
+  bottom: auto;
+  right: auto;
+  transform: none;
+  z-index: 1000;
+}
+.stat-stat-al__tooltip--portal.stat-stat-al__tooltip--measuring {
+  /* Frame de mesure : tooltip rendu invisible et sans pointer events le temps de mesurer sa taille. */
+  pointer-events: none;
+}
+.stat-stat-al__bubble {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(30, 42, 58, 0.95);
+  border: 1px solid rgba(31, 45, 61, 0.85);
+  color: #8ba0b2;
+  box-shadow: var(--shadow-control);
+}
+.stat-stat-al__bubble svg {
+  display: block;
+}
+.stat-stat-al__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.stat-stat-al__value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  /* Stabilise la largeur des chiffres pendant l'animation de count-up
+     (sinon le compteur sautille à chaque incrément). */
+  font-variant-numeric: tabular-nums;
+}
+.stat-stat-al__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #8ba0b2;
+  line-height: 1.25;
+}
+.chart-section {
+  display: flex;
+  flex-direction: column;
+}

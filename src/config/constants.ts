@@ -16,6 +16,9 @@ export const C = {
   indigo: "#6366F1",
 } as const;
 
+/** Année sentinelle représentant la période « depuis toujours » (tout l'historique). */
+export const ALL_TIME_YEAR = 0;
+
 export const PIE_COLORS = [
   C.accent,
   C.orange,

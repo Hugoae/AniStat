@@ -1,0 +1,23 @@
+/* Scrollbar par défaut (toute la page) : pilule discrète, s'harmonise avec
+ * les variantes locales qui utilisent les mêmes tokens. */
+::-webkit-scrollbar { height: var(--scrollbar-size-sm); width: var(--scrollbar-size-sm); }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: var(--scrollbar-radius);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+* { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
+input:focus { outline: none; border-color: var(--color-accent) !important; }
+button { cursor: pointer; }
+button:hover { opacity: 0.9; }
+/* Focus visible global : anneau unifié sur toute surface interactive.
+ * Les composants qui ont besoin d'un anneau plus compact (pilule, lien inline)
+ * surchargent avec `box-shadow: var(--focus-ring-inline)`. */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}

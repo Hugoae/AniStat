@@ -1,4 +1,4 @@
-import { anilistMediaUrl } from "../components/appUi/mediaDisplayHelpers";
+import { anilistMediaUrl } from "../components/ui/mediaDisplayHelpers";
 import type { ActivityItem, AniListEntry } from "../types/domain";
 import { buildActivityDeltaRows } from "./stats";
 

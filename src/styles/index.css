@@ -1,0 +1,21 @@
+/* Barrel des styles : importé une seule fois par main.tsx.
+ * Vite inline ces @import au build (ordre = cascade d'origine). */
+@import "./tokens.css";
+@import "./base.css";
+@import "./stats.css";
+@import "./records.css";
+@import "./overview.css";
+@import "./list-tab.css";
+@import "./charts.css";
+@import "./media-card.css";
+@import "./carousel.css";
+@import "./profile.css";
+@import "./motion.css";
+@import "./period-chip.css";
+@import "./header.css";
+@import "./utilities.css";
+@import "./landing.css";
+@import "./back-to-top.css";
+@import "./top-tags.css";
+@import "./heatmap.css";
+@import "./wrapped.css";

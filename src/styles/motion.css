@@ -1,0 +1,182 @@
+/* ——— Transitions d'onglet ———
+ *
+ * Un wrapper keyed (`key={tab}`) enveloppe le contenu d'onglet : un changement
+ * de valeur de la prop `tab` remonte le wrapper, ce qui relance l'animation
+ * `tabEnter` côté CSS. La sortie (onglet courant) est supprimée instantanément,
+ * l'entrée (onglet suivant) s'animation en fade-up rapide — on garde le rendu
+ * nerveux, sans superposition visible entre deux vues.
+ *
+ * L'animation est volontairement courte (220 ms, translate 6px) pour ne pas
+ * rivaliser avec les `fade-in` / `stagger-reveal` internes qui prennent ensuite
+ * le relais pour révéler le détail du contenu.
+ */
+.tab-transition-wrapper {
+  animation: tabEnter var(--duration-base) var(--ease-out) both;
+  /* `isolation: isolate` évite que le wrapper ne crée un contexte de stacking
+   * qui interférerait avec les tooltips portaled. */
+  transform-origin: top center;
+}
+@keyframes tabEnter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ——— Boutons de navigation pour carrousels horizontaux ———
+   Positionnés en absolu par-dessus le wrapper du carrousel (qui doit avoir
+   `position: relative`). Disparaissent quand il n'y a plus rien à scroller
+   grâce à `disabled` + `aria-hidden`. */
+.carousel-nav-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(139, 160, 178, 0.32);
+  background: rgba(11, 22, 34, 0.82);
+  color: var(--color-text);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.32);
+  opacity: 0.85;
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+.carousel-nav-btn:hover:not(:disabled) {
+  background: rgba(61, 180, 242, 0.92);
+  color: #0b1622;
+  border-color: var(--color-accent);
+  box-shadow: 0 6px 18px rgba(61, 180, 242, 0.28);
+  opacity: 1;
+  transform: translateY(-50%) scale(1.06);
+}
+.carousel-nav-btn:active:not(:disabled) {
+  transform: translateY(-50%) scale(0.96);
+}
+.carousel-nav-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring), 0 4px 14px rgba(0, 0, 0, 0.32);
+}
+.carousel-nav-btn:disabled {
+  opacity: 0;
+  pointer-events: none;
+}
+.carousel-nav-btn--prev { left: 6px; }
+.carousel-nav-btn--next { right: 6px; }
+.carousel-nav-btn__icon {
+  display: block;
+}
+@media (pointer: coarse) {
+  /* Sur écrans tactiles, les boutons sont moins utiles (swipe natif) : on les
+     rend plus discrets mais toujours accessibles pour la navigation clavier. */
+  .carousel-nav-btn { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .carousel-nav-btn,
+  .carousel-nav-btn:hover:not(:disabled),
+  .carousel-nav-btn:active:not(:disabled) {
+    transition: none;
+    transform: translateY(-50%);
+  }
+}
+
+/* ——— Collapse/Expand animator (grid-rows trick) ———
+   Usage : wrap les enfants dans .collapsible-chart-animator. Quand l'état est
+   « collapsed », on passe à grid-template-rows: 0fr, ce qui anime la hauteur
+   en douceur sans mesurer la taille en JS. L'inner porte overflow:hidden et
+   min-height:0 pour permettre l'animation. */
+.collapsible-chart-animator {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows var(--duration-slow) var(--ease-out),
+    opacity var(--duration-base) var(--ease-out);
+  opacity: 1;
+}
+.collapsible-chart-animator__inner {
+  min-height: 0;
+  overflow: hidden;
+}
+.collapsible-chart-animator--collapsed {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .collapsible-chart-animator {
+    transition: none;
+  }
+}
+
+/* ——— Stagger reveal pour listes/grilles ———
+   Chaque enfant apparaît en cascade ; le délai est défini par :nth-child
+   pour les 20 premiers (suffisant visuellement) puis capé pour les suivants. */
+@keyframes staggerRevealIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.stagger-reveal > * {
+  animation: staggerRevealIn var(--duration-slow) var(--ease-out) both;
+}
+.stagger-reveal > *:nth-child(1)  { animation-delay: 0ms; }
+.stagger-reveal > *:nth-child(2)  { animation-delay: 30ms; }
+.stagger-reveal > *:nth-child(3)  { animation-delay: 60ms; }
+.stagger-reveal > *:nth-child(4)  { animation-delay: 90ms; }
+.stagger-reveal > *:nth-child(5)  { animation-delay: 120ms; }
+.stagger-reveal > *:nth-child(6)  { animation-delay: 150ms; }
+.stagger-reveal > *:nth-child(7)  { animation-delay: 180ms; }
+.stagger-reveal > *:nth-child(8)  { animation-delay: 210ms; }
+.stagger-reveal > *:nth-child(9)  { animation-delay: 240ms; }
+.stagger-reveal > *:nth-child(10) { animation-delay: 270ms; }
+.stagger-reveal > *:nth-child(11) { animation-delay: 300ms; }
+.stagger-reveal > *:nth-child(12) { animation-delay: 330ms; }
+.stagger-reveal > *:nth-child(13) { animation-delay: 360ms; }
+.stagger-reveal > *:nth-child(14) { animation-delay: 390ms; }
+.stagger-reveal > *:nth-child(15) { animation-delay: 420ms; }
+.stagger-reveal > *:nth-child(16) { animation-delay: 450ms; }
+.stagger-reveal > *:nth-child(17) { animation-delay: 480ms; }
+.stagger-reveal > *:nth-child(18) { animation-delay: 510ms; }
+.stagger-reveal > *:nth-child(19) { animation-delay: 540ms; }
+.stagger-reveal > *:nth-child(n+20) { animation-delay: 570ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .stagger-reveal > * {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.year-btn {
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  color: #8ba0b2;
+  padding: 6px 14px;
+  border-radius: var(--radius-control);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: border-color 0.15s, color 0.15s, background 0.15s, box-shadow 0.15s;
+  box-shadow: var(--shadow-control);
+}
+.year-btn:hover {
+  border-color: #3db4f2;
+  color: #edf1f5;
+  box-shadow: var(--shadow-control-hover);
+}
+.year-btn.active { background: #3db4f2; border-color: #3db4f2; color: #fff; }

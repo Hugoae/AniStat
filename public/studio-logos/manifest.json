@@ -47,5 +47,6 @@
     "zexcs"
   ],
   "outputSize": 256,
-  "fit": "contain"
+  "fit": "contain",
+  "format": "webp"
 }

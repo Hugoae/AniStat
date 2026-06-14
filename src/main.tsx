@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
-import "./styles.css";
+import "./styles/index.css";
 
 if (typeof window !== "undefined" && window.location.hostname === "localhost") {
   const target = new URL(window.location.href);

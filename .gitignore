@@ -19,6 +19,13 @@ dist-ssr/
 build/
 *.local
 
+# ─────────── Sources d'assets (non livrées) ────────────
+# Logos studio bruts : servent uniquement à régénérer
+# public/studio-logos/ via `npm run studio-logos`. Gardés en
+# local, hors du dépôt (1.6 Mo). Le .gitkeep préserve le dossier.
+studio-logos-source/*
+!studio-logos-source/.gitkeep
+
 # ─────────── Secrets / environment (NEVER commit) ───────
 # Toute variante de fichier d'environnement est ignorée,
 # sauf l'exemple (sans valeurs réelles).
