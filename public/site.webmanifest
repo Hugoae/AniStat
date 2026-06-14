@@ -1,0 +1,24 @@
+{
+  "name": "AniStat",
+  "short_name": "AniStat",
+  "description": "Statistiques et graphiques pour les profils AniList publics.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1622",
+  "theme_color": "#0b1622",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "/brand/favicon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand/logo-square-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

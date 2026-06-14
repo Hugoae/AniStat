@@ -1,0 +1,8 @@
+<svg viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg">
+  <g transform="translate(59,0)">
+    <!-- A (white) -->
+    <path fill="#FFFFFF" fill-rule="evenodd" d="M 58 452 L 150 148 L 210 148 L 302 452 L 238 452 L 212 372 L 148 372 L 122 452 Z M 156 336 L 204 336 L 180 204 Z"/>
+    <!-- S (blue, angular) -->
+    <path fill="#3DB4F2" d="M 318 148 L 383 148 L 423 188 L 423 208 L 338 208 L 338 270 L 423 270 L 423 412 L 383 452 L 318 452 L 278 412 L 278 392 L 363 392 L 363 330 L 278 330 L 278 188 Z"/>
+  </g>
+</svg>

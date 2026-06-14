@@ -1,6 +1,9 @@
 import type { RefObject } from "react";
 import { C } from "../config/constants";
 
+import { SITE } from "../config/site";
+import { SiteLogo } from "./SiteLogo";
+
 export type ProfileHeaderQuickPick = {
   userName: string;
   label?: string;
@@ -72,11 +75,8 @@ export function ProfileAppHeader({
     >
       <div className="header-container">
         <div className="header-top-row">
-          <a href="#/" className="header-brand header-brand--home" aria-label="AniList Stat — Accueil">
-            <span className="header-brand-mark">
-              <span className="header-brand-a">A</span>
-              <span className="header-brand-s">S</span>
-            </span>
+          <a href="#/" className="header-brand header-brand--home" aria-label={`${SITE.name} — Accueil`}>
+            <SiteLogo variant="header" />
           </a>
           <div className="header-search-wrap">
             <div className="header-search-group">

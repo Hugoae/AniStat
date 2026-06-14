@@ -1,9 +1,31 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 
-export default defineConfig(() => {
+function resolveSiteUrl(env: Record<string, string>): string {
+  const fromEnv = env.VITE_SITE_URL?.trim().replace(/\/$/, "");
+  if (fromEnv) return fromEnv;
+  const vercel = env.VERCEL_URL?.trim();
+  if (vercel) return `https://${vercel.replace(/^https?:\/\//, "")}`;
+  return "";
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  const siteUrl = resolveSiteUrl(env);
+
   return {
-    plugins: [react()],
+    plugins: [
+      react(),
+      {
+        name: "html-site-url",
+        transformIndexHtml(html) {
+          return html.replaceAll("%VITE_SITE_URL%", siteUrl);
+        },
+      },
+    ],
+    define: {
+      "import.meta.env.VITE_SITE_URL": JSON.stringify(siteUrl),
+    },
     build: {
       /*
        * Code-splitting manuel du bundle. L'objectif est de sortir les libs

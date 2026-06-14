@@ -1,4 +1,6 @@
 import { useEffect, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { SITE } from "../config/site";
+import { SiteLogo } from "./SiteLogo";
 
 export type HomeQuickPickRow = {
   userName: string;
@@ -54,11 +56,8 @@ export function HomeLanding({
 
       <div className="home-landing__inner">
         <div className="home-landing__brand-row">
-          <span className="home-landing__brand-mark" aria-hidden>
-            <span className="header-brand-a">A</span>
-            <span className="header-brand-s">S</span>
-          </span>
-          <span className="home-landing__brand-text">AniList Stat</span>
+          <SiteLogo variant="landing" />
+          <span className="home-landing__brand-text">{SITE.name}</span>
         </div>
 
         <header className="home-landing__hero">
