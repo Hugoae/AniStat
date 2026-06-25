@@ -11,6 +11,8 @@ export type OverviewRecentActivity = {
   mediaUrl: string;
   formattedAt: string;
   createdAt: number;
+  /** Activité « terminé » : ne doit jamais être fusionnée avec une progression. */
+  isCompleted: boolean;
 };
 
 const ACTIVITY_SESSION_WINDOW_HOURS = 6;
@@ -86,20 +88,29 @@ function formatProgressLabel(progressRaw: string | null | undefined, kind: "anim
   return null;
 }
 
-/** Conserve uniquement les activités de consommation (lu / relu / regardé / revu). */
+/**
+ * Conserve les activités de consommation (lu / relu / regardé / revu) ainsi que
+ * les passages en « terminé », qui n'ont souvent aucune progression chiffrée
+ * (film / one-shot, ou fin d'une série loguée d'un coup) mais restent pertinents.
+ */
 function isConsumptiveActivity(activity: ActivityItem, kind: "anime" | "manga"): boolean {
   const status = String(activity.status ?? "").toUpperCase();
   if (status === "PLANNING") return false;
   if (formatProgressLabel(activity.progress, kind)) return true;
-  return status === "REPEATING";
+  return status === "REPEATING" || status === "COMPLETED";
 }
 
 /** Construit le préfixe d'activité terminé par " de ", à coller devant le lien œuvre. */
 function buildActivityPrefix(activity: ActivityItem, kind: "anime" | "manga"): string {
   const status = String(activity.status ?? "").toUpperCase();
   const progressLabel = formatProgressLabel(activity.progress, kind);
-  const verb = actionVerb(kind, status);
 
+  // « Terminé » sans progression exploitable : phrasé direct ("Terminé <œuvre>").
+  if (status === "COMPLETED" && !progressLabel) {
+    return "Terminé ";
+  }
+
+  const verb = actionVerb(kind, status);
   if (progressLabel) {
     return `${verb} ${progressLabel} de `;
   }
@@ -141,6 +152,7 @@ export function buildOverviewRecentActivities({
       mediaUrl: `https://anilist.co/${kind}/${mediaId}`,
       formattedAt: formatActivityAbsoluteDate(createdAt),
       createdAt,
+      isCompleted: String(activity.status ?? "").toUpperCase() === "COMPLETED",
     });
   };
 
@@ -157,9 +169,15 @@ export function mergeRecentActivities(
   const mergedActivities: OverviewRecentActivity[] = [];
 
   for (const activity of sorted) {
+    // On ne fusionne qu'entre activités de même nature : un « terminé » et une
+    // progression de la même œuvre restent deux entrées distinctes (comme sur
+    // AniList, ex. « Regardé épisodes 7–11 » puis « Terminé »).
     const previousSameMedia = [...mergedActivities]
       .reverse()
-      .find((merged) => merged.mediaId === activity.mediaId);
+      .find(
+        (merged) =>
+          merged.mediaId === activity.mediaId && merged.isCompleted === activity.isCompleted
+      );
 
     if (previousSameMedia) {
       const diffHours = Math.abs(previousSameMedia.createdAt - activity.createdAt) / 3600;

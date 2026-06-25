@@ -1308,6 +1308,8 @@ function App() {
                 overviewTopPeriodTitle={overviewTopPeriodTitle}
                 overviewTopManga={overviewTopManga}
                 overviewTopAnime={overviewTopAnime}
+                overviewAnimePeriodProgressByMedia={animePeriodProgressByMedia}
+                overviewMangaPeriodProgressByMedia={mangaPeriodProgressByMedia}
                 overviewMangaTopFades={overviewMangaTopFades}
                 overviewAnimeTopFades={overviewAnimeTopFades}
                 overviewMangaTopScrollRef={overviewMangaTopScrollRef}

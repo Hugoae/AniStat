@@ -52,6 +52,9 @@ export type OverviewTabProps = {
   overviewTopPeriodTitle: string;
   overviewTopManga: AniListEntry[];
   overviewTopAnime: AniListEntry[];
+  /** Épisodes/chapitres vus dans la période, par mediaId (badge vert des cards). */
+  overviewAnimePeriodProgressByMedia: Map<number, number>;
+  overviewMangaPeriodProgressByMedia: Map<number, number>;
   overviewMangaTopFades: { left: boolean; right: boolean };
   overviewAnimeTopFades: { left: boolean; right: boolean };
   overviewMangaTopScrollRef: RefObject<HTMLDivElement | null>;
@@ -90,6 +93,8 @@ export const OverviewTab = memo(function OverviewTab({
   overviewTopPeriodTitle,
   overviewTopManga,
   overviewTopAnime,
+  overviewAnimePeriodProgressByMedia,
+  overviewMangaPeriodProgressByMedia,
   overviewMangaTopFades,
   overviewAnimeTopFades,
   overviewMangaTopScrollRef,
@@ -225,7 +230,12 @@ export const OverviewTab = memo(function OverviewTab({
                   >
                     <div ref={overviewMangaTopScrollRef} className="overview-top-scroll__track stagger-reveal">
                       {overviewTopManga.map((e) => (
-                        <MediaCard key={e.id} entry={e} type="MANGA" />
+                        <MediaCard
+                          key={e.id}
+                          entry={e}
+                          type="MANGA"
+                          periodProgress={overviewMangaPeriodProgressByMedia.get(e.media?.id || 0) || 0}
+                        />
                       ))}
                     </div>
                     <CarouselNavButtons
@@ -291,7 +301,12 @@ export const OverviewTab = memo(function OverviewTab({
                   >
                     <div ref={overviewAnimeTopScrollRef} className="overview-top-scroll__track stagger-reveal">
                       {overviewTopAnime.map((e) => (
-                        <MediaCard key={e.id} entry={e} type="ANIME" />
+                        <MediaCard
+                          key={e.id}
+                          entry={e}
+                          type="ANIME"
+                          periodProgress={overviewAnimePeriodProgressByMedia.get(e.media?.id || 0) || 0}
+                        />
                       ))}
                     </div>
                     <CarouselNavButtons
