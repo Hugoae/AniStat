@@ -1,5 +1,18 @@
 import { MONTHS } from '../config/constants';
 
+  type GenrePercentRow = {
+    name: string;
+    count: number;
+    percent: number;
+  };
+
+  type GenreComparisonRow = GenrePercentRow & {
+    previousCount: number;
+    previousPercent: number;
+    deltaCount: number;
+    deltaPercent: number;
+  };
+
   const NOW_UNIX = () => Math.floor(Date.now() / 1000);
 
   const completedInYear = (e, y) => y === 0 ? Boolean(e.completedAt?.year) : e.completedAt?.year === y;
@@ -585,23 +598,56 @@ function computePeriodWatchMinutesByCountry(activities, year, month) {
       });
     });
 
-    return Object.entries(genreCount)
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, count]) => ({ name, count }));
+    return withGenrePercents(genreCount, seenMedia.size);
   }
 
-  /** Genres agrégés sur un tableau d'entrées liste (mode « All Time »). */
+  function withGenrePercents(genreCount: Record<string, number>, totalTitles: number): GenrePercentRow[] {
+    const denominator = Math.max(0, Number(totalTitles) || 0);
+    return Object.entries(genreCount)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, count]) => ({
+        name,
+        count,
+        percent: denominator > 0 ? (Number(count) / denominator) * 100 : 0,
+      }));
+  }
+
+  /** Genres agrégés sur un tableau d'entrées liste (période courante ou All Time). */
   function computeGenreDistributionFromEntries(entries) {
     const genreCount: Record<string, number> = {};
-    (entries || []).forEach((e) =>
+    const list = entries || [];
+    list.forEach((e) =>
       (e.media?.genres || []).forEach((g) => {
         if (!g) return;
         genreCount[g] = (genreCount[g] || 0) + 1;
       })
     );
-    return Object.entries(genreCount)
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, count]) => ({ name, count }));
+    return withGenrePercents(genreCount, list.length);
+  }
+
+  function mergeGenreDistributionComparison(
+    currentRows: readonly GenrePercentRow[] | null | undefined,
+    previousRows: readonly GenrePercentRow[] | null | undefined
+  ): GenreComparisonRow[] {
+    const currentByName = new Map((currentRows || []).map((row) => [row.name, row]));
+    const previousByName = new Map((previousRows || []).map((row) => [row.name, row]));
+    const names = new Set([...currentByName.keys(), ...previousByName.keys()]);
+
+    return [...names]
+      .map((name) => {
+        const current = currentByName.get(name) || { name, count: 0, percent: 0 };
+        const previous = previousByName.get(name) || { name, count: 0, percent: 0 };
+        return {
+          name,
+          count: current.count,
+          percent: current.percent || 0,
+          previousCount: previous.count,
+          previousPercent: previous.percent || 0,
+          deltaCount: current.count - previous.count,
+          deltaPercent: (current.percent || 0) - (previous.percent || 0),
+        };
+      })
+      .sort((a, b) => b.count - a.count || b.previousCount - a.previousCount || a.name.localeCompare(b.name));
   }
 
   function computePeriodProgressByMedia(activities, year, month, kind = "anime") {
@@ -1032,6 +1078,7 @@ export {
   getMediaIdsWithProgressInPeriod,
   computePeriodGenreDistribution,
   computeGenreDistributionFromEntries,
+  mergeGenreDistributionComparison,
   computePeriodProgressByMedia,
   normalizeActivitiesWithDiagnostics,
   dedupeEntriesByMedia,

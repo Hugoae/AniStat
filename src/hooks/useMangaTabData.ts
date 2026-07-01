@@ -4,23 +4,22 @@ import {
   computePeriodDeltaFromActivities,
   computePeriodTopTags,
   computeGenreDistributionFromEntries,
-  computePeriodGenreDistribution,
+  mergeGenreDistributionComparison,
   computePeriodReadChaptersByFormat,
   computePeriodReadChaptersByCountry,
 } from "../lib/stats";
 import { buildAnimeHalfScoreDistributionFullRange } from "../lib/animeScoreUtils";
 import { computeMangaTopAuthors } from "../lib/periodRankings";
 import { entryProgressTotal } from "../lib/entryProgress";
-import type { ActivityMediaBits } from "../lib/activityEnrichment";
 import type { ActivityItem, AniListEntry } from "../types/domain";
 
 type UseMangaTabDataParams = {
   mangaTabEntries: AniListEntry[];
+  mangaComparisonTabEntries: AniListEntry[];
   mergedMangaForTabTotals: ActivityItem[];
   isAllTime: boolean;
   year: number;
   month: number;
-  mediaBitsForStats: Map<number, ActivityMediaBits>;
 };
 
 /**
@@ -30,11 +29,11 @@ type UseMangaTabDataParams = {
  */
 export function useMangaTabData({
   mangaTabEntries,
+  mangaComparisonTabEntries,
   mergedMangaForTabTotals,
   isAllTime,
   year,
   month,
-  mediaBitsForStats,
 }: UseMangaTabDataParams) {
   const mangaPeriodProgressByMedia = useMemo(
     () =>
@@ -66,19 +65,14 @@ export function useMangaTabData({
     [mangaTabEntries]
   );
 
-  /** Genres (onglet Manga) : activités de la période (ou entrées en All Time). */
+  /** Genres (onglet Manga) : entrées affichées sur la période, alignées avec les tags. */
   const mangaGenrePeriodData = useMemo(
     () =>
-      isAllTime
-        ? computeGenreDistributionFromEntries(mangaTabEntries)
-        : computePeriodGenreDistribution(
-            mergedMangaForTabTotals,
-            year,
-            month,
-            "manga",
-            mediaBitsForStats
-          ),
-    [mangaTabEntries, isAllTime, mergedMangaForTabTotals, year, month, mediaBitsForStats]
+      mergeGenreDistributionComparison(
+        computeGenreDistributionFromEntries(mangaTabEntries),
+        isAllTime ? [] : computeGenreDistributionFromEntries(mangaComparisonTabEntries)
+      ),
+    [isAllTime, mangaComparisonTabEntries, mangaTabEntries]
   );
 
   /** Répartition des scores manga : tranches 1 à 10 par pas de 0,5 (effectifs, y compris 0). */

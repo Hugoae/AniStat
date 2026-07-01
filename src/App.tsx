@@ -68,6 +68,7 @@ import {
 } from "./lib/overviewCompare";
 import { ProfileAppHeader } from "./components/profile/ProfileAppHeader";
 import { ProfileViewMain } from "./components/profile/ProfileViewMain";
+import { SiteFooter } from "./components/SiteFooter";
 import { BackToTopButton } from "./components/BackToTopButton";
 import { ProfilePeriodProvider } from "./contexts/ProfilePeriodContext";
 import type { ProfilePeriodValue } from "./contexts/profilePeriodCore";
@@ -663,6 +664,45 @@ function App() {
     () => mangaEntries.filter((e) => e.status !== "PLANNING"),
     [mangaEntries]
   );
+  const genreComparisonPeriod = useMemo(() => getComparisonPeriodMeta(year, month), [year, month]);
+  const genreCompareYear = genreComparisonPeriod.compareY ?? -1;
+  const genreCompareMonth = genreComparisonPeriod.compareM ?? 0;
+  const mergedAnimeForGenreComparison = useMemo(
+    () => (genreCompareYear >= 1970 ? mergeActivitiesForDelta(genreCompareYear, effectiveAnimeActivityCache) : []),
+    [effectiveAnimeActivityCache, genreCompareYear]
+  );
+  const mergedMangaForGenreComparison = useMemo(
+    () => (genreCompareYear >= 1970 ? mergeActivitiesForDelta(genreCompareYear, effectiveMangaActivityCache) : []),
+    [effectiveMangaActivityCache, genreCompareYear]
+  );
+  const animeGenreComparisonMediaIds = useMemo(
+    () =>
+      genreCompareYear >= 1970
+        ? getMediaIdsWithProgressInPeriod(mergedAnimeForGenreComparison, genreCompareYear, genreCompareMonth, "anime")
+        : new Set(),
+    [genreCompareMonth, genreCompareYear, mergedAnimeForGenreComparison]
+  );
+  const mangaGenreComparisonMediaIds = useMemo(
+    () =>
+      genreCompareYear >= 1970
+        ? getMediaIdsWithProgressInPeriod(mergedMangaForGenreComparison, genreCompareYear, genreCompareMonth, "manga")
+        : new Set(),
+    [genreCompareMonth, genreCompareYear, mergedMangaForGenreComparison]
+  );
+  const animeGenreComparisonTabEntries = useMemo(() => {
+    if (genreCompareYear < 1970) return [];
+    const filtered = allAnime.filter((e) =>
+      isEntryInPeriod(e, genreCompareYear, genreCompareMonth, animeGenreComparisonMediaIds)
+    );
+    return dedupeEntriesByMedia(filtered).items.filter((e) => e.status !== "PLANNING");
+  }, [allAnime, animeGenreComparisonMediaIds, genreCompareMonth, genreCompareYear, isEntryInPeriod]);
+  const mangaGenreComparisonTabEntries = useMemo(() => {
+    if (genreCompareYear < 1970) return [];
+    const filtered = allManga.filter((e) =>
+      isEntryInPeriod(e, genreCompareYear, genreCompareMonth, mangaGenreComparisonMediaIds)
+    );
+    return dedupeEntriesByMedia(filtered).items.filter((e) => e.status !== "PLANNING");
+  }, [allManga, genreCompareMonth, genreCompareYear, isEntryInPeriod, mangaGenreComparisonMediaIds]);
   const animePlanningEntries = useMemo(() => {
     if (!isAllTime) return [];
     const out = dedupeEntriesByMedia(allAnime.filter((e) => e.status === "PLANNING"));
@@ -728,11 +768,11 @@ function App() {
     animeSeasonHistogram,
   } = useAnimeTabData({
     animeTabEntries,
+    animeComparisonTabEntries: animeGenreComparisonTabEntries,
     mergedAnimeForTabTotals,
     isAllTime,
     year,
     month,
-    mediaBitsForStats,
   });
 
   const {
@@ -749,11 +789,11 @@ function App() {
     mangaTopAuthors,
   } = useMangaTabData({
     mangaTabEntries,
+    mangaComparisonTabEntries: mangaGenreComparisonTabEntries,
     mergedMangaForTabTotals,
     isAllTime,
     year,
     month,
-    mediaBitsForStats,
   });
 
   const totalEp = totalEpAnimeTab;
@@ -1159,7 +1199,7 @@ function App() {
     [tab, year, month, years, isAllTime, changeYear]
   );
 
-  const wrappedYear = year === ALL_TIME_YEAR ? new Date().getFullYear() : year;
+  const wrappedYear = new Date().getFullYear();
   const wrappedSummary = useMemo(
     () =>
       buildWrappedSummary({
@@ -1394,6 +1434,8 @@ function App() {
             ) : null}
       </ProfileViewMain>
       </ProfilePeriodProvider>
+
+      <SiteFooter />
 
       </>
       )}

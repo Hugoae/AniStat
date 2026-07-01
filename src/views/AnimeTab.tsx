@@ -10,11 +10,6 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  RadarChart,
-  Radar,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
   CartesianGrid,
   LabelList,
 } from "recharts";
@@ -40,13 +35,15 @@ import { ListTabMediaGrid } from "../components/ui/ListTabMediaGrid";
 import { ListTabDistributionSection } from "../components/ui/ListTabDistributionSection";
 import { RecordsSection } from "../components/ui/RecordsSection";
 import { buildStatusPieSlices } from "../lib/pieSlices";
-import { ANIME_GENRE_RADAR_TOP_N } from "../config/listConstants";
+import { LIST_TAB_PAIR_CHART_HEIGHT } from "../config/listConstants";
 import { RechartsWhenVisible } from "../components/charts/RechartsWhenVisible";
 import { AnimePieDistributionCard } from "../components/charts/AnimePieDistributionCard";
+import { GenreRadarChart, type GenreRadarRow } from "../components/charts/GenreRadarChart";
 import { ScoreScatterCard } from "../components/charts/ScoreScatterCard";
 import { TopTagsCard, type TopTagsRow } from "../components/charts/TopTagsCard";
 import { ActivityHeatmap, type DailyTotalsByIso } from "../components/charts/ActivityHeatmap";
 import { resolveLocalStudioLogoUrl } from "../lib/studioLogos";
+import { getComparisonPeriodMeta } from "../lib/stats";
 import { useProfilePeriod } from "../contexts/profilePeriodCore";
 import type { AniListEntry, PeriodRecordsBundle } from "../types/domain";
 
@@ -63,7 +60,7 @@ export type AnimeTabProps = {
   animeTabEntries: AniListEntry[];
   animePlanningEntries: AniListEntry[];
   animeScoreHalfDistributionRows: { bucket: number; label: string; count: number }[];
-  animeGenrePeriodData: { name: string; count: number }[];
+  animeGenrePeriodData: GenreRadarRow[];
   animeTopTagsData: TopTagsRow[];
   animeEpisodesByFormatData: { name: string; episodes: number }[];
   animeMinutesByFormatData: { name: string; minutes: number }[];
@@ -107,15 +104,11 @@ export const AnimeTab = memo(function AnimeTab({
   animeListLayoutActive,
   animePeriodProgressByMedia,
 }: AnimeTabProps) {
-  const genreRadarKey = useMemo(
-    () =>
-      animeGenrePeriodData
-        .slice(0, ANIME_GENRE_RADAR_TOP_N)
-        .map((row) => `${row.name}:${row.count}`)
-        .join("|"),
-    [animeGenrePeriodData]
-  );
   const { year, month, isAllTime, setMonth } = useProfilePeriod();
+  const genreComparisonLabel = useMemo(
+    () => (isAllTime ? "" : getComparisonPeriodMeta(year, month).legendCompare),
+    [isAllTime, month, year]
+  );
   /* ─── État local : UI-only (toggles, filtres, tri, largeur mesurée) ──
    * Tout le « métier » (entrées, stats, tops) arrive via les props, calculé
    * en amont par `App.tsx`. Ici on ne gère que l'état d'affichage propre à
@@ -416,8 +409,11 @@ export const AnimeTab = memo(function AnimeTab({
         >
           {animeScoreHalfDistributionVisibleRows.length > 0 ? (
             <div className="list-tab-anime-score-chart-wrap">
-              <RechartsWhenVisible height={260} className="list-tab-anime-recharts-mount">
-                <ResponsiveContainer width="100%" height={260}>
+              <RechartsWhenVisible
+                height={LIST_TAB_PAIR_CHART_HEIGHT}
+                className="list-tab-anime-recharts-mount list-tab-pair-chart-mount"
+              >
+                <ResponsiveContainer width="100%" height={LIST_TAB_PAIR_CHART_HEIGHT}>
                   <BarChart
                     data={animeScoreHalfDistributionVisibleRows}
                     margin={{ top: 30, right: 8, left: 4, bottom: 2 }}
@@ -465,42 +461,12 @@ export const AnimeTab = memo(function AnimeTab({
         </CollapsibleChartBlock>
 
           <CollapsibleChartBlock id="anime.genres" title="Genres">
-          <ChartCard
-            noTitle
-            screenReaderSummary="Radar des dix genres les plus fréquents sur les anime de la période."
-            dataTable={{
-              caption: "Genres anime les plus fréquents",
-              columns: ["Genre", "Titres"],
-              rows: animeGenrePeriodData.slice(0, ANIME_GENRE_RADAR_TOP_N).map((row) => [row.name, row.count]),
-            }}
-          >
-            {animeGenrePeriodData.length > 0 ? (
-              <RechartsWhenVisible height={260} className="list-tab-anime-recharts-mount">
-                <ResponsiveContainer width="100%" height={260}>
-                  <RadarChart key={genreRadarKey} data={animeGenrePeriodData.slice(0, ANIME_GENRE_RADAR_TOP_N)} outerRadius="88%">
-                    <PolarGrid stroke={C.border} strokeOpacity={0.65} />
-                    <PolarAngleAxis dataKey="name" tick={{ fill: "rgba(237, 241, 245, 0.9)", fontSize: 10 }} />
-                    <PolarRadiusAxis tick={false} axisLine={false} />
-                    <Radar
-                      name="Titres"
-                      dataKey="count"
-                      stroke={C.accent}
-                      fill={C.accent}
-                      fillOpacity={0.2}
-                      strokeWidth={2}
-                    />
-                    <Tooltip content={<CTooltip />} />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </RechartsWhenVisible>
-            ) : (
-              <EmptyState
-                icon="stack"
-                title="Aucun genre renseigné pour les anime de cette période."
-                cta={viewFullYearCta}
-              />
-            )}
-          </ChartCard>
+            <GenreRadarChart
+              kind="anime"
+              rows={animeGenrePeriodData}
+              comparisonLabel={genreComparisonLabel}
+              emptyCta={viewFullYearCta}
+            />
           </CollapsibleChartBlock>
         </div>
 

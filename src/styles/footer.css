@@ -1,0 +1,188 @@
+/* ——— Footer global du dashboard ——— */
+.site-footer {
+  margin-top: var(--space-12);
+  border-top: 1px solid var(--surface-border);
+  background: linear-gradient(180deg, transparent, rgba(15, 24, 36, 0.55));
+}
+
+.site-footer__inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) var(--space-8);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-6);
+}
+
+.site-footer__brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.site-footer__name {
+  font-weight: var(--font-weight-extrabold);
+  font-size: var(--font-size-md);
+  color: var(--color-text);
+}
+
+.site-footer__tagline {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+}
+
+.site-footer__disclaimer {
+  flex: 1 1 260px;
+  min-width: 0;
+  font-size: var(--font-size-xs);
+  line-height: var(--line-height-snug);
+  color: var(--color-text-muted);
+}
+
+.site-footer__links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.site-footer__link {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  text-decoration: none;
+  transition: var(--transition-color);
+}
+.site-footer__link:hover {
+  color: var(--color-accent);
+}
+.site-footer__link:focus-visible {
+  outline: none;
+  border-radius: var(--radius-swatch);
+  box-shadow: var(--focus-ring-inline);
+}
+
+.site-footer__legal-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  transition: var(--transition-color);
+}
+.site-footer__legal-btn:hover {
+  color: var(--color-accent);
+}
+.site-footer__legal-btn:focus-visible {
+  outline: none;
+  border-radius: var(--radius-swatch);
+  box-shadow: var(--focus-ring-inline);
+}
+
+.site-footer__credit {
+  flex: 1 1 100%;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-dim);
+}
+.site-footer__credit .site-footer__link {
+  font-size: inherit;
+}
+
+/* ——— Modale mentions légales / confidentialité ——— */
+.legal-modal__overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--surface-overlay);
+  backdrop-filter: blur(2px);
+  animation: legal-modal-fade var(--duration-fast) var(--ease-out);
+}
+
+.legal-modal__card {
+  position: relative;
+  width: min(560px, 100%);
+  max-height: min(80vh, 720px);
+  overflow-y: auto;
+  padding: var(--space-6);
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-hover);
+  animation: legal-modal-rise var(--duration-base) var(--ease-out);
+}
+
+.legal-modal__close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-control);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-2xl);
+  line-height: 1;
+  cursor: pointer;
+  transition: var(--transition-color);
+}
+.legal-modal__close:hover {
+  color: var(--color-text);
+  background: var(--surface-inner);
+}
+.legal-modal__close:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring-inline);
+}
+
+.legal-modal__title {
+  margin-right: var(--space-8);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text);
+}
+
+.legal-modal__body {
+  margin-top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.legal-modal__heading {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-accent);
+  margin-bottom: var(--space-1);
+}
+
+.legal-modal__section p {
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-normal);
+  color: var(--color-text-muted);
+}
+
+@keyframes legal-modal-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes legal-modal-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 640px) {
+  .site-footer__inner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

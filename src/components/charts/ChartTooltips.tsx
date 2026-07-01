@@ -5,7 +5,24 @@ type TooltipPayloadEntry = {
   name?: string;
   value?: unknown;
   color?: string;
+  payload?: unknown;
 };
+
+type GenreTooltipRow = {
+  name?: string;
+  count?: number;
+  percent?: number;
+  previousCount?: number;
+  previousPercent?: number;
+  deltaCount?: number;
+  deltaPercent?: number;
+};
+
+function formatPercent(value: unknown): string {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0%";
+  return `${n.toFixed(1)}%`;
+}
 
 export function CTooltip({
   active,
@@ -63,6 +80,37 @@ export function CompareLineTooltip({
           <span className="chart-tooltip__compare-compare">{String(cmp?.value ?? 0)}</span>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+export function GenreRadarTooltip({
+  active,
+  payload,
+  compareLabel,
+  countLabel = "Titres",
+}: {
+  active?: boolean;
+  payload?: TooltipPayloadEntry[];
+  compareLabel?: string;
+  countLabel?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload as GenreTooltipRow | undefined;
+  if (!row) return null;
+
+  return (
+    <div className="chart-tooltip chart-tooltip--basic">
+      <div className="chart-tooltip__label">{row.name}</div>
+      <div style={{ color: C.accent }}>
+        Cette période : {row.count || 0} {countLabel.toLowerCase()}, {formatPercent(row.percent)}
+      </div>
+      {compareLabel ? (
+        <div style={{ color: C.purple }}>
+          {compareLabel} : {row.previousCount || 0} {countLabel.toLowerCase()},{" "}
+          {formatPercent(row.previousPercent)}
+        </div>
+      ) : null}
     </div>
   );
 }

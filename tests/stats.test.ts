@@ -14,6 +14,7 @@ import {
   pickSpotlightEntriesFromWorks,
   computePeriodGenreDistribution,
   computeGenreDistributionFromEntries,
+  mergeGenreDistributionComparison,
 } from "../src/lib/stats";
 
 describe("stats", () => {
@@ -48,6 +49,44 @@ describe("stats", () => {
     expect(out.find((row) => row.name === "Action")?.count).toBe(1);
     expect(out.find((row) => row.name === "Comedy")?.count).toBe(1);
     expect(out.find((row) => row.name === "Stale")).toBeUndefined();
+  });
+
+  it("computeGenreDistributionFromEntries adds title percentages", () => {
+    const entries = [
+      { id: 1, media: { id: 100, genres: ["Action", "Comedy"] } },
+      { id: 2, media: { id: 200, genres: ["Action"] } },
+      { id: 3, media: { id: 300, genres: [] } },
+    ];
+    const out = computeGenreDistributionFromEntries(entries);
+    expect(out.find((row) => row.name === "Action")?.count).toBe(2);
+    expect(out.find((row) => row.name === "Action")?.percent).toBeCloseTo(66.666, 2);
+    expect(out.find((row) => row.name === "Comedy")?.percent).toBeCloseTo(33.333, 2);
+  });
+
+  it("mergeGenreDistributionComparison keeps current and previous deltas", () => {
+    const out = mergeGenreDistributionComparison(
+      [
+        { name: "Action", count: 3, percent: 60 },
+        { name: "Comedy", count: 1, percent: 20 },
+      ],
+      [
+        { name: "Action", count: 2, percent: 40 },
+        { name: "Drama", count: 1, percent: 20 },
+      ]
+    );
+
+    expect(out.find((row) => row.name === "Action")).toMatchObject({
+      count: 3,
+      previousCount: 2,
+      deltaCount: 1,
+      deltaPercent: 20,
+    });
+    expect(out.find((row) => row.name === "Drama")).toMatchObject({
+      count: 0,
+      previousCount: 1,
+      deltaCount: -1,
+      deltaPercent: -20,
+    });
   });
 
   it("filters future activities", () => {

@@ -322,7 +322,7 @@ export function ProfileViewMain({
               </button>
             ))}
           </div>
-          <PeriodFloatingChip />
+          {tab !== "wrapped" ? <PeriodFloatingChip /> : null}
           {children}
         </>
       )}

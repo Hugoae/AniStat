@@ -4,7 +4,7 @@ import {
   computePeriodProgressByMedia,
   computePeriodTopTags,
   computeGenreDistributionFromEntries,
-  computePeriodGenreDistribution,
+  mergeGenreDistributionComparison,
   computePeriodWatchEpisodesByFormat,
   computePeriodWatchMinutesByFormat,
   computePeriodWatchEpisodesByCountry,
@@ -13,16 +13,15 @@ import {
 import { buildAnimeHalfScoreDistributionFullRange } from "../lib/animeScoreUtils";
 import { computeAnimeTopStudios } from "../lib/periodRankings";
 import { entryProgressTotal } from "../lib/entryProgress";
-import type { ActivityMediaBits } from "../lib/activityEnrichment";
 import type { ActivityItem, AniListEntry } from "../types/domain";
 
 type UseAnimeTabDataParams = {
   animeTabEntries: AniListEntry[];
+  animeComparisonTabEntries: AniListEntry[];
   mergedAnimeForTabTotals: ActivityItem[];
   isAllTime: boolean;
   year: number;
   month: number;
-  mediaBitsForStats: Map<number, ActivityMediaBits>;
 };
 
 /**
@@ -32,11 +31,11 @@ type UseAnimeTabDataParams = {
  */
 export function useAnimeTabData({
   animeTabEntries,
+  animeComparisonTabEntries,
   mergedAnimeForTabTotals,
   isAllTime,
   year,
   month,
-  mediaBitsForStats,
 }: UseAnimeTabDataParams) {
   const animeTabActivityTotals = useMemo(
     () => computePeriodAnimeActivityTotals(mergedAnimeForTabTotals, year, month),
@@ -106,19 +105,14 @@ export function useAnimeTabData({
     [animeTabEntries]
   );
 
-  /** Genres (onglet Anime) : activités de la période (ou entrées en All Time). */
+  /** Genres (onglet Anime) : entrées affichées sur la période, alignées avec les tags. */
   const animeGenrePeriodData = useMemo(
     () =>
-      isAllTime
-        ? computeGenreDistributionFromEntries(animeTabEntries)
-        : computePeriodGenreDistribution(
-            mergedAnimeForTabTotals,
-            year,
-            month,
-            "anime",
-            mediaBitsForStats
-          ),
-    [animeTabEntries, isAllTime, mergedAnimeForTabTotals, year, month, mediaBitsForStats]
+      mergeGenreDistributionComparison(
+        computeGenreDistributionFromEntries(animeTabEntries),
+        isAllTime ? [] : computeGenreDistributionFromEntries(animeComparisonTabEntries)
+      ),
+    [animeComparisonTabEntries, animeTabEntries, isAllTime]
   );
 
   /** Répartition des scores : tranches 1 à 10 par pas de 0,5 (effectifs, y compris 0). */

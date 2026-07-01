@@ -9,11 +9,6 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
-  RadarChart,
-  Radar,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
   CartesianGrid,
   LabelList,
 } from "recharts";
@@ -45,7 +40,9 @@ import { ListTabDistributionSection } from "../components/ui/ListTabDistribution
 import { RecordsSection } from "../components/ui/RecordsSection";
 import { buildStatusPieSlices } from "../lib/pieSlices";
 import { useProfilePeriod } from "../contexts/profilePeriodCore";
-import { ANIME_GENRE_RADAR_TOP_N } from "../config/listConstants";
+import { LIST_TAB_PAIR_CHART_HEIGHT } from "../config/listConstants";
+import { getComparisonPeriodMeta } from "../lib/stats";
+import { GenreRadarChart, type GenreRadarRow } from "../components/charts/GenreRadarChart";
 import type { AniListEntry, PeriodRecordsBundle } from "../types/domain";
 
 export type MangaTabProps = {
@@ -60,7 +57,7 @@ export type MangaTabProps = {
   mangaTabEntries: AniListEntry[];
   mangaPlanningEntries: AniListEntry[];
   mangaScoreHalfDistributionRows: { bucket: number; label: string; count: number }[];
-  mangaGenrePeriodData: { name: string; count: number }[];
+  mangaGenrePeriodData: GenreRadarRow[];
   mangaTopTagsData: TopTagsRow[];
   mangaChaptersByFormatData: { name: string; chapters: number }[];
   mangaChaptersByCountryData: { code: string; chapters: number }[];
@@ -98,15 +95,11 @@ export const MangaTab = memo(function MangaTab({
   mangaListLayoutActive,
   mangaPeriodProgressByMedia,
 }: MangaTabProps) {
-  const genreRadarKey = useMemo(
-    () =>
-      mangaGenrePeriodData
-        .slice(0, ANIME_GENRE_RADAR_TOP_N)
-        .map((row) => `${row.name}:${row.count}`)
-        .join("|"),
-    [mangaGenrePeriodData]
-  );
   const { year, month, isAllTime, setMonth } = useProfilePeriod();
+  const genreComparisonLabel = useMemo(
+    () => (isAllTime ? "" : getComparisonPeriodMeta(year, month).legendCompare),
+    [isAllTime, month, year]
+  );
   const viewFullYearCta =
     month !== 0 ? (
       <button type="button" className="list-tab-empty-cta" onClick={() => setMonth(0)}>
@@ -362,8 +355,11 @@ export const MangaTab = memo(function MangaTab({
               >
                 {mangaScoreHalfDistributionVisibleRows.length > 0 ? (
                   <div className="list-tab-anime-score-chart-wrap">
-                    <RechartsWhenVisible height={260} className="list-tab-anime-recharts-mount">
-                      <ResponsiveContainer width="100%" height={260}>
+                    <RechartsWhenVisible
+                      height={LIST_TAB_PAIR_CHART_HEIGHT}
+                      className="list-tab-anime-recharts-mount list-tab-pair-chart-mount"
+                    >
+                      <ResponsiveContainer width="100%" height={LIST_TAB_PAIR_CHART_HEIGHT}>
                         <BarChart
                           data={mangaScoreHalfDistributionVisibleRows}
                           margin={{ top: 30, right: 8, left: 4, bottom: 2 }}
@@ -411,42 +407,12 @@ export const MangaTab = memo(function MangaTab({
             </CollapsibleChartBlock>
 
             <CollapsibleChartBlock id="manga.genres" title="Genres">
-              <ChartCard
-                noTitle
-                screenReaderSummary="Radar des dix genres les plus fréquents sur les manga de la période."
-                dataTable={{
-                  caption: "Genres manga les plus fréquents",
-                  columns: ["Genre", "Titres"],
-                  rows: mangaGenrePeriodData.slice(0, ANIME_GENRE_RADAR_TOP_N).map((row) => [row.name, row.count]),
-                }}
-              >
-                {mangaGenrePeriodData.length > 0 ? (
-                  <RechartsWhenVisible height={260} className="list-tab-anime-recharts-mount">
-                    <ResponsiveContainer width="100%" height={260}>
-                      <RadarChart key={genreRadarKey} data={mangaGenrePeriodData.slice(0, ANIME_GENRE_RADAR_TOP_N)} outerRadius="88%">
-                        <PolarGrid stroke={C.border} strokeOpacity={0.65} />
-                        <PolarAngleAxis dataKey="name" tick={{ fill: "rgba(237, 241, 245, 0.9)", fontSize: 10 }} />
-                        <PolarRadiusAxis tick={false} axisLine={false} />
-                        <Radar
-                          name="Titres"
-                          dataKey="count"
-                          stroke={C.accent}
-                          fill={C.accent}
-                          fillOpacity={0.2}
-                          strokeWidth={2}
-                        />
-                        <Tooltip content={<CTooltip />} />
-                      </RadarChart>
-                    </ResponsiveContainer>
-                  </RechartsWhenVisible>
-                ) : (
-                  <EmptyState
-                    icon="stack"
-                    title="Aucun genre renseigné pour les manga de cette période."
-                    cta={viewFullYearCta}
-                  />
-                )}
-              </ChartCard>
+              <GenreRadarChart
+                kind="manga"
+                rows={mangaGenrePeriodData}
+                comparisonLabel={genreComparisonLabel}
+                emptyCta={viewFullYearCta}
+              />
             </CollapsibleChartBlock>
           </div>
 

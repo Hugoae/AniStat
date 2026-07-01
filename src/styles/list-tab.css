@@ -335,6 +335,9 @@
 .list-tab-anime-chart--scores.chart-card {
   width: 100%;
 }
+.list-tab-anime-charts--two .chart-card {
+  --list-tab-pair-chart-height: 300px;
+}
 .list-tab-anime-charts {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
