@@ -14,6 +14,7 @@ import {
   LabelList,
 } from "recharts";
 import { C } from "../config/constants";
+import { useT, useLang } from "../i18n/I18n";
 import type { AnimeTopStudioRow } from "../lib/periodRankings";
 import {
   StatCard,
@@ -105,6 +106,8 @@ export const AnimeTab = memo(function AnimeTab({
   animePeriodProgressByMedia,
 }: AnimeTabProps) {
   const { year, month, isAllTime, setMonth } = useProfilePeriod();
+  const t = useT();
+  const lang = useLang();
   const genreComparisonLabel = useMemo(
     () => (isAllTime ? "" : getComparisonPeriodMeta(year, month).legendCompare),
     [isAllTime, month, year]
@@ -128,7 +131,7 @@ export const AnimeTab = memo(function AnimeTab({
   const viewFullYearCta =
     month !== 0 ? (
       <button type="button" className="list-tab-empty-cta" onClick={() => setMonth(0)}>
-        Voir toute l&apos;année {year}
+        {t(`Voir toute l'année ${year}`, `View the full year ${year}`)}
       </button>
     ) : null;
   const periodYearLabel = isAllTime ? "All Time" : String(year);
@@ -147,10 +150,16 @@ export const AnimeTab = memo(function AnimeTab({
       ),
     [animeEpisodesByCountryData]
   );
-  const formatEpisodesLabel = useCallback((episodesRaw: number) => {
-    const ep = Math.max(0, Math.round(Number(episodesRaw) || 0));
-    return `${ep} épisode${ep > 1 ? "s" : ""} vu${ep > 1 ? "s" : ""}`;
-  }, []);
+  const formatEpisodesLabel = useCallback(
+    (episodesRaw: number) => {
+      const ep = Math.max(0, Math.round(Number(episodesRaw) || 0));
+      return t(
+        `${ep} épisode${ep > 1 ? "s" : ""} vu${ep > 1 ? "s" : ""}`,
+        `${ep} episode${ep > 1 ? "s" : ""} watched`
+      );
+    },
+    [t]
+  );
   const formatTimeLabel = useCallback(
     (minutesRaw: number) => fmtMin(Math.max(0, Math.round(Number(minutesRaw) || 0))),
     [fmtMin]
@@ -197,8 +206,8 @@ export const AnimeTab = memo(function AnimeTab({
   const countryPieSlicesByTitles = useMemo(
     () =>
       animeCountryEntriesOrdered.map(([code, c]) => {
-        const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code);
-        const label = meta ? meta.label : "Inconnu";
+        const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code, lang);
+        const label = meta ? meta.label : t("Inconnu", "Unknown");
         return {
           key: code,
           label,
@@ -208,7 +217,7 @@ export const AnimeTab = memo(function AnimeTab({
           extraInfo: formatEpisodesLabel(countryEpisodesByCode.get(code) || 0),
         };
       }),
-    [animeCountryEntriesOrdered, countryColorMap, countryEpisodesByCode, formatEpisodesLabel]
+    [animeCountryEntriesOrdered, countryColorMap, countryEpisodesByCode, formatEpisodesLabel, t, lang]
   );
   const countryPieSlicesByEpisodes = useMemo(() => {
     const minutesByCode = new Map(
@@ -218,8 +227,8 @@ export const AnimeTab = memo(function AnimeTab({
       .filter((row) => Number(row.episodes) > 0)
       .map((row) => {
         const code = String(row.code);
-        const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code);
-        const label = meta ? meta.label : "Inconnu";
+        const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code, lang);
+        const label = meta ? meta.label : t("Inconnu", "Unknown");
         return {
           key: code,
           label,
@@ -229,7 +238,7 @@ export const AnimeTab = memo(function AnimeTab({
           extraInfo: formatTimeLabel(minutesByCode.get(code) || 0),
         };
       });
-  }, [animeEpisodesByCountryData, animeMinutesByCountryData, countryColorMap, formatTimeLabel]);
+  }, [animeEpisodesByCountryData, animeMinutesByCountryData, countryColorMap, formatTimeLabel, t, lang]);
   const statusPieSlices = useMemo(
     () => buildStatusPieSlices(animeStatusEntriesOrdered),
     [animeStatusEntriesOrdered]
@@ -241,7 +250,7 @@ export const AnimeTab = memo(function AnimeTab({
       { key: "standard", label: "22-25 min", count: 0 },
       { key: "long", label: "26-45 min", count: 0 },
       { key: "feature", label: "> 45 min", count: 0 },
-      { key: "unknown", label: "Inconnu", count: 0 },
+      { key: "unknown", label: t("Inconnu", "Unknown"), count: 0 },
     ];
     for (const entry of animeTabEntries) {
       const duration = Number(entry.media?.duration || 0);
@@ -253,7 +262,7 @@ export const AnimeTab = memo(function AnimeTab({
       else rows[5].count += 1;
     }
     return rows.filter((row) => row.count > 0);
-  }, [animeTabEntries]);
+  }, [animeTabEntries, t]);
   const animeScoreHalfDistributionVisibleRows = useMemo(() => {
     if (animeScoreHalfDistributionRows.length === 0) return [];
     const nonZeroIndices = animeScoreHalfDistributionRows
@@ -319,29 +328,32 @@ export const AnimeTab = memo(function AnimeTab({
   }, [year, month]);
 
   const sectionNavItems = useMemo(() => [
-    { id: "anime-synthese", label: "Statistiques" },
-    { id: "anime-repartition", label: "Liste des œuvres" },
-    { id: "anime-records", label: "Records" },
-    { id: "anime-graphiques", label: "Graphiques" },
-    { id: "anime-studios", label: "Studios" },
-  ], []);
+    { id: "anime-synthese", label: t("Statistiques", "Statistics") },
+    { id: "anime-repartition", label: t("Liste des œuvres", "Titles list") },
+    { id: "anime-records", label: t("Records", "Records") },
+    { id: "anime-graphiques", label: t("Graphiques", "Charts") },
+    { id: "anime-studios", label: t("Studios", "Studios") },
+  ], [t]);
 
   return (
     <div className="list-tab-shell">
-    <ListTabSectionNav items={sectionNavItems} label="Navigation des sections anime" />
+    <ListTabSectionNav items={sectionNavItems} label={t("Navigation des sections anime", "Anime section navigation")} />
     <div className="list-tab-page">
       <div id="anime-synthese" className="overview-stats-cluster list-tab-anchor">
         <div className="fade-in stat-stat-al-row--overview">
-          <StatCard label="Total anime" value={animeEntriesLength} icon="tv" />
-          <StatCard label="Épisodes vus" value={totalEp} icon="play" />
-          <StatCard label="Score moyen" value={avgA} icon="star" />
+          <StatCard label={t("Total anime", "Total anime")} value={animeEntriesLength} icon="tv" />
+          <StatCard label={t("Épisodes vus", "Episodes watched")} value={totalEp} icon="play" />
+          <StatCard label={t("Score moyen", "Average score")} value={avgA} icon="star" />
           <StatCard
-            label="Dispersion (σ)"
+            label={t("Dispersion (σ)", "Dispersion (σ)")}
             value={animeVsCommunityScoreStdDev}
             icon="divide"
-            labelHint="Écart-type (σ) de vos écarts (votre note − moyenne AniList) sur la période, en points sur 10. C'est l'amplitude typique d'un écart, sans considérer son sens : 0 = vos notes collent à la moyenne du site, plus la valeur monte plus vos notes sont tranchées (au-dessus comme au-dessous). Pour savoir si vous sur- ou sous-notez en moyenne, regardez le graphique « Ta note vs note AniList » plus bas."
+            labelHint={t(
+              "Écart-type (σ) de vos écarts (votre note − moyenne AniList) sur la période, en points sur 10. C'est l'amplitude typique d'un écart, sans considérer son sens : 0 = vos notes collent à la moyenne du site, plus la valeur monte plus vos notes sont tranchées (au-dessus comme au-dessous). Pour savoir si vous sur- ou sous-notez en moyenne, regardez le graphique « Ta note vs note AniList » plus bas.",
+              "Standard deviation (σ) of your gaps (your score − AniList average) over the period, in points out of 10. It's the typical magnitude of a gap, regardless of its direction: 0 = your scores match the site average, and the higher the value, the more decisive your scores are (both above and below). To find out whether you over- or under-rate on average, look at the \"Your score vs AniList score\" chart below."
+            )}
           />
-          <StatCard label="Temps total" value={fmtMin(totalMin)} icon="clock" />
+          <StatCard label={t("Temps total", "Total time")} value={fmtMin(totalMin)} icon="clock" />
         </div>
       </div>
 
@@ -353,12 +365,18 @@ export const AnimeTab = memo(function AnimeTab({
         >
           <ActivityHeatmap
             year={year}
-            title={`Calendrier d'activité anime ${periodYearLabel}`}
+            title={t(
+              `Calendrier d'activité anime ${periodYearLabel}`,
+              `Anime activity calendar ${periodYearLabel}`
+            )}
             dailyTotals={animeDailyTotalsForYear}
-            unitSingular="épisode"
-            unitPlural="épisodes"
+            unitSingular={t("épisode", "episode")}
+            unitPlural={t("épisodes", "episodes")}
             collapseId="anime.heatmap"
-            titleHint="Chaque cellule représente une journée de l'année. La couleur indique le nombre d'épisodes vus ce jour-là (toutes activités anime AniList confondues, période ignorée). Survole une cellule pour voir le total exact."
+            titleHint={t(
+              "Chaque cellule représente une journée de l'année. La couleur indique le nombre d'épisodes vus ce jour-là (toutes activités anime AniList confondues, période ignorée). Survole une cellule pour voir le total exact.",
+              "Each cell represents one day of the year. The color indicates the number of episodes watched that day (across all AniList anime activity, period ignored). Hover over a cell to see the exact total."
+            )}
           />
         </section>
       ) : null}
@@ -391,19 +409,25 @@ export const AnimeTab = memo(function AnimeTab({
         <div className="list-tab-anime-charts list-tab-anime-charts--two">
         <CollapsibleChartBlock
           id="anime.scores"
-          title="Répartition des scores"
+          title={t("Répartition des scores", "Score distribution")}
           withHint
           titleAside={
-            <StatLabelHint text="Chaque note est ramenée au demi-point le plus proche avant d’être comptée (ex. 7,2 → 7 ; 7,8 → 8 ; 8,25 → 8,5)" />
+            <StatLabelHint text={t(
+              "Chaque note est ramenée au demi-point le plus proche avant d'être comptée (ex. 7,2 → 7 ; 7,8 → 8 ; 8,25 → 8,5)",
+              "Each score is rounded to the nearest half-point before being counted (e.g. 7.2 → 7; 7.8 → 8; 8.25 → 8.5)"
+            )} />
           }
         >
         <ChartCard
           noTitle
           className="list-tab-anime-chart--scores"
-          screenReaderSummary="Histogramme des scores : effectifs par tranche de demi-point de 1 à 10 pour les anime notés sur la période."
+          screenReaderSummary={t(
+            "Histogramme des scores : effectifs par tranche de demi-point de 1 à 10 pour les anime notés sur la période.",
+            "Score histogram: counts per half-point bucket from 1 to 10 for anime rated over the period."
+          )}
           dataTable={{
-            caption: "Répartition des scores anime",
-            columns: ["Score", "Anime"],
+            caption: t("Répartition des scores anime", "Anime score distribution"),
+            columns: [t("Score", "Score"), t("Anime", "Anime")],
             rows: animeScoreHalfDistributionVisibleRows.map((row) => [row.label, row.count]),
           }}
         >
@@ -435,7 +459,7 @@ export const AnimeTab = memo(function AnimeTab({
                     />
                     <YAxis type="number" hide width={0} domain={[0, "auto"]} />
                     <Tooltip content={<CTooltip />} cursor={{ fill: "rgba(61, 180, 242, 0.07)" }} />
-                    <Bar dataKey="count" name="Anime" fill={C.accent} radius={[8, 8, 0, 0]} maxBarSize={40}>
+                    <Bar dataKey="count" name={t("Anime", "Anime")} fill={C.accent} radius={[8, 8, 0, 0]} maxBarSize={40}>
                       <LabelList
                         dataKey="count"
                         position="top"
@@ -453,14 +477,14 @@ export const AnimeTab = memo(function AnimeTab({
           ) : (
             <EmptyState
               icon="star"
-              title="Aucun score sur les anime de cette période."
+              title={t("Aucun score sur les anime de cette période.", "No score for anime in this period.")}
               cta={viewFullYearCta}
             />
           )}
         </ChartCard>
         </CollapsibleChartBlock>
 
-          <CollapsibleChartBlock id="anime.genres" title="Genres">
+          <CollapsibleChartBlock id="anime.genres" title={t("Genres", "Genres")}>
             <GenreRadarChart
               kind="anime"
               rows={animeGenrePeriodData}
@@ -489,13 +513,16 @@ export const AnimeTab = memo(function AnimeTab({
         </div>
 
         <div className="list-tab-anime-charts list-tab-anime-charts--two">
-          <CollapsibleChartBlock id="anime.releaseYear" title="Année de sortie">
+          <CollapsibleChartBlock id="anime.releaseYear" title={t("Année de sortie", "Release year")}>
           <ChartCard
             noTitle
-            screenReaderSummary="Nombre d’anime de la période par année de sortie (seasonYear ou date de début)."
+            screenReaderSummary={t(
+              "Nombre d'anime de la période par année de sortie (seasonYear ou date de début).",
+              "Number of anime in the period by release year (seasonYear or start date)."
+            )}
             dataTable={{
-              caption: "Anime par année de sortie",
-              columns: ["Année", "Titres"],
+              caption: t("Anime par année de sortie", "Anime by release year"),
+              columns: [t("Année", "Year"), t("Titres", "Titles")],
               rows: animeReleaseYearHistogram.map((row) => [row.yearLabel, row.count]),
             }}
           >
@@ -528,11 +555,11 @@ export const AnimeTab = memo(function AnimeTab({
                       allowDecimals={false}
                       domain={[0, "auto"]}
                     />
-                    <Tooltip content={<CTooltip />} formatter={(v: number) => [String(v), "Titres"]} />
+                    <Tooltip content={<CTooltip />} formatter={(v: number) => [String(v), t("Titres", "Titles")]} />
                     <Area
                       type="monotone"
                       dataKey="count"
-                      name="Anime"
+                      name={t("Anime", "Anime")}
                       stroke="none"
                       fill="url(#anime-release-year-fill)"
                       baseValue={0}
@@ -541,7 +568,7 @@ export const AnimeTab = memo(function AnimeTab({
                     <Line
                       type="monotone"
                       dataKey="count"
-                      name="Anime"
+                      name={t("Anime", "Anime")}
                       stroke={C.accent}
                       strokeWidth={2.8}
                       dot={{
@@ -569,20 +596,23 @@ export const AnimeTab = memo(function AnimeTab({
             ) : (
               <EmptyState
                 icon="calendar"
-                title="Aucune année de sortie renseignée sur ces titres."
+                title={t("Aucune année de sortie renseignée sur ces titres.", "No release year listed for these titles.")}
                 cta={viewFullYearCta}
               />
             )}
           </ChartCard>
           </CollapsibleChartBlock>
 
-          <CollapsibleChartBlock id="anime.season" title="Saison de diffusion">
+          <CollapsibleChartBlock id="anime.season" title={t("Saison de diffusion", "Airing season")}>
             <ChartCard
               noTitle
-              screenReaderSummary="Répartition des anime de la période par saison de diffusion AniList (hiver, printemps, été, automne)."
+              screenReaderSummary={t(
+                "Répartition des anime de la période par saison de diffusion AniList (hiver, printemps, été, automne).",
+                "Distribution of the period's anime by AniList airing season (winter, spring, summer, autumn)."
+              )}
               dataTable={{
-                caption: "Anime par saison de diffusion",
-                columns: ["Saison", "Titres"],
+                caption: t("Anime par saison de diffusion", "Anime by airing season"),
+                columns: [t("Saison", "Season"), t("Titres", "Titles")],
                 rows: animeSeasonHistogram.map((row) => [row.name, row.count]),
               }}
             >
@@ -614,7 +644,7 @@ export const AnimeTab = memo(function AnimeTab({
                         />
                         <YAxis type="number" hide width={0} domain={[0, "auto"]} />
                         <Tooltip content={<CTooltip />} cursor={{ fill: "rgba(61, 180, 242, 0.07)" }} />
-                        <Bar dataKey="count" name="Titres" radius={[8, 8, 0, 0]} maxBarSize={48}>
+                        <Bar dataKey="count" name={t("Titres", "Titles")} radius={[8, 8, 0, 0]} maxBarSize={48}>
                           {animeSeasonHistogram.map((row) => (
                             <Cell key={row.key} fill={getColorForLabel(row.key, animeSeasonColorMap)} />
                           ))}
@@ -635,7 +665,7 @@ export const AnimeTab = memo(function AnimeTab({
               ) : (
                 <EmptyState
                   icon="calendar"
-                  title="Aucune saison à afficher pour cette sélection."
+                  title={t("Aucune saison à afficher pour cette sélection.", "No season to display for this selection.")}
                   cta={viewFullYearCta}
                 />
               )}
@@ -648,56 +678,67 @@ export const AnimeTab = memo(function AnimeTab({
       <div id="anime-camemberts" className="list-tab-anime-pie-bottom list-tab-anchor">
         <div className="list-tab-pie-pair">
           <AnimePieDistributionCard
-            title="Répartition par format"
-            screenReaderSummary="Camembert des formats sur la période."
+            title={t("Répartition par format", "Distribution by format")}
+            screenReaderSummary={t("Camembert des formats sur la période.", "Pie chart of formats over the period.")}
             emptyExtra={viewFullYearCta}
             defaultModeKey="titles"
             collapseId="anime.format"
             modes={[
               {
                 key: "titles",
-                label: "Titres",
-                unitSingular: "titre",
-                unitPlural: "titres",
+                label: t("Titres", "Titles"),
+                unitSingular: t("titre", "title"),
+                unitPlural: t("titres", "titles"),
                 slices: formatPieSlicesByTitles,
-                footnote:
-                  "Le pourcentage représente la part de titres, le nombre d’épisodes vus est une information complémentaire.",
+                footnote: t(
+                  "Le pourcentage représente la part de titres, le nombre d'épisodes vus est une information complémentaire.",
+                  "The percentage represents the share of titles; the number of episodes watched is additional information."
+                ),
               },
               {
                 key: "episodes",
-                label: "Épisodes",
-                unitSingular: "épisode vu",
-                unitPlural: "épisodes vus",
+                label: t("Épisodes", "Episodes"),
+                unitSingular: t("épisode vu", "episode watched"),
+                unitPlural: t("épisodes vus", "episodes watched"),
                 slices: formatPieSlicesByEpisodes,
-                footnote:
-                  "Le pourcentage représente la part d’épisodes vus, le nombre de titres est une information complémentaire.",
+                footnote: t(
+                  "Le pourcentage représente la part d'épisodes vus, le nombre de titres est une information complémentaire.",
+                  "The percentage represents the share of episodes watched; the number of titles is additional information."
+                ),
               },
             ]}
           />
           <AnimePieDistributionCard
-            title="Pays d’origine"
-            screenReaderSummary="Camembert des pays d’origine des anime sur la période."
+            title={t("Pays d'origine", "Country of origin")}
+            screenReaderSummary={t(
+              "Camembert des pays d'origine des anime sur la période.",
+              "Pie chart of the anime's countries of origin over the period."
+            )}
             emptyExtra={viewFullYearCta}
             defaultModeKey="titles"
             collapseId="anime.country"
             modes={[
               {
                 key: "titles",
-                label: "Titres",
-                unitSingular: "titre",
-                unitPlural: "titres",
+                label: t("Titres", "Titles"),
+                unitSingular: t("titre", "title"),
+                unitPlural: t("titres", "titles"),
                 slices: countryPieSlicesByTitles,
-                footnote:
-                  "Le pourcentage représente la part de titres, le nombre d’épisodes vus est une information complémentaire.",
+                footnote: t(
+                  "Le pourcentage représente la part de titres, le nombre d'épisodes vus est une information complémentaire.",
+                  "The percentage represents the share of titles; the number of episodes watched is additional information."
+                ),
               },
               {
                 key: "episodes",
-                label: "Épisodes",
-                unitSingular: "épisode vu",
-                unitPlural: "épisodes vus",
+                label: t("Épisodes", "Episodes"),
+                unitSingular: t("épisode vu", "episode watched"),
+                unitPlural: t("épisodes vus", "episodes watched"),
                 slices: countryPieSlicesByEpisodes,
-                footnote:
-                  "Le pourcentage représente la part d’épisodes vus, le nombre de titres est une information complémentaire.",
+                footnote: t(
+                  "Le pourcentage représente la part d'épisodes vus, le nombre de titres est une information complémentaire.",
+                  "The percentage represents the share of episodes watched; the number of titles is additional information."
+                ),
               },
             ]}
           />
@@ -705,29 +746,37 @@ export const AnimeTab = memo(function AnimeTab({
         {isAllTime ? (
           <div className="list-tab-pie-pair list-tab-alltime-extra-charts">
             <AnimePieDistributionCard
-              title="Répartition par statut"
-              screenReaderSummary="Camembert des statuts anime All Time, incluant terminés, en cours, abandonnés et planifiés."
+              title={t("Répartition par statut", "Distribution by status")}
+              screenReaderSummary={t(
+                "Camembert des statuts anime All Time, incluant terminés, en cours, abandonnés et planifiés.",
+                "Pie chart of All Time anime statuses, including completed, in progress, dropped and planned."
+              )}
               defaultModeKey="titles"
               collapseId="anime.statusAllTime"
               modes={[
                 {
                   key: "titles",
-                  label: "Titres",
-                  unitSingular: "titre",
-                  unitPlural: "titres",
+                  label: t("Titres", "Titles"),
+                  unitSingular: t("titre", "title"),
+                  unitPlural: t("titres", "titles"),
                   slices: statusPieSlices,
-                  footnote:
+                  footnote: t(
                     "Le pourcentage représente la part de titres, le nombre de titres est une information complémentaire.",
+                    "The percentage represents the share of titles; the number of titles is additional information."
+                  ),
                 },
               ]}
             />
-            <CollapsibleChartBlock id="anime.durationBuckets" title="Durée des épisodes">
+            <CollapsibleChartBlock id="anime.durationBuckets" title={t("Durée des épisodes", "Episode duration")}>
               <ChartCard
                 noTitle
-                screenReaderSummary="Distribution All Time des anime par durée d'épisode."
+                screenReaderSummary={t(
+                  "Distribution All Time des anime par durée d'épisode.",
+                  "All Time distribution of anime by episode duration."
+                )}
                 dataTable={{
-                  caption: "Distribution anime par durée d'épisode",
-                  columns: ["Catégorie", "Titres"],
+                  caption: t("Distribution anime par durée d'épisode", "Anime distribution by episode duration"),
+                  columns: [t("Catégorie", "Category"), t("Titres", "Titles")],
                   rows: animeDurationBuckets.map((row) => [row.label, row.count]),
                 }}
               >
@@ -747,7 +796,7 @@ export const AnimeTab = memo(function AnimeTab({
                           />
                           <YAxis type="number" hide width={0} domain={[0, "auto"]} />
                           <Tooltip content={<CTooltip />} cursor={{ fill: "rgba(61, 180, 242, 0.07)" }} />
-                          <Bar dataKey="count" name="Titres" fill={C.accent} radius={[8, 8, 0, 0]} maxBarSize={48}>
+                          <Bar dataKey="count" name={t("Titres", "Titles")} fill={C.accent} radius={[8, 8, 0, 0]} maxBarSize={48}>
                             <LabelList
                               dataKey="count"
                               position="top"
@@ -763,10 +812,13 @@ export const AnimeTab = memo(function AnimeTab({
                     </RechartsWhenVisible>
                   </div>
                 ) : (
-                  <EmptyState icon="clock" title="Aucune durée d'épisode à afficher." />
+                  <EmptyState icon="clock" title={t("Aucune durée d'épisode à afficher.", "No episode duration to display.")} />
                 )}
                 <p className="list-tab-pie-card__footnote">
-                  Répartition des animés selon la durée moyenne de leurs épisodes.
+                  {t(
+                    "Répartition des animés selon la durée moyenne de leurs épisodes.",
+                    "Distribution of anime by the average duration of their episodes."
+                  )}
                 </p>
               </ChartCard>
             </CollapsibleChartBlock>
@@ -788,12 +840,12 @@ export const AnimeTab = memo(function AnimeTab({
             <ChartCollapseToggle
               collapsed={animeStudiosCollapse.collapsed}
               onToggle={animeStudiosCollapse.toggle}
-              chartTitle="Studios"
+              chartTitle={t("Studios", "Studios")}
               controlsId="anime-studios-body"
             />
           }
         >
-          Studios
+          {t("Studios", "Studios")}
         </SectionTitle>
         <div
           className={`collapsible-chart-animator${animeStudiosCollapse.collapsed ? " collapsible-chart-animator--collapsed" : ""}`}
@@ -803,7 +855,10 @@ export const AnimeTab = memo(function AnimeTab({
         {animeTopStudios.length > 0 ? (
           <>
             <p id="anime-studios-summary" className="chart-card__sr-only">
-              Studios d&apos;animation AniList sur la période (hors producteurs), avec aperçu des titres.
+              {t(
+                "Studios d'animation AniList sur la période (hors producteurs), avec aperçu des titres.",
+                "AniList animation studios over the period (excluding producers), with a preview of titles."
+              )}
             </p>
             <div className="list-tab-studios-grid stagger-reveal">
               {studiosVisibleRows.map((studio) => {
@@ -846,8 +901,14 @@ export const AnimeTab = memo(function AnimeTab({
                       {periodRank > 0 ? (
                         <div
                           className="list-tab-studio-card__rank"
-                          title={`${periodRank}${periodRank === 1 ? "er" : "e"} sur la période (titres, puis note moyenne)`}
-                          aria-label={`Classement sur la période : ${periodRank} sur ${animeTopStudios.length}`}
+                          title={t(
+                            `${periodRank}${periodRank === 1 ? "er" : "e"} sur la période (titres, puis note moyenne)`,
+                            `#${periodRank} over the period (titles, then average score)`
+                          )}
+                          aria-label={t(
+                            `Classement sur la période : ${periodRank} sur ${animeTopStudios.length}`,
+                            `Ranking over the period: ${periodRank} of ${animeTopStudios.length}`
+                          )}
                         >
                           {periodRank}
                         </div>
@@ -856,23 +917,23 @@ export const AnimeTab = memo(function AnimeTab({
                     <div className="list-tab-studio-card__stats">
                       <div className="list-tab-studio-stat">
                         <div className="list-tab-studio-stat__value">{studio.count}</div>
-                        <div className="list-tab-studio-stat__label">Titres</div>
+                        <div className="list-tab-studio-stat__label">{t("Titres", "Titles")}</div>
                       </div>
                       <div className="list-tab-studio-stat">
                         <div className="list-tab-studio-stat__value">
                           {studio.meanUserScore > 0 ? studio.meanUserScore.toFixed(1) : "—"}
                         </div>
-                        <div className="list-tab-studio-stat__label">Score moyen</div>
+                        <div className="list-tab-studio-stat__label">{t("Score moyen", "Average score")}</div>
                       </div>
                       <div className="list-tab-studio-stat">
                         <div className="list-tab-studio-stat__value list-tab-studio-stat__value--duration">
                           {fmtMin(studio.minutesWatched)}
                         </div>
-                        <div className="list-tab-studio-stat__label">Temps vu</div>
+                        <div className="list-tab-studio-stat__label">{t("Temps vu", "Time watched")}</div>
                       </div>
                     </div>
                   </div>
-                  <div className="list-tab-studio-card__carousel" aria-label={`Titres vus du studio ${studio.name}`}>
+                  <div className="list-tab-studio-card__carousel" aria-label={t(`Titres vus du studio ${studio.name}`, `Titles watched from ${studio.name}`)}>
                     {studio.carouselMedia.map((media) => {
                       const cover = media.coverImageUrl ? (
                         <img
@@ -894,7 +955,7 @@ export const AnimeTab = memo(function AnimeTab({
                             rel="noopener noreferrer"
                             className="list-tab-studio-card__carousel-item list-tab-studio-card__carousel-link"
                             title={media.title}
-                            aria-label={`${media.title} sur AniList`}
+                            aria-label={t(`${media.title} sur AniList`, `${media.title} on AniList`)}
                           >
                             {cover}
                           </a>
@@ -919,7 +980,7 @@ export const AnimeTab = memo(function AnimeTab({
                   onClick={() => setStudiosExpanded((v) => !v)}
                   aria-expanded={studiosExpanded}
                 >
-                  <span>{studiosExpanded ? "Voir moins" : "Voir plus"}</span>
+                  <span>{studiosExpanded ? t("Voir moins", "Show less") : t("Voir plus", "Show more")}</span>
                   <svg
                     className="list-tab-anime-more-btn__icon"
                     width="20"
@@ -941,7 +1002,7 @@ export const AnimeTab = memo(function AnimeTab({
         ) : (
           <EmptyState
             icon="tv"
-            title="Aucun studio d'animation listé par l'API pour cette sélection."
+            title={t("Aucun studio d'animation listé par l'API pour cette sélection.", "No animation studio listed by the API for this selection.")}
             cta={viewFullYearCta}
           />
         )}

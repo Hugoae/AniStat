@@ -1,7 +1,8 @@
-import { C, STATUS_LABELS, STATUS_COLORS } from "../../config/constants";
+import { C, STATUS_COLORS, statusLabel } from "../../config/constants";
 import { SectionTitle } from "./SectionTitle";
 import { MediaOriginFlagSvg } from "./MediaOriginFlagSvg";
 import { mediaCountryOriginMeta, mediaFormatShortLabel } from "./mediaDisplayHelpers";
+import { useT, useLang } from "../../i18n/I18n";
 
 type ListTabDistributionSectionProps = {
   /** Préfixe d'identifiants DOM/ARIA propre à l'onglet ("anime" | "manga"). */
@@ -25,6 +26,8 @@ export function ListTabDistributionSection({
   countryEntriesOrdered,
   fmtData,
 }: ListTabDistributionSectionProps) {
+  const t = useT();
+  const lang = useLang();
   return (
     <section
       id={`${idPrefix}-repartition`}
@@ -34,7 +37,7 @@ export function ListTabDistributionSection({
       <div className="list-tab-distribution">
         <div className="list-tab-distribution__col">
           <SectionTitle size="lg" id={`${idPrefix}-par-statut-title`}>
-            Par statut
+            {t("Par statut", "By status")}
           </SectionTitle>
           <div className="list-tab-distro-row">
             {statusEntriesOrdered.map(([s, c]) => (
@@ -42,20 +45,20 @@ export function ListTabDistributionSection({
                 <span className="list-tab-status-pill__count" style={{ color: STATUS_COLORS[s] || C.accent }}>
                   {String(c)}
                 </span>
-                <span className="list-tab-status-pill__label">{STATUS_LABELS[s] || s}</span>
+                <span className="list-tab-status-pill__label">{statusLabel(s, lang) || s}</span>
               </div>
             ))}
           </div>
         </div>
         <div className="list-tab-distribution__col">
           <SectionTitle size="lg" id={`${idPrefix}-par-pays-title`}>
-            Par pays d’origine
+            {t("Par pays d'origine", "By country of origin")}
           </SectionTitle>
           <div className="list-tab-distro-row">
             {countryEntriesOrdered.map(([code, c]) => {
-              const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code);
-              const label = meta ? meta.label : "Inconnu";
-              const a11yCountry = meta ? meta.label : "pays inconnu";
+              const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code, lang);
+              const label = meta ? meta.label : t("Inconnu", "Unknown");
+              const a11yCountry = meta ? meta.label : t("pays inconnu", "unknown country");
               const countStr = String(c);
               return (
                 <div
@@ -84,7 +87,7 @@ export function ListTabDistributionSection({
         </div>
         <div className="list-tab-distribution__col">
           <SectionTitle size="lg" id={`${idPrefix}-par-format-title`}>
-            Par format
+            {t("Par format", "By format")}
           </SectionTitle>
           <div className="list-tab-distro-row">
             {fmtData.map(({ name, value: fv }) => (

@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useRotatingMessage } from "../../hooks/useRotatingMessage";
+import { useT } from "../../i18n/I18n";
 
 export type LoadingBlockProps = {
   /**
@@ -41,6 +42,7 @@ function formatShortDuration(ms: number): string {
  *   bascule sur le temps écoulé une fois l'ETA expiré.
  */
 function LoadingBlockCountdown({ estimatedMs }: { estimatedMs: number | null | undefined }) {
+  const t = useT();
   // On garde le timestamp de démarrage en state (initialisé une seule fois)
   // plutôt qu'en ref : la lecture « pendant le render » est légale, et la
   // valeur reste stable entre les rerenders du tick.
@@ -61,8 +63,8 @@ function LoadingBlockCountdown({ estimatedMs }: { estimatedMs: number | null | u
   if (!hasEstimate && elapsedMs < 1_500) return null;
 
   const label = hasEstimate && remainingMs > 500
-    ? `reste ~${formatShortDuration(remainingMs)}`
-    : `chargement depuis ${formatShortDuration(elapsedMs)}…`;
+    ? t(`reste ~${formatShortDuration(remainingMs)}`, `~${formatShortDuration(remainingMs)} left`)
+    : t(`chargement depuis ${formatShortDuration(elapsedMs)}…`, `loading for ${formatShortDuration(elapsedMs)}…`);
 
   return (
     <div className="loading-block__countdown" aria-live="off">
@@ -87,7 +89,8 @@ export function LoadingBlock({
   estimatedMs,
   footer,
 }: LoadingBlockProps) {
-  const safeMessages = messages && messages.length > 0 ? messages : [caption ?? "Chargement…"];
+  const t = useT();
+  const safeMessages = messages && messages.length > 0 ? messages : [caption ?? t("Chargement…", "Loading…")];
   const { message, index } = useRotatingMessage(safeMessages, intervalMs);
 
   return (

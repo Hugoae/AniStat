@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { C } from "../../config/constants";
+import { useT } from "../../i18n/I18n";
 import { useCountUp } from "../../hooks/useCountUp";
 
 function StatIcon({ name }: { name: string }) {
@@ -162,6 +163,7 @@ type TooltipPos = {
  * de place au-dessus dans la fenêtre.
  */
 export function StatLabelHint({ text }: { text: string }) {
+  const t = useT();
   const [tipOpen, setTipOpen] = useState(false);
   const [pos, setPos] = useState<TooltipPos | null>(null);
   const hideTimerRef = useRef<number | null>(null);
@@ -246,7 +248,7 @@ export function StatLabelHint({ text }: { text: string }) {
         ref={btnRef}
         type="button"
         className="stat-label-hint__btn"
-        aria-label="Explication"
+        aria-label={t("Explication", "Explanation")}
         onMouseEnter={openTip}
         onMouseLeave={scheduleCloseTip}
       >

@@ -4,6 +4,7 @@ import { type AnimeGridSortKey } from "../../lib/animeGridQuery";
 import type { useListTabMediaGrid } from "../../hooks/useListTabMediaGrid";
 import { MediaCard } from "./MediaCard";
 import { EmptyState } from "./EmptyState";
+import { useT } from "../../i18n/I18n";
 
 type ListTabMediaGridProps = {
   /** État + données dérivées renvoyés par `useListTabMediaGrid`. */
@@ -35,6 +36,7 @@ export function ListTabMediaGrid({
   isAllTime,
   periodProgressByMedia,
 }: ListTabMediaGridProps) {
+  const t = useT();
   const {
     mediaGridRef,
     searchQuery,
@@ -69,7 +71,7 @@ export function ListTabMediaGrid({
         <div className="list-tab-anime-grid-toolbar__inner">
           <div className="list-tab-anime-grid-toolbar__search-block">
             <span className="list-tab-anime-grid-toolbar__eyebrow" id={`${idPrefix}-grid-search-label`}>
-              Recherche
+              {t("Recherche", "Search")}
             </span>
             <div className="list-tab-anime-grid-toolbar__search-shell">
               <input
@@ -79,7 +81,7 @@ export function ListTabMediaGrid({
                 className="list-tab-anime-grid-toolbar__input"
                 value={searchQuery}
                 onChange={(ev) => setSearchQuery(ev.target.value)}
-                placeholder="Romaji ou anglais…"
+                placeholder={t("Romaji ou anglais…", "Romaji or English…")}
                 autoComplete="off"
                 spellCheck={false}
                 aria-labelledby={`${idPrefix}-grid-search-label`}
@@ -87,16 +89,16 @@ export function ListTabMediaGrid({
             </div>
           </div>
           <div className="list-tab-anime-grid-toolbar__filter-group">
-            <span className="list-tab-anime-grid-toolbar__eyebrow">Filtres</span>
-            <div className="list-tab-anime-grid-toolbar__toggles" role="group" aria-label="Filtres liste">
+            <span className="list-tab-anime-grid-toolbar__eyebrow">{t("Filtres", "Filters")}</span>
+            <div className="list-tab-anime-grid-toolbar__toggles" role="group" aria-label={t("Filtres liste", "List filters")}>
               <button
                 type="button"
                 className={`list-tab-anime-grid-toolbar__toggle${filterScoredOnly ? " is-active" : ""}`}
                 aria-pressed={filterScoredOnly}
-                title="Afficher uniquement les titres avec une note"
+                title={t("Afficher uniquement les titres avec une note", "Show only titles with a score")}
                 onClick={() => setFilterScoredOnly((v) => !v)}
               >
-                Notés
+                {t("Notés", "Scored")}
                 {filterScoredOnly ? (
                   <span className="list-tab-anime-grid-toolbar__toggle-check" aria-hidden>
                     ✓
@@ -107,10 +109,10 @@ export function ListTabMediaGrid({
                 type="button"
                 className={`list-tab-anime-grid-toolbar__toggle${filterCompletedOnly ? " is-active" : ""}`}
                 aria-pressed={filterCompletedOnly}
-                title="Afficher uniquement les titres au statut terminé"
+                title={t("Afficher uniquement les titres au statut terminé", "Show only completed titles")}
                 onClick={() => setFilterCompletedOnly((v) => !v)}
               >
-                Terminés
+                {t("Terminés", "Completed")}
                 {filterCompletedOnly ? (
                   <span className="list-tab-anime-grid-toolbar__toggle-check" aria-hidden>
                     ✓
@@ -123,10 +125,10 @@ export function ListTabMediaGrid({
                     type="button"
                     className={`list-tab-anime-grid-toolbar__toggle${filterCurrentOnly ? " is-active" : ""}`}
                     aria-pressed={filterCurrentOnly}
-                    title="Afficher uniquement les titres en cours"
+                    title={t("Afficher uniquement les titres en cours", "Show only in-progress titles")}
                     onClick={() => setFilterCurrentOnly((v) => !v)}
                   >
-                    En cours
+                    {t("En cours", "In progress")}
                     {filterCurrentOnly ? (
                       <span className="list-tab-anime-grid-toolbar__toggle-check" aria-hidden>
                         ✓
@@ -137,10 +139,10 @@ export function ListTabMediaGrid({
                     type="button"
                     className={`list-tab-anime-grid-toolbar__toggle${filterDroppedOnly ? " is-active" : ""}`}
                     aria-pressed={filterDroppedOnly}
-                    title="Afficher uniquement les titres abandonnés"
+                    title={t("Afficher uniquement les titres abandonnés", "Show only dropped titles")}
                     onClick={() => setFilterDroppedOnly((v) => !v)}
                   >
-                    Abandonnés
+                    {t("Abandonnés", "Dropped")}
                     {filterDroppedOnly ? (
                       <span className="list-tab-anime-grid-toolbar__toggle-check" aria-hidden>
                         ✓
@@ -151,13 +153,13 @@ export function ListTabMediaGrid({
                     type="button"
                     className={`list-tab-anime-grid-toolbar__toggle${filterPlanningOnly ? " is-active" : ""}`}
                     aria-pressed={filterPlanningOnly}
-                    title="Afficher uniquement les titres planifiés"
+                    title={t("Afficher uniquement les titres planifiés", "Show only planned titles")}
                     onClick={() => {
                       setPlanningVisible(false);
                       setFilterPlanningOnly((v) => !v);
                     }}
                   >
-                    Planifiés
+                    {t("Planifiés", "Planned")}
                     {filterPlanningOnly ? (
                       <span className="list-tab-anime-grid-toolbar__toggle-check" aria-hidden>
                         ✓
@@ -170,7 +172,7 @@ export function ListTabMediaGrid({
           </div>
           <div className="list-tab-anime-grid-toolbar__sort">
             <span className="list-tab-anime-grid-toolbar__eyebrow" id={`${idPrefix}-grid-sort-label`}>
-              Trier par
+              {t("Trier par", "Sort by")}
             </span>
             <div className="list-tab-anime-grid-toolbar__select-shell">
               <select
@@ -181,14 +183,14 @@ export function ListTabMediaGrid({
                 onChange={(ev) => setSortKey(ev.target.value as AnimeGridSortKey)}
                 aria-labelledby={`${idPrefix}-grid-sort-label`}
               >
-                <option value="score-desc">Vos notes ▼</option>
-                <option value="score-asc">Vos notes ▲</option>
-                <option value="title-desc">Titre ▼</option>
-                <option value="title-asc">Titre ▲</option>
-                <option value="release-desc">Sortie ▼</option>
-                <option value="release-asc">Sortie ▲</option>
-                <option value="progress-desc">Progression ▼</option>
-                <option value="progress-asc">Progression ▲</option>
+                <option value="score-desc">{t("Vos notes ▼", "Your scores ▼")}</option>
+                <option value="score-asc">{t("Vos notes ▲", "Your scores ▲")}</option>
+                <option value="title-desc">{t("Titre ▼", "Title ▼")}</option>
+                <option value="title-asc">{t("Titre ▲", "Title ▲")}</option>
+                <option value="release-desc">{t("Sortie ▼", "Release ▼")}</option>
+                <option value="release-asc">{t("Sortie ▲", "Release ▲")}</option>
+                <option value="progress-desc">{t("Progression ▼", "Progress ▼")}</option>
+                <option value="progress-asc">{t("Progression ▲", "Progress ▲")}</option>
               </select>
             </div>
           </div>
@@ -198,10 +200,10 @@ export function ListTabMediaGrid({
         <EmptyState
           compact
           icon="flag"
-          title="Aucun titre ne correspond aux filtres."
+          title={t("Aucun titre ne correspond aux filtres.", "No title matches the filters.")}
           cta={
             <button type="button" className="list-tab-empty-cta" onClick={resetFilters}>
-              Réinitialiser filtres
+              {t("Réinitialiser filtres", "Reset filters")}
             </button>
           }
         />
@@ -236,7 +238,7 @@ export function ListTabMediaGrid({
           }}
           aria-expanded={canRevealPlanning ? planningVisible : false}
         >
-          <span>{canRevealPlanning ? "Voir œuvres planifiées" : "Voir plus"}</span>
+          <span>{canRevealPlanning ? t("Voir œuvres planifiées", "Show planned works") : t("Voir plus", "Show more")}</span>
           <svg
             className="list-tab-anime-more-btn__icon"
             width="20"
@@ -263,7 +265,7 @@ export function ListTabMediaGrid({
           }}
           aria-expanded={true}
         >
-          <span>Voir moins</span>
+          <span>{t("Voir moins", "Show less")}</span>
           <svg
             className="list-tab-anime-more-btn__icon"
             width="20"

@@ -1,3 +1,5 @@
+import { useT } from "../../i18n/I18n";
+
 type ChartCollapseToggleProps = {
   collapsed: boolean;
   onToggle: () => void;
@@ -20,6 +22,7 @@ export function ChartCollapseToggle({
   controlsId,
   className,
 }: ChartCollapseToggleProps) {
+  const t = useT();
   return (
     <button
       type="button"
@@ -27,8 +30,8 @@ export function ChartCollapseToggle({
       onClick={onToggle}
       aria-expanded={!collapsed}
       aria-controls={controlsId}
-      aria-label={`${collapsed ? "Afficher" : "Masquer"} le graphique « ${chartTitle} »`}
-      title={collapsed ? `Afficher « ${chartTitle} »` : `Masquer « ${chartTitle} »`}
+      aria-label={`${collapsed ? t("Afficher le graphique", "Show chart") : t("Masquer le graphique", "Hide chart")} « ${chartTitle} »`}
+      title={collapsed ? `${t("Afficher", "Show")} « ${chartTitle} »` : `${t("Masquer", "Hide")} « ${chartTitle} »`}
     >
       <svg
         className="chart-collapse-toggle__icon"

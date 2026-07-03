@@ -12,8 +12,9 @@ import {
   LabelList,
   type TooltipProps,
 } from "recharts";
-import { C } from "../../config/constants";
+import { C, localizeMonthAbbr } from "../../config/constants";
 import { CompareLineTooltip } from "./ChartTooltips";
+import { useLang, useT } from "../../i18n/I18n";
 
 /** Type générique du payload passé par Recharts à un `content` de `Tooltip`. */
 type RechartsTooltipProps = TooltipProps<
@@ -55,6 +56,7 @@ function OverviewChartLegend({
   onCompareChange: (value: string) => void;
   compareEmptyLabel?: string | null;
 }) {
+  const t = useT();
   return (
     <div className="overview-chart-legend">
       <div className="overview-chart-legend__row">
@@ -65,7 +67,7 @@ function OverviewChartLegend({
         <span className="period-compare-legend__swatch period-compare-legend__swatch--compare" />
         <span className="period-compare-legend__vs">vs</span>
         <label className="overview-chart-legend__select-wrap">
-          <span className="visually-hidden">Période de comparaison</span>
+          <span className="visually-hidden">{t("Période de comparaison", "Comparison period")}</span>
           <select
             className="overview-chart-legend__select"
             value={compareValue}
@@ -139,6 +141,7 @@ export function OverviewActivityLineChart({
   onCompareChange?: (value: string) => void;
   compareEmptyLabel?: string | null;
 }) {
+  const lang = useLang();
   const showCompare = year !== 0;
   const compareStrokeOpacity = compareLineDimmed ? 0.18 : 0.42;
   const legendOptions = compareOptions ?? [];
@@ -158,6 +161,7 @@ export function OverviewActivityLineChart({
         <CartesianGrid strokeDasharray="3 6" vertical={false} stroke="rgba(139, 160, 178, 0.1)" />
         <XAxis
           dataKey="label"
+          tickFormatter={(v) => localizeMonthAbbr(String(v), lang)}
           tick={{ fill: C.textDim, fontSize: 11 }}
           axisLine={false}
           tickLine={false}

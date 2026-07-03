@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useT } from "../../i18n/I18n";
 
 export type ListTabSectionNavItem = {
   id: string;
@@ -6,6 +7,7 @@ export type ListTabSectionNavItem = {
 };
 
 export function ListTabSectionNav({ items, label }: { items: ListTabSectionNavItem[]; label: string }) {
+  const t = useT();
   const visibleItems = useMemo(() => items.filter((item) => item.id && item.label), [items]);
   const [activeId, setActiveId] = useState(visibleItems[0]?.id ?? "");
 
@@ -45,7 +47,7 @@ export function ListTabSectionNav({ items, label }: { items: ListTabSectionNavIt
 
   return (
     <nav className="list-tab-section-nav" aria-label={label}>
-      <div className="list-tab-section-nav__eyebrow">Sommaire</div>
+      <div className="list-tab-section-nav__eyebrow">{t("Sommaire", "Contents")}</div>
       <ul className="list-tab-section-nav__list">
         {visibleItems.map((item) => {
           const active = item.id === activeId;

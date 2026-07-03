@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState } from "react";
-import { C, STATUS_COLORS, STATUS_LABELS } from "../../config/constants";
+import { C, STATUS_COLORS, statusLabel } from "../../config/constants";
 import {
   anilistMediaUrl,
   formatMediaListScore,
@@ -7,6 +7,7 @@ import {
   mediaFormatShortLabel,
 } from "./mediaDisplayHelpers";
 import { MediaOriginFlagSvg } from "./MediaOriginFlagSvg";
+import { useT, useLang } from "../../i18n/I18n";
 
 /** Shape used by MediaCard (GraphQL list entry + media fields). */
 type MediaCardEntry = {
@@ -44,6 +45,8 @@ function MediaCardComponent({
    * `return null` après les hooks, en gérant le cas `m === undefined`
    * localement dans l'effet.
    */
+  const t = useT();
+  const lang = useLang();
   const coverWrapRef = useRef<HTMLDivElement | null>(null);
   const [coverVisible, setCoverVisible] = useState(!deferCover);
   useEffect(() => {
@@ -63,20 +66,20 @@ function MediaCardComponent({
   const m = entry.media;
   if (!m) return null;
   const title = m.title?.english || m.title?.romaji || "";
-  const originMeta = mediaCountryOriginMeta(m?.countryOfOrigin);
+  const originMeta = mediaCountryOriginMeta(m?.countryOfOrigin, lang);
   const listUrl = anilistMediaUrl(m, type);
   const progressCur = entry.progress || 0;
   const progressTotal =
     type === "ANIME" ? (m.episodes || "?") : (m.chapters || "?");
   const prog =
     type === "ANIME"
-      ? `${progressCur} / ${progressTotal} épisodes`
-      : `${progressCur} / ${progressTotal} chapitres`;
+      ? `${progressCur} / ${progressTotal} ${t("épisodes", "episodes")}`
+      : `${progressCur} / ${progressTotal} ${t("chapitres", "chapters")}`;
   const periodProgressRounded = Math.max(0, Math.trunc(Number(periodProgress) || 0));
   const periodProgressLabel =
     type === "ANIME"
-      ? `+${periodProgressRounded} épisode${periodProgressRounded > 1 ? "s" : ""}`
-      : `+${periodProgressRounded} chapitre${periodProgressRounded > 1 ? "s" : ""}`;
+      ? `+${periodProgressRounded} ${t("épisode", "episode")}${periodProgressRounded > 1 ? "s" : ""}`
+      : `+${periodProgressRounded} ${t("chapitre", "chapter")}${periodProgressRounded > 1 ? "s" : ""}`;
   const scoreLabel = formatMediaListScore(entry.score);
   const formatLabel = mediaFormatShortLabel(m.format);
 
@@ -99,12 +102,12 @@ function MediaCardComponent({
             className="media-card-pill media-card-pill--status"
             style={{ background: STATUS_COLORS[entry.status || ""] || C.accent }}
           >
-            {STATUS_LABELS[entry.status || ""] || entry.status}
+            {statusLabel(entry.status || "", lang) || entry.status}
           </div>
           {originMeta ? (
             <div
               title={originMeta.label}
-              aria-label={`Pays d'origine : ${originMeta.label}`}
+              aria-label={t(`Pays d'origine : ${originMeta.label}`, `Country of origin: ${originMeta.label}`)}
               className="media-card-pill media-card-pill--origin"
             >
               <MediaOriginFlagSvg code={originMeta.code} width={20} height={14} />

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useT } from "../../i18n/I18n";
 import { useHorizontalScrollFades } from "../../hooks/useHorizontalScrollFades";
 import { useCollapsedChart } from "../../hooks/useCollapsedChart";
 import { ChartCollapseToggle } from "../charts/ChartCollapseToggle";
@@ -20,9 +21,12 @@ export function RecordsCarouselSection({
   titleId,
   title,
   cards,
-  emptyMessage = "Aucun fait marquant à signaler pour cette période.",
+  emptyMessage,
   collapseId,
 }: RecordsCarouselSectionProps) {
+  const t = useT();
+  const resolvedEmptyMessage =
+    emptyMessage ?? t("Aucun fait marquant à signaler pour cette période.", "No highlights to report for this period.");
   const collapseState = useCollapsedChart(collapseId || "");
   const collapsed = collapseId ? collapseState.collapsed : false;
 
@@ -79,7 +83,7 @@ export function RecordsCarouselSection({
               />
             </div>
           ) : (
-            <div className="list-tab-records-empty">{emptyMessage}</div>
+            <div className="list-tab-records-empty">{resolvedEmptyMessage}</div>
           )}
         </div>
       </div>

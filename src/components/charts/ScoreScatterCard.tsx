@@ -17,6 +17,7 @@ import { RechartsWhenVisible } from "./RechartsWhenVisible";
 import { ChartCollapseToggle } from "./ChartCollapseToggle";
 import { useCollapsedChart } from "../../hooks/useCollapsedChart";
 import { C } from "../../config/constants";
+import { useT } from "../../i18n/I18n";
 import type { AniListEntry } from "../../types/domain";
 
 export type ScoreScatterCardProps = {
@@ -69,31 +70,37 @@ function ScatterTooltip({
   payload?: Array<{ payload?: ScatterPoint }>;
   kind: "anime" | "manga";
 }) {
+  const t = useT();
   if (!active || !payload?.length) return null;
   const p = payload[0]?.payload;
   if (!p) return null;
   const sign = p.delta >= 0 ? "+" : "\u2212";
   const deltaColor = colorForDelta(p.delta);
   const noun = kind === "manga" ? "manga" : "anime";
+  const hint =
+    p.delta > 0
+      ? t(`tu sur-notes ce ${noun}`, `you rate this ${noun} higher`)
+      : p.delta < 0
+        ? t(`tu sous-notes ce ${noun}`, `you rate this ${noun} lower`)
+        : t("note alignée", "aligned score");
   return (
     <div className="chart-tooltip chart-tooltip--scatter">
       <div className="chart-tooltip__title chart-tooltip__title--compact">{p.title}</div>
       <div className="chart-tooltip__scatter-body">
         <span>
-          Ta note&nbsp;: <strong className="chart-tooltip__value">{p.user.toFixed(1)} / 10</strong>
+          {t("Ta note", "Your score")}&nbsp;: <strong className="chart-tooltip__value">{p.user.toFixed(1)} / 10</strong>
         </span>
         <span>
-          Moyenne AniList&nbsp;: <strong className="chart-tooltip__value">{p.site.toFixed(1)} / 10</strong>
+          {t("Moyenne AniList", "AniList average")}&nbsp;:{" "}
+          <strong className="chart-tooltip__value">{p.site.toFixed(1)} / 10</strong>
         </span>
         <span>
-          Écart&nbsp;:{" "}
+          {t("Écart", "Gap")}&nbsp;:{" "}
           <strong style={{ color: deltaColor }}>
             {sign}
             {Math.abs(p.delta).toFixed(2)}
           </strong>{" "}
-          <span className="chart-tooltip__scatter-hint">
-            ({p.delta > 0 ? `tu sur-notes ce ${noun}` : p.delta < 0 ? `tu sous-notes ce ${noun}` : "note alignée"})
-          </span>
+          <span className="chart-tooltip__scatter-hint">({hint})</span>
         </span>
       </div>
     </div>
@@ -101,6 +108,7 @@ function ScatterTooltip({
 }
 
 export function ScoreScatterCard({ entries, kind, emptyExtra, className, collapseId }: ScoreScatterCardProps) {
+  const t = useT();
   const collapseState = useCollapsedChart(collapseId || "");
   const collapsed = collapseId ? collapseState.collapsed : false;
   const groupId = useId();
@@ -120,14 +128,17 @@ export function ScoreScatterCard({ entries, kind, emptyExtra, className, collaps
         site,
         yDraw: Math.max(0, Math.min(10, user + deterministicJitter(mediaId))),
         delta,
-        title: String(e?.media?.title?.english || e?.media?.title?.romaji || "Sans titre"),
+        title: String(e?.media?.title?.english || e?.media?.title?.romaji || t("Sans titre", "Untitled")),
         coverImageUrl: e?.media?.coverImage?.large || e?.media?.coverImage?.medium || null,
         anilistUrl: e?.media?.siteUrl || null,
         fill: colorForDelta(delta),
       });
     }
     return out;
-  }, [entries]);
+  }, [entries, t]);
+
+  const chartTitle = t("Ta note vs note AniList", "Your score vs AniList score");
+  const noun = kind === "manga" ? "manga" : "anime";
 
   const counts = useMemo(() => {
     let over = 0;
@@ -160,13 +171,13 @@ export function ScoreScatterCard({ entries, kind, emptyExtra, className, collaps
             <ChartCollapseToggle
               collapsed={collapsed}
               onToggle={collapseState.toggle}
-              chartTitle="Ta note vs note AniList"
+              chartTitle={chartTitle}
               controlsId={bodyId}
             />
           ) : null
         }
       >
-        Ta note vs note AniList
+        {chartTitle}
       </SectionTitle>
       <div
         className={`collapsible-chart-animator${collapsed ? " collapsible-chart-animator--collapsed" : ""}`}
@@ -175,10 +186,18 @@ export function ScoreScatterCard({ entries, kind, emptyExtra, className, collaps
       <div id={collapseId ? bodyId : undefined} className="collapsible-chart-animator__inner">
       <ChartCard
         noTitle
-        screenReaderSummary={`Nuage de points : ta note (axe vertical) en fonction de la note moyenne AniList (axe horizontal). ${points.length} ${kind === "manga" ? "manga" : "anime"} affichés.`}
+        screenReaderSummary={t(
+          `Nuage de points : ta note (axe vertical) en fonction de la note moyenne AniList (axe horizontal). ${points.length} ${noun} affichés.`,
+          `Scatter plot: your score (vertical axis) vs AniList average score (horizontal axis). ${points.length} ${noun} shown.`
+        )}
         dataTable={{
-          caption: `Ta note vs note AniList (${kind === "manga" ? "manga" : "anime"})`,
-          columns: ["Titre", "Ta note", "Moyenne AniList", "Écart"],
+          caption: `${chartTitle} (${noun})`,
+          columns: [
+            t("Titre", "Title"),
+            t("Ta note", "Your score"),
+            t("Moyenne AniList", "AniList average"),
+            t("Écart", "Gap"),
+          ],
           rows: points.map((point) => [
             point.title,
             point.user.toFixed(1),
@@ -190,8 +209,14 @@ export function ScoreScatterCard({ entries, kind, emptyExtra, className, collaps
         {points.length === 0 ? (
           <EmptyState
             icon="star"
-            title="Pas assez de notes attribuées sur cette période pour comparer."
-            description="Notez vos titres sur AniList pour débloquer ce graphique."
+            title={t(
+              "Pas assez de notes attribuées sur cette période pour comparer.",
+              "Not enough scores on this period to compare."
+            )}
+            description={t(
+              "Notez vos titres sur AniList pour débloquer ce graphique.",
+              "Rate your titles on AniList to unlock this chart."
+            )}
             cta={emptyExtra}
           />
         ) : (
@@ -203,14 +228,14 @@ export function ScoreScatterCard({ entries, kind, emptyExtra, className, collaps
                   <XAxis
                     type="number"
                     dataKey="site"
-                    name="Moyenne AniList"
+                    name={t("Moyenne AniList", "AniList average")}
                     domain={[0, 10]}
                     ticks={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]}
                     tick={{ fill: "rgba(232, 238, 244, 0.78)", fontSize: 11 }}
                     axisLine={{ stroke: "rgba(139, 160, 178, 0.22)" }}
                     tickLine={false}
                     label={{
-                      value: "Note moyenne AniList (/10)",
+                      value: t("Note moyenne AniList (/10)", "AniList average score (/10)"),
                       position: "insideBottom",
                       offset: -16,
                       fill: "rgba(139, 160, 178, 0.85)",
@@ -220,14 +245,14 @@ export function ScoreScatterCard({ entries, kind, emptyExtra, className, collaps
                   <YAxis
                     type="number"
                     dataKey="yDraw"
-                    name="Ta note"
+                    name={t("Ta note", "Your score")}
                     domain={[0, 10]}
                     ticks={[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]}
                     tick={{ fill: "rgba(232, 238, 244, 0.78)", fontSize: 11 }}
                     axisLine={{ stroke: "rgba(139, 160, 178, 0.22)" }}
                     tickLine={false}
                     label={{
-                      value: "Ta note (/10)",
+                      value: t("Ta note (/10)", "Your score (/10)"),
                       angle: -90,
                       position: "insideLeft",
                       offset: 12,
@@ -263,41 +288,47 @@ export function ScoreScatterCard({ entries, kind, emptyExtra, className, collaps
             <div className="score-scatter__legend" aria-hidden>
               <span className="score-scatter__legend-item">
                 <span className="score-scatter__dot" style={{ background: COLOR_OVER }} />
-                Tu sur-notes&nbsp;({counts.over})
+                {t("Tu sur-notes", "You rate higher")}&nbsp;({counts.over})
               </span>
               <span className="score-scatter__legend-item">
                 <span className="score-scatter__dot" style={{ background: COLOR_NEUTRAL }} />
-                Note alignée&nbsp;({counts.neutral})
+                {t("Note alignée", "Aligned score")}&nbsp;({counts.neutral})
               </span>
               <span className="score-scatter__legend-item">
                 <span className="score-scatter__dot" style={{ background: COLOR_UNDER }} />
-                Tu sous-notes&nbsp;({counts.under})
+                {t("Tu sous-notes", "You rate lower")}&nbsp;({counts.under})
               </span>
               <span className="score-scatter__legend-sep" aria-hidden>
                 ·
               </span>
               <span className="score-scatter__legend-item">
                 <span className="score-scatter__legend-line" />
-                Diagonale y = x (note alignée)
+                {t("Diagonale y = x (note alignée)", "Diagonal y = x (aligned score)")}
               </span>
             </div>
             {stats ? (
               <p className="score-scatter__footnote">
-                Sur {stats.n} {kind === "manga" ? "manga notés" : "anime notés"} avec une moyenne AniList connue, tu
-                notes en moyenne{" "}
+                {t(
+                  `Sur ${stats.n} ${kind === "manga" ? "manga notés" : "anime notés"} avec une moyenne AniList connue, tu notes en moyenne`,
+                  `Across ${stats.n} rated ${noun} with a known AniList average, you score on average`
+                )}{" "}
                 <strong style={{ color: colorForDelta(stats.meanDelta) }}>
                   {stats.meanDelta >= 0 ? "+" : "\u2212"}
                   {Math.abs(stats.meanDelta).toFixed(2)}
                 </strong>{" "}
-                par rapport à la moyenne du site
+                {t("par rapport à la moyenne du site", "vs the site average")}
                 {stats.sigma != null ? (
                   <>
-                    , avec une dispersion typique de{" "}
-                    <strong>±{stats.sigma.toFixed(2)}</strong> point (écart-type)
+                    , {t("avec une dispersion typique de", "with a typical spread of")}{" "}
+                    <strong>±{stats.sigma.toFixed(2)}</strong>{" "}
+                    {t("point (écart-type)", "point (standard deviation)")}
                   </>
                 ) : null}
-                . La diagonale en pointillés représente la note parfaitement alignée (ta note = la moyenne AniList) ; un
-                seuil de ±0,5 sépare les notes alignées des écarts marqués.
+                .{" "}
+                {t(
+                  "La diagonale en pointillés représente la note parfaitement alignée (ta note = la moyenne AniList) ; un seuil de ±0,5 sépare les notes alignées des écarts marqués.",
+                  "The dashed diagonal is a perfectly aligned score (your score = AniList average); a ±0.5 threshold separates aligned scores from marked gaps."
+                )}
               </p>
             ) : null}
           </div>

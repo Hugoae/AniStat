@@ -16,9 +16,11 @@ import {
   reportPersistenceSuccess,
 } from "../lib/persistenceStatus";
 import {
-  parseRouteFromHash,
-  profileHashForUserName,
-  initialLoadingFromHash,
+  parseRoute,
+  buildProfilePath,
+  initialLoadingFromRoute,
+  navigateToPath,
+  subscribeRoute,
 } from "../lib/routing";
 import type { ActivityCacheByYear, ActivityItem, AniListEntry, AniListUser } from "../types/domain";
 import type {
@@ -152,7 +154,7 @@ export function useProfileLoader(
 ) {
   const [inputVal, setInputVal] = useState("");
   const [hashTick, setHashTick] = useState(0);
-  const [loading, setLoading] = useState(initialLoadingFromHash);
+  const [loading, setLoading] = useState(initialLoadingFromRoute);
   const [error, setError] = useState<unknown>(null);
   /*
    * Drapeau distinct pour la situation « API AniList désactivée côté serveur »
@@ -525,33 +527,33 @@ export function useProfileLoader(
     ]
   );
 
-  useEffect(() => {
-    const onHash = () => setHashTick((x) => x + 1);
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
+  useEffect(() => subscribeRoute(() => setHashTick((x) => x + 1)), []);
 
   useEffect(() => {
     if (!loaded || !user?.name) return;
-    const currentRoute = parseRouteFromHash();
+    const currentRoute = parseRoute();
     if (
       currentRoute.type === "user" &&
       normalizeName(currentRoute.name) === normalizeName(user.name)
     ) {
       return;
     }
-    const want = profileHashForUserName(user.name);
-    if (want === window.location.hash) return;
-    try {
-      const path = `${window.location.pathname}${window.location.search}${want}`;
-      window.history.replaceState(null, "", path);
-    } catch {
-      /* ignore */
-    }
+    // Canonicalise le pseudo dans l'URL (ex. casse corrigée par AniList) en
+    // préservant l'onglet / la période éventuellement présents.
+    const want =
+      currentRoute.type === "user"
+        ? buildProfilePath(user.name, {
+            tab: currentRoute.tab,
+            year: currentRoute.year,
+            month: currentRoute.month,
+            lang: currentRoute.lang,
+          })
+        : buildProfilePath(user.name);
+    navigateToPath(want, { replace: true });
   }, [loaded, user]);
 
   useEffect(() => {
-    const r = parseRouteFromHash();
+    const r = parseRoute();
     if (r.type === "home") {
       resetToHomeLanding();
       return;

@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { PeriodRecordsBundle } from "../../types/domain";
+import { useT } from "../../i18n/I18n";
 import { RecordCard } from "./RecordCard";
 import { RecordsCarouselSection } from "./RecordsCarouselSection";
 
@@ -8,43 +9,81 @@ type RecordsSectionProps = {
   kind: "anime" | "manga";
 };
 
-/** Libellés qui diffèrent entre anime (épisodes vus) et manga (chapitres lus). */
-const COPY = {
-  anime: {
-    unit: "épisode",
-    biggestSessionHint: "Plus grand nombre d'épisodes vus en un seul jour de la période sélectionnée.",
-    firstStartedHint: "Premier anime commencé (date startedAt la plus ancienne) durant la période sélectionnée.",
-    lastStartedHint: "Dernier anime commencé (date startedAt la plus récente) durant la période sélectionnée.",
-    firstActivityHint:
-      "Toute première activité anime de la période (épisode vu, changement de statut, etc.), nouvelle série ou non.",
-    lastActivityHint:
-      "Toute dernière activité anime enregistrée sur la période, peu importe qu'il s'agisse d'une nouvelle série ou d'une série en cours.",
-    mostPromisingPlannedHint: "Anime planifié avec la meilleure moyenne globale AniList. Disponible surtout en All Time.",
-    longestStreakHint:
-      "Plus long enchaînement de jours consécutifs avec au moins une activité (épisode vu) sur la période.",
-  },
-  manga: {
-    unit: "chapitre",
-    biggestSessionHint: "Plus grand nombre de chapitres lus en un seul jour de la période sélectionnée.",
-    firstStartedHint: "Premier manga commencé (date startedAt la plus ancienne) durant la période sélectionnée.",
-    lastStartedHint: "Dernier manga commencé (date startedAt la plus récente) durant la période sélectionnée.",
-    firstActivityHint:
-      "Toute première activité manga de la période (chapitre lu, volume complété, changement de statut), nouvelle série ou non.",
-    lastActivityHint:
-      "Toute dernière activité manga enregistrée sur la période, peu importe qu'il s'agisse d'une nouvelle série ou d'une série en cours.",
-    mostPromisingPlannedHint: "Manga planifié avec la meilleure moyenne globale AniList. Disponible surtout en All Time.",
-    longestStreakHint:
-      "Plus long enchaînement de jours consécutifs avec au moins une activité (chapitre lu) sur la période.",
-  },
-} as const;
-
 /**
  * Carrousel « Records & faits marquants » des onglets liste. La structure est
  * identique côté anime et manga ; seuls quelques libellés (unité : épisodes vs
  * chapitres) et identifiants varient, sélectionnés via `kind`.
  */
 export function RecordsSection({ records, kind }: RecordsSectionProps) {
-  const copy = COPY[kind];
+  const t = useT();
+
+  const copy = useMemo(() => {
+    if (kind === "anime") {
+      return {
+        unit: t("épisode", "episode"),
+        biggestSessionHint: t(
+          "Plus grand nombre d'épisodes vus en un seul jour de la période sélectionnée.",
+          "Largest number of episodes watched in a single day of the selected period."
+        ),
+        firstStartedHint: t(
+          "Premier anime commencé (date startedAt la plus ancienne) durant la période sélectionnée.",
+          "First anime started (earliest startedAt date) during the selected period."
+        ),
+        lastStartedHint: t(
+          "Dernier anime commencé (date startedAt la plus récente) durant la période sélectionnée.",
+          "Latest anime started (most recent startedAt date) during the selected period."
+        ),
+        firstActivityHint: t(
+          "Toute première activité anime de la période (épisode vu, changement de statut, etc.), nouvelle série ou non.",
+          "Very first anime activity in the period (episode watched, status change, etc.), new series or not."
+        ),
+        lastActivityHint: t(
+          "Toute dernière activité anime enregistrée sur la période, peu importe qu'il s'agisse d'une nouvelle série ou d'une série en cours.",
+          "Very last anime activity recorded in the period, whether a new series or one in progress."
+        ),
+        mostPromisingPlannedHint: t(
+          "Anime planifié avec la meilleure moyenne globale AniList. Disponible surtout en All Time.",
+          "Planned anime with the best global AniList average. Mostly available in All Time."
+        ),
+        longestStreakHint: t(
+          "Plus long enchaînement de jours consécutifs avec au moins une activité (épisode vu) sur la période.",
+          "Longest streak of consecutive days with at least one activity (episode watched) in the period."
+        ),
+      };
+    }
+    return {
+      unit: t("chapitre", "chapter"),
+      biggestSessionHint: t(
+        "Plus grand nombre de chapitres lus en un seul jour de la période sélectionnée.",
+        "Largest number of chapters read in a single day of the selected period."
+      ),
+      firstStartedHint: t(
+        "Premier manga commencé (date startedAt la plus ancienne) durant la période sélectionnée.",
+        "First manga started (earliest startedAt date) during the selected period."
+      ),
+      lastStartedHint: t(
+        "Dernier manga commencé (date startedAt la plus récente) durant la période sélectionnée.",
+        "Latest manga started (most recent startedAt date) during the selected period."
+      ),
+      firstActivityHint: t(
+        "Toute première activité manga de la période (chapitre lu, volume complété, changement de statut), nouvelle série ou non.",
+        "Very first manga activity in the period (chapter read, volume completed, status change), new series or not."
+      ),
+      lastActivityHint: t(
+        "Toute dernière activité manga enregistrée sur la période, peu importe qu'il s'agisse d'une nouvelle série ou d'une série en cours.",
+        "Very last manga activity recorded in the period, whether a new series or one in progress."
+      ),
+      mostPromisingPlannedHint: t(
+        "Manga planifié avec la meilleure moyenne globale AniList. Disponible surtout en All Time.",
+        "Planned manga with the best global AniList average. Mostly available in All Time."
+      ),
+      longestStreakHint: t(
+        "Plus long enchaînement de jours consécutifs avec au moins une activité (chapitre lu) sur la période.",
+        "Longest streak of consecutive days with at least one activity (chapter read) in the period."
+      ),
+    };
+  }, [kind, t]);
+
   const cards: ReactNode[] = [];
 
   if (records.longestCompleted) {
@@ -52,7 +91,7 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
       <RecordCard
         key="longest"
         icon="trophy"
-        label="Plus longue série complétée"
+        label={t("Plus longue série complétée", "Longest completed series")}
         value={`${records.longestCompleted.count} ${copy.unit}${records.longestCompleted.count > 1 ? "s" : ""}`}
         media={records.longestCompleted.media}
       />
@@ -63,7 +102,7 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
       <RecordCard
         key="high"
         icon="star"
-        label="Plus haute note attribuée"
+        label={t("Plus haute note attribuée", "Highest score given")}
         value={`${records.highestScore.score.toFixed(1)} / 10`}
         media={records.highestScore.media}
       />
@@ -74,7 +113,7 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
       <RecordCard
         key="low"
         icon="thumbs-down"
-        label="Plus basse note attribuée"
+        label={t("Plus basse note attribuée", "Lowest score given")}
         value={`${records.lowestScore.score.toFixed(1)} / 10`}
         media={records.lowestScore.media}
       />
@@ -85,9 +124,9 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
       <RecordCard
         key="biggest"
         icon="bolt"
-        label="Plus grosse session"
+        label={t("Plus grosse session", "Biggest session")}
         value={`${records.biggestSession.count} ${copy.unit}${records.biggestSession.count > 1 ? "s" : ""}`}
-        sub={`Le ${records.biggestSession.dateLabel}`}
+        sub={t(`Le ${records.biggestSession.dateLabel}`, `On ${records.biggestSession.dateLabel}`)}
         labelHint={copy.biggestSessionHint}
       />
     );
@@ -97,7 +136,7 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
       <RecordCard
         key="first"
         icon="flag"
-        label="Première nouvelle série"
+        label={t("Première nouvelle série", "First new series")}
         value={records.firstStarted.dateLabel}
         media={records.firstStarted.media}
         labelHint={copy.firstStartedHint}
@@ -109,7 +148,7 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
       <RecordCard
         key="last"
         icon="check"
-        label="Dernière nouvelle série"
+        label={t("Dernière nouvelle série", "Latest new series")}
         value={records.lastStarted.dateLabel}
         media={records.lastStarted.media}
         labelHint={copy.lastStartedHint}
@@ -122,8 +161,8 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
       <RecordCard
         key="works-started"
         icon="stack"
-        label="Œuvres commencées"
-        value={`${n} œuvre${n > 1 ? "s" : ""}`}
+        label={t("Œuvres commencées", "Titles started")}
+        value={t(`${n} œuvre${n > 1 ? "s" : ""}`, `${n} title${n > 1 ? "s" : ""}`)}
         mediaStack={records.worksStartedInPeriod.spotlight.map((r) => ({
           id: r.id,
           title: r.title,
@@ -131,7 +170,10 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
           coverColor: r.coverColor,
           anilistUrl: r.anilistUrl,
         }))}
-        labelHint="Titres distincts dont la date de début sur la liste (startedAt) tombe dans la période sélectionnée. Vignettes : vos meilleures notes, sinon les meilleures moyennes AniList."
+        labelHint={t(
+          "Titres distincts dont la date de début sur la liste (startedAt) tombe dans la période sélectionnée. Vignettes : vos meilleures notes, sinon les meilleures moyennes AniList.",
+          "Distinct titles whose list start date (startedAt) falls in the selected period. Thumbnails: your top scores, otherwise best AniList averages."
+        )}
       />
     );
   }
@@ -141,8 +183,8 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
       <RecordCard
         key="works-completed"
         icon="check"
-        label="Œuvres terminées"
-        value={`${n} œuvre${n > 1 ? "s" : ""}`}
+        label={t("Œuvres terminées", "Titles completed")}
+        value={t(`${n} œuvre${n > 1 ? "s" : ""}`, `${n} title${n > 1 ? "s" : ""}`)}
         mediaStack={records.worksCompletedInPeriod.spotlight.map((r) => ({
           id: r.id,
           title: r.title,
@@ -150,7 +192,10 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
           coverColor: r.coverColor,
           anilistUrl: r.anilistUrl,
         }))}
-        labelHint="Titres passés en « terminé » avec une date de complétion (completedAt) dans la période sélectionnée. Vignettes : vos meilleures notes, sinon les meilleures moyennes AniList."
+        labelHint={t(
+          "Titres passés en « terminé » avec une date de complétion (completedAt) dans la période sélectionnée. Vignettes : vos meilleures notes, sinon les meilleures moyennes AniList.",
+          "Titles marked completed with a completion date (completedAt) in the selected period. Thumbnails: your top scores, otherwise best AniList averages."
+        )}
       />
     );
   }
@@ -159,7 +204,7 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
       <RecordCard
         key="first-activity"
         icon="calendar"
-        label="Première activité"
+        label={t("Première activité", "First activity")}
         value={records.firstActivity.dateLabel}
         media={records.firstActivity.media}
         labelHint={copy.firstActivityHint}
@@ -171,7 +216,7 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
       <RecordCard
         key="last-activity"
         icon="clock"
-        label="Dernière activité"
+        label={t("Dernière activité", "Last activity")}
         value={records.lastActivity.dateLabel}
         media={records.lastActivity.media}
         labelHint={copy.lastActivityHint}
@@ -184,13 +229,19 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
       <RecordCard
         key="opinion-gap"
         icon="divide"
-        label="Écart d'opinion maximal"
+        label={t("Écart d'opinion maximal", "Largest opinion gap")}
         value={`${deltaSign}${records.biggestOpinionGap.gap.toFixed(1)}`}
         media={{
           ...records.biggestOpinionGap.media,
-          meta: `Vous ${records.biggestOpinionGap.userScore.toFixed(1)} · AniList ${records.biggestOpinionGap.averageScore.toFixed(1)}`,
+          meta: t(
+            `Vous ${records.biggestOpinionGap.userScore.toFixed(1)} · AniList ${records.biggestOpinionGap.averageScore.toFixed(1)}`,
+            `You ${records.biggestOpinionGap.userScore.toFixed(1)} · AniList ${records.biggestOpinionGap.averageScore.toFixed(1)}`
+          ),
         }}
-        labelHint="Plus grand écart absolu entre votre note et la moyenne AniList, ramenées sur 10."
+        labelHint={t(
+          "Plus grand écart absolu entre votre note et la moyenne AniList, ramenées sur 10.",
+          "Largest absolute gap between your score and the AniList average, on a /10 scale."
+        )}
       />
     );
   }
@@ -199,7 +250,7 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
       <RecordCard
         key="promising-planned"
         icon="flag"
-        label="Planifié le plus prometteur"
+        label={t("Planifié le plus prometteur", "Most promising planned")}
         value={`${records.mostPromisingPlanned.averageScore.toFixed(1)} / 10`}
         media={records.mostPromisingPlanned.media}
         labelHint={copy.mostPromisingPlannedHint}
@@ -211,10 +262,20 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
       <RecordCard
         key="fast"
         icon="rocket"
-        label="Plus rapide à terminer"
-        value={records.fastestCompleted.days === 0 ? "En 1 journée" : `${records.fastestCompleted.days} jour${records.fastestCompleted.days > 1 ? "s" : ""}`}
+        label={t("Plus rapide à terminer", "Fastest to complete")}
+        value={
+          records.fastestCompleted.days === 0
+            ? t("En 1 journée", "In 1 day")
+            : t(
+                `${records.fastestCompleted.days} jour${records.fastestCompleted.days > 1 ? "s" : ""}`,
+                `${records.fastestCompleted.days} day${records.fastestCompleted.days > 1 ? "s" : ""}`
+              )
+        }
         media={records.fastestCompleted.media}
-        labelHint="Durée la plus courte entre la date de début (startedAt) et la date de fin (completedAt)."
+        labelHint={t(
+          "Durée la plus courte entre la date de début (startedAt) et la date de fin (completedAt).",
+          "Shortest time between start date (startedAt) and completion date (completedAt)."
+        )}
       />
     );
   }
@@ -223,12 +284,18 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
       <RecordCard
         key="streak"
         icon="flame"
-        label="Plus longue série de jours"
-        value={`${records.longestStreak.length} jour${records.longestStreak.length > 1 ? "s" : ""}`}
+        label={t("Plus longue série de jours", "Longest day streak")}
+        value={t(
+          `${records.longestStreak.length} jour${records.longestStreak.length > 1 ? "s" : ""}`,
+          `${records.longestStreak.length} day${records.longestStreak.length > 1 ? "s" : ""}`
+        )}
         sub={
           records.longestStreak.length === 1
-            ? `Le ${records.longestStreak.startDateLabel}`
-            : `Du ${records.longestStreak.startDateLabel} au ${records.longestStreak.endDateLabel}`
+            ? t(`Le ${records.longestStreak.startDateLabel}`, `On ${records.longestStreak.startDateLabel}`)
+            : t(
+                `Du ${records.longestStreak.startDateLabel} au ${records.longestStreak.endDateLabel}`,
+                `From ${records.longestStreak.startDateLabel} to ${records.longestStreak.endDateLabel}`
+              )
         }
         labelHint={copy.longestStreakHint}
       />
@@ -239,7 +306,7 @@ export function RecordsSection({ records, kind }: RecordsSectionProps) {
     <RecordsCarouselSection
       sectionId={`${kind}-records`}
       titleId={`${kind}-records-title`}
-      title="Records & faits marquants"
+      title={t("Records & faits marquants", "Records & highlights")}
       cards={cards}
       collapseId={`${kind}.records`}
     />

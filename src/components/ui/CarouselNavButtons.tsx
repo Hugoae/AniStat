@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import { useT } from "../../i18n/I18n";
 
 export type CarouselNavButtonsProps = {
   /** Ref vers le conteneur scrollable (flex row + overflow-x: auto). */
@@ -36,6 +37,7 @@ export function CarouselNavButtons({
   ariaLabelBase,
   step = "item",
 }: CarouselNavButtonsProps) {
+  const t = useT();
   const scroll = (dir: -1 | 1) => {
     const el = scrollRef.current;
     if (!el) return;
@@ -66,7 +68,7 @@ export function CarouselNavButtons({
         className="carousel-nav-btn carousel-nav-btn--prev"
         onClick={() => scroll(-1)}
         disabled={!canScrollLeft}
-        aria-label={`${ariaLabelBase} : défiler vers la gauche`}
+        aria-label={`${ariaLabelBase} : ${t("défiler vers la gauche", "scroll left")}`}
         tabIndex={canScrollLeft ? 0 : -1}
         aria-hidden={!canScrollLeft}
       >
@@ -90,7 +92,7 @@ export function CarouselNavButtons({
         className="carousel-nav-btn carousel-nav-btn--next"
         onClick={() => scroll(1)}
         disabled={!canScrollRight}
-        aria-label={`${ariaLabelBase} : défiler vers la droite`}
+        aria-label={`${ariaLabelBase} : ${t("défiler vers la droite", "scroll right")}`}
         tabIndex={canScrollRight ? 0 : -1}
         aria-hidden={!canScrollRight}
       >

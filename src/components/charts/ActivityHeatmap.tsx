@@ -4,6 +4,8 @@ import { EmptyState, SectionTitle } from "../ui";
 import { ChartCollapseToggle } from "./ChartCollapseToggle";
 import { StatLabelHint } from "../ui/StatPrimitives";
 import { useCollapsedChart } from "../../hooks/useCollapsedChart";
+import { useLang, useT } from "../../i18n/I18n";
+import type { Lang } from "../../lib/routing";
 
 /**
  * Données quotidiennes (clé `YYYY-MM-DD` → valeur agrégée).
@@ -82,6 +84,44 @@ const FR_LONG_DAYS = [
   "samedi",
   "dimanche",
 ] as const;
+const EN_DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+const EN_MONTH_LABELS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+const EN_LONG_MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const;
+const EN_LONG_DAYS = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+] as const;
 
 /** Index 0..6 pour Lun..Dim (semaine ISO française). */
 function frDayIndex(date: Date): number {
@@ -100,7 +140,10 @@ function pluralizeFr(n: number, singular: string, plural?: string): string {
   return n > 1 ? plural || `${singular}s` : singular;
 }
 
-function formatLongDate(date: Date): string {
+function formatLongDate(date: Date, lang: Lang): string {
+  if (lang === "en") {
+    return `${EN_LONG_DAYS[frDayIndex(date)]}, ${EN_LONG_MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+  }
   return `${FR_LONG_DAYS[frDayIndex(date)]} ${date.getDate()} ${FR_LONG_MONTHS[date.getMonth()]} ${date.getFullYear()}`;
 }
 
@@ -154,7 +197,8 @@ type HeatmapMatrix = {
   totalValue: number;
 };
 
-function buildMatrix(year: number, dailyTotals: DailyTotalsByIso): HeatmapMatrix {
+function buildMatrix(year: number, dailyTotals: DailyTotalsByIso, lang: Lang): HeatmapMatrix {
+  const monthAbbrs = lang === "en" ? EN_MONTH_LABELS : FR_MONTH_LABELS;
   const start = new Date(year, 0, 1);
   const end = new Date(year, 11, 31);
   const startDow = frDayIndex(start);
@@ -237,7 +281,7 @@ function buildMatrix(year: number, dailyTotals: DailyTotalsByIso): HeatmapMatrix
     const firstReal = colCells[0];
     const m = firstReal.date.getMonth();
     if (m !== lastMonth) {
-      monthLabels.push({ weekIdx: w, label: FR_MONTH_LABELS[m] });
+      monthLabels.push({ weekIdx: w, label: monthAbbrs[m] });
       lastMonth = m;
     }
   }
@@ -328,6 +372,8 @@ export function ActivityHeatmap({
   className,
   emptyExtra,
 }: ActivityHeatmapProps) {
+  const t = useT();
+  const lang = useLang();
   const collapseState = useCollapsedChart(collapseId || "");
   const collapsed = collapseId ? collapseState.collapsed : false;
   const reactId = useId();
@@ -335,7 +381,8 @@ export function ActivityHeatmap({
   const isAllTime = year === 0;
   const matrixYear = isAllTime ? new Date().getFullYear() : year;
 
-  const matrix = useMemo(() => buildMatrix(matrixYear, dailyTotals), [matrixYear, dailyTotals]);
+  const matrix = useMemo(() => buildMatrix(matrixYear, dailyTotals, lang), [matrixYear, dailyTotals, lang]);
+  const dayLabels = lang === "en" ? EN_DAY_LABELS : FR_DAY_LABELS;
 
   const [tooltip, setTooltip] = useState<TooltipState>({
     visible: false,
@@ -398,7 +445,8 @@ export function ActivityHeatmap({
   };
 
   const totalsLabel = pluralizeFr(matrix.totalValue, unitSingular, unitPlural);
-  const activeDaysLabel = pluralizeFr(matrix.totalActiveDays, "jour actif", "jours actifs");
+  const activeDaysLabel =
+    matrix.totalActiveDays > 1 ? t("jours actifs", "active days") : t("jour actif", "active day");
 
   return (
     <div className={`activity-heatmap${className ? ` ${className}` : ""}`}>
@@ -428,18 +476,24 @@ export function ActivityHeatmap({
         <div id={collapseId ? bodyId : undefined} className="collapsible-chart-animator__inner">
           <ChartCard
             noTitle
-            screenReaderSummary={`Heatmap d'activité ${isAllTime ? "All Time" : year} : ${matrix.totalActiveDays} jours actifs, ${matrix.totalValue} ${totalsLabel} au total.`}
+            screenReaderSummary={`${t("Heatmap d'activité", "Activity heatmap")} ${isAllTime ? "All Time" : year} : ${matrix.totalActiveDays} ${t("jours actifs", "active days")}, ${matrix.totalValue} ${totalsLabel} ${t("au total", "in total")}.`}
           >
             {isAllTime ? (
               <EmptyState
                 icon="calendar"
-                title="Le calendrier quotidien n'est pas disponible en All Time."
+                title={t(
+                  "Le calendrier quotidien n'est pas disponible en All Time.",
+                  "The daily calendar is not available in All Time mode."
+                )}
                 cta={emptyExtra}
               />
             ) : matrix.totalActiveDays === 0 ? (
               <EmptyState
                 icon="calendar"
-                title={`Aucune activité enregistrée sur l'année ${year}.`}
+                title={t(
+                  `Aucune activité enregistrée sur l'année ${year}.`,
+                  `No activity recorded for ${year}.`
+                )}
                 cta={emptyExtra}
               />
             ) : (
@@ -451,10 +505,10 @@ export function ActivityHeatmap({
                     height={svgHeight}
                     viewBox={`0 0 ${svgWidth} ${svgHeight}`}
                     role="img"
-                    aria-label={`Calendrier d'activité ${year}`}
+                    aria-label={`${t("Calendrier d'activité", "Activity calendar")} ${year}`}
                   >
                     {/* Étiquettes de jours sur la colonne de gauche */}
-                    {FR_DAY_LABELS.map((lbl, rowIdx) => {
+                    {dayLabels.map((lbl, rowIdx) => {
                       /** N'affiche qu'une ligne sur deux pour éviter le bruit visuel. */
                       const visible = rowIdx === 0 || rowIdx === 2 || rowIdx === 4 || rowIdx === 6;
                       if (!visible) return null;
@@ -526,7 +580,7 @@ export function ActivityHeatmap({
                     style={{ left: tooltip.x, top: tooltip.y }}
                     role="tooltip"
                   >
-                    <div className="activity-heatmap__tooltip-date">{formatLongDate(tooltip.cell.date)}</div>
+                    <div className="activity-heatmap__tooltip-date">{formatLongDate(tooltip.cell.date, lang)}</div>
                     <div className="activity-heatmap__tooltip-main">
                       <strong>{tooltip.cell.value}</strong>{" "}
                       {pluralizeFr(tooltip.cell.value, unitSingular, unitPlural)}
@@ -552,10 +606,10 @@ export function ActivityHeatmap({
                 <div className="activity-heatmap__footer">
                   <div className="activity-heatmap__total">
                     <strong>{matrix.totalActiveDays}</strong> {activeDaysLabel}{" · "}
-                    <strong>{matrix.totalValue}</strong> {totalsLabel} sur {year}
+                    <strong>{matrix.totalValue}</strong> {totalsLabel} {t("sur", "in")} {year}
                   </div>
                   <div className="activity-heatmap__legend" aria-hidden>
-                    <span className="activity-heatmap__legend-label">Moins</span>
+                    <span className="activity-heatmap__legend-label">{t("Moins", "Less")}</span>
                     {[0, 1, 2, 3, 4].map((b) => (
                       <span
                         key={b}
@@ -566,7 +620,7 @@ export function ActivityHeatmap({
                         }}
                       />
                     ))}
-                    <span className="activity-heatmap__legend-label">Plus</span>
+                    <span className="activity-heatmap__legend-label">{t("Plus", "More")}</span>
                   </div>
                 </div>
               </div>

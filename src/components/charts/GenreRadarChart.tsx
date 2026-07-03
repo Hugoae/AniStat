@@ -14,6 +14,7 @@ import { ChartCard } from "./ChartCard";
 import { GenreRadarTooltip } from "./ChartTooltips";
 import { RechartsWhenVisible } from "./RechartsWhenVisible";
 import { EmptyState } from "../ui";
+import { useT } from "../../i18n/I18n";
 
 export type GenreRadarRow = {
   name: string;
@@ -57,6 +58,7 @@ function GenreAngleTick({
 }
 
 export function GenreRadarChart({ kind, rows, comparisonLabel, emptyCta }: GenreRadarChartProps) {
+  const t = useT();
   const [showComparison, setShowComparison] = useState(true);
   const canCompare = Boolean(comparisonLabel);
   const radarData = useMemo(() => rows.slice(0, ANIME_GENRE_RADAR_TOP_N), [rows]);
@@ -69,19 +71,25 @@ export function GenreRadarChart({ kind, rows, comparisonLabel, emptyCta }: Genre
   );
   const emptyTitle =
     kind === "manga"
-      ? "Aucun genre renseigné pour les manga de cette période."
-      : "Aucun genre renseigné pour les anime de cette période.";
+      ? t(
+          "Aucun genre renseigné pour les manga de cette période.",
+          "No genre listed for the manga in this period."
+        )
+      : t(
+          "Aucun genre renseigné pour les anime de cette période.",
+          "No genre listed for the anime in this period."
+        );
   const countLabel = kind === "manga" ? "Manga" : "Anime";
 
   return (
     <ChartCard
       noTitle
-      screenReaderSummary={`Radar des dix genres les plus fréquents sur les ${kind} de la période, avec pourcentage de titres${canCompare ? " et comparaison optionnelle" : ""}.`}
+      screenReaderSummary={`${t("Radar des dix genres les plus fréquents sur les", "Radar of the ten most frequent genres among the")} ${kind} ${t("de la période, avec pourcentage de titres", "in the period, with percentage of titles")}${canCompare ? t(" et comparaison optionnelle", " and optional comparison") : ""}.`}
       dataTable={{
-        caption: `Genres ${kind} les plus fréquents`,
+        caption: `${t("Genres", "Genres")} ${kind} ${t("les plus fréquents", "most frequent")}`,
         columns: canCompare && showComparison
-          ? ["Genre", "Titres", "% titres", `Titres ${comparisonLabel}`, `% ${comparisonLabel}`]
-          : ["Genre", "Titres", "% titres"],
+          ? [t("Genre", "Genre"), t("Titres", "Titles"), t("% titres", "% titles"), `${t("Titres", "Titles")} ${comparisonLabel}`, `% ${comparisonLabel}`]
+          : [t("Genre", "Genre"), t("Titres", "Titles"), t("% titres", "% titles")],
         rows: radarData.map((row) =>
           canCompare && showComparison
             ? [
@@ -105,7 +113,9 @@ export function GenreRadarChart({ kind, rows, comparisonLabel, emptyCta }: Genre
                 aria-pressed={showComparison}
                 onClick={() => setShowComparison((value) => !value)}
               >
-                {showComparison ? `Masquer ${comparisonLabel}` : `Comparer à ${comparisonLabel}`}
+                {showComparison
+                  ? `${t("Masquer", "Hide")} ${comparisonLabel}`
+                  : `${t("Comparer à", "Compare to")} ${comparisonLabel}`}
               </button>
             </div>
           ) : null}
@@ -129,7 +139,7 @@ export function GenreRadarChart({ kind, rows, comparisonLabel, emptyCta }: Genre
                   />
                 ) : null}
                 <Radar
-                  name="Cette période"
+                  name={t("Cette période", "This period")}
                   dataKey="count"
                   stroke={C.accent}
                   fill={C.accent}

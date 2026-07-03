@@ -1,4 +1,5 @@
-import { C, MONTHS, MONTHS_FULL } from "../../config/constants";
+import { C, MONTHS, monthsFull } from "../../config/constants";
+import { useLang, useT } from "../../i18n/I18n";
 
 type TooltipPayloadEntry = {
   dataKey?: string | number;
@@ -57,18 +58,24 @@ export function CompareLineTooltip({
   year: number;
   month: number;
 }) {
+  const lang = useLang();
   if (!active || !payload?.length) return null;
   const cur = payload.find((p) => p.dataKey === "current");
   const cmp = payload.find((p) => p.dataKey === "compare");
+  const fullMonths = monthsFull(lang);
   const title = (() => {
     if (year === 0) return String(label);
     if (month === 0) {
       const idx = (MONTHS as readonly string[]).indexOf(label || "");
-      if (idx >= 0) return `${MONTHS_FULL[idx]} ${year}`;
+      if (idx >= 0) return `${fullMonths[idx]} ${year}`;
       return String(label);
     }
     const day = parseInt(String(label), 10);
-    if (!Number.isNaN(day) && month > 0) return `${day} ${MONTHS_FULL[month - 1]} ${year}`;
+    if (!Number.isNaN(day) && month > 0) {
+      return lang === "en"
+        ? `${fullMonths[month - 1]} ${day}, ${year}`
+        : `${day} ${fullMonths[month - 1]} ${year}`;
+    }
     return String(label);
   })();
   return (
@@ -95,6 +102,7 @@ export function GenreRadarTooltip({
   compareLabel?: string;
   countLabel?: string;
 }) {
+  const t = useT();
   if (!active || !payload?.length) return null;
   const row = payload[0]?.payload as GenreTooltipRow | undefined;
   if (!row) return null;
@@ -103,7 +111,7 @@ export function GenreRadarTooltip({
     <div className="chart-tooltip chart-tooltip--basic">
       <div className="chart-tooltip__label">{row.name}</div>
       <div style={{ color: C.accent }}>
-        Cette période : {row.count || 0} {countLabel.toLowerCase()}, {formatPercent(row.percent)}
+        {t("Cette période", "This period")} : {row.count || 0} {countLabel.toLowerCase()}, {formatPercent(row.percent)}
       </div>
       {compareLabel ? (
         <div style={{ color: C.purple }}>

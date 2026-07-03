@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
+import { useT } from "../i18n/I18n";
 import { devLog, fetchActivitiesWithRetry } from "../lib/profileLocalCache";
 import {
   reportPersistenceFailure,
@@ -26,7 +27,8 @@ type ActivitySnapshotType = "ANIME_LIST" | "MANGA_LIST";
 function archiveActivitiesToSupabase(
   userId: number,
   activityType: ActivitySnapshotType,
-  activities: ActivityItem[]
+  activities: ActivityItem[],
+  contextWord: string
 ) {
   if (!userId || activities.length === 0) return;
   void (async () => {
@@ -34,9 +36,9 @@ function archiveActivitiesToSupabase(
       await saveActivities(userId, activityType, activities);
       await updateActivitySyncState(userId, activityType, activities);
       devLog("supabase activities archive", `${activityType}:${activities.length}`);
-      reportPersistenceSuccess(`activités ${activityType}`);
+      reportPersistenceSuccess(`${contextWord} ${activityType}`);
     } catch (err: unknown) {
-      reportPersistenceFailure(`activités ${activityType}`, err);
+      reportPersistenceFailure(`${contextWord} ${activityType}`, err);
     }
   })();
 }
@@ -197,6 +199,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     metricInc,
     refs,
   } = p;
+  const t = useT();
 
   const {
     latestUserIdRef,
@@ -366,8 +369,8 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
             : mangaActivityCache[targetYear] || [];
         const nextAnime = shouldUseDelta ? mergeActivityRows(aActs, existingAnime) : aActs;
         const nextManga = shouldUseDelta ? mergeActivityRows(mActs, existingManga) : mActs;
-        archiveActivitiesToSupabase(uid, "ANIME_LIST", aActs);
-        archiveActivitiesToSupabase(uid, "MANGA_LIST", mActs);
+        archiveActivitiesToSupabase(uid, "ANIME_LIST", aActs, t("activités", "activity"));
+        archiveActivitiesToSupabase(uid, "MANGA_LIST", mActs, t("activités", "activity"));
         setAnimeActivityCache((prev) => ({ ...prev, [targetYear]: nextAnime }));
         setMangaActivityCache((prev) => ({ ...prev, [targetYear]: nextManga }));
         setResource(aKey, "success");
@@ -389,7 +392,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
         const e = err as { name?: string; message?: string };
         if (e?.name === "AbortError") return;
         if (latestUserIdRef.current !== uid) return;
-        const msg = e?.message || "Erreur activite";
+        const msg = e?.message || t("Erreur activite", "Activity error");
         setResource(aKey, "error", msg);
         setResource(mKey, "error", msg);
         if (String(msg).includes("Rate limit") || String(msg).includes("429")) metricInc("rateLimitErrors");
@@ -416,6 +419,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
       setAnimeActivityCache,
       setMangaActivityCache,
       setResource,
+      t,
     ]
   );
 
@@ -568,7 +572,9 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     });
 
     if (missingSupabaseSignature) {
-      setActivityLoadingMessage("Lecture des activites depuis Supabase…");
+      setActivityLoadingMessage(
+        t("Lecture des activites depuis Supabase…", "Reading activity from Supabase…")
+      );
       setLoadingActivities(true);
       setActivityWarning(null);
       return;
@@ -581,7 +587,12 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
       compareYear >= 1970 &&
       (animeCache[compareYear] === undefined || mangaCache[compareYear] === undefined)
     ) {
-      setActivityWarning(`Comparaison ${compareYear} indisponible : données N-1 non synchronisées.`);
+      setActivityWarning(
+        t(
+          `Comparaison ${compareYear} indisponible : données N-1 non synchronisées.`,
+          `Comparison ${compareYear} unavailable: year-over-year data not synced.`
+        )
+      );
       return;
     }
     setActivityWarning(null);
@@ -594,6 +605,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
     setLoadingActivities,
     setActivityLoadingMessage,
     setActivityWarning,
+    t,
   ]);
 
   useEffect(() => {

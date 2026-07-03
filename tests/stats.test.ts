@@ -8,6 +8,7 @@ import {
   getMediaIdsWithProgressInPeriod,
   computePeriodProgressByMedia,
   normalizeListScoreToPoint10,
+  countActiveProgressDays,
   buildPeriodDeltaAudit,
   collectPeriodWorksStartedEntries,
   collectPeriodWorksCompletedEntries,
@@ -337,6 +338,43 @@ describe("stats", () => {
     ];
     const spot = pickSpotlightEntriesFromWorks(collectPeriodWorksStartedEntries(entries, 2026, 3), 3);
     expect(spot.map((e) => e.media.id)).toEqual([2, 1]);
+  });
+
+  it("countActiveProgressDays counts distinct days with real progress (anime + manga)", () => {
+    const day1 = Math.floor(new Date(2026, 4, 2, 10, 0, 0).getTime() / 1000);
+    const day2 = Math.floor(new Date(2026, 4, 3, 11, 0, 0).getTime() / 1000);
+    const anime = [
+      { id: 1, createdAt: day1, progress: 3, media: { id: 100, duration: 24 } },
+      { id: 2, createdAt: day2, progress: 5, media: { id: 100, duration: 24 } },
+    ];
+    const manga = [
+      { id: 3, createdAt: day2, progress: 4, media: { id: 200, chapters: 50 } },
+    ];
+    expect(countActiveProgressDays(anime, manga, 2026, 5)).toBe(2);
+    expect(countActiveProgressDays(anime, manga, 2026, 0)).toBe(2);
+    expect(countActiveProgressDays(anime, manga, 0, 0)).toBe(2);
+  });
+
+  it("countActiveProgressDays ignores days without progress delta", () => {
+    const day1 = Math.floor(new Date(2026, 4, 2, 10, 0, 0).getTime() / 1000);
+    const day2 = Math.floor(new Date(2026, 4, 3, 11, 0, 0).getTime() / 1000);
+    const anime = [
+      { id: 1, createdAt: day1, progress: 10, media: { id: 100, duration: 24 } },
+      { id: 2, createdAt: day2, progress: 10, media: { id: 100, duration: 24 } },
+    ];
+    expect(countActiveProgressDays(anime, [], 2026, 5)).toBe(1);
+  });
+
+  it("countActiveProgressDays respects the selected period", () => {
+    const may = Math.floor(new Date(2026, 4, 2, 10, 0, 0).getTime() / 1000);
+    const june = Math.floor(new Date(2026, 5, 2, 10, 0, 0).getTime() / 1000);
+    const anime = [
+      { id: 1, createdAt: may, progress: 2, media: { id: 100, duration: 24 } },
+      { id: 2, createdAt: june, progress: 5, media: { id: 100, duration: 24 } },
+    ];
+    expect(countActiveProgressDays(anime, [], 2026, 5)).toBe(1);
+    expect(countActiveProgressDays(anime, [], 2026, 0)).toBe(2);
+    expect(countActiveProgressDays(anime, [], 2025, 0)).toBe(0);
   });
 
   it("collectPeriodWorksCompletedEntries only completed in period", () => {

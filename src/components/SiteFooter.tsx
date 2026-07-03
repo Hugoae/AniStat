@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { SITE } from "../config/site";
+import { useT, type TFunction } from "../i18n/I18n";
 
 const ANILIST_URL = "https://anilist.co";
 const GITHUB_URL = "https://github.com/Hugoae/AniStat";
@@ -13,6 +14,7 @@ const AUTHOR = "Hugoae";
  * clic hors carte, touche Échap, bouton ×).
  */
 export function SiteFooter() {
+  const t = useT();
   const [legalOpen, setLegalOpen] = useState(false);
   const year = new Date().getFullYear();
 
@@ -21,14 +23,17 @@ export function SiteFooter() {
       <div className="site-footer__inner">
         <div className="site-footer__brand">
           <span className="site-footer__name">{SITE.name}</span>
-          <span className="site-footer__tagline">Statistiques de profils AniList</span>
+          <span className="site-footer__tagline">{t("Statistiques de profils AniList", "AniList profile stats")}</span>
         </div>
 
         <p className="site-footer__disclaimer">
-          Projet non officiel, sans affiliation avec AniList. Données et images © AniList.
+          {t(
+            "Projet non officiel, sans affiliation avec AniList. Données et images © AniList.",
+            "Unofficial project, not affiliated with AniList. Data and images © AniList."
+          )}
         </p>
 
-        <nav className="site-footer__links" aria-label="Liens du pied de page">
+        <nav className="site-footer__links" aria-label={t("Liens du pied de page", "Footer links")}>
           <a
             className="site-footer__link"
             href={ANILIST_URL}
@@ -50,12 +55,12 @@ export function SiteFooter() {
             className="site-footer__legal-btn"
             onClick={() => setLegalOpen(true)}
           >
-            Mentions légales
+            {t("Mentions légales", "Legal notice")}
           </button>
         </nav>
 
         <p className="site-footer__credit">
-          Créé par{" "}
+          {t("Créé par", "Created by")}{" "}
           <a
             className="site-footer__link"
             href={`https://github.com/${AUTHOR}`}
@@ -68,12 +73,12 @@ export function SiteFooter() {
         </p>
       </div>
 
-      {legalOpen ? <LegalModal onClose={() => setLegalOpen(false)} /> : null}
+      {legalOpen ? <LegalModal onClose={() => setLegalOpen(false)} t={t} /> : null}
     </footer>
   );
 }
 
-function LegalModal({ onClose }: { onClose: () => void }) {
+function LegalModal({ onClose, t }: { onClose: () => void; t: TFunction }) {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -99,51 +104,53 @@ function LegalModal({ onClose }: { onClose: () => void }) {
           type="button"
           className="legal-modal__close"
           onClick={onClose}
-          aria-label="Fermer"
+          aria-label={t("Fermer", "Close")}
         >
           ×
         </button>
 
         <h2 id="legal-modal-title" className="legal-modal__title">
-          Mentions légales & confidentialité
+          {t("Mentions légales & confidentialité", "Legal notice & privacy")}
         </h2>
 
         <div className="legal-modal__body">
           <section className="legal-modal__section">
-            <h3 className="legal-modal__heading">Nature du site</h3>
+            <h3 className="legal-modal__heading">{t("Nature du site", "About this site")}</h3>
             <p>
-              {SITE.name} est un projet personnel et non commercial qui permet de
-              visualiser les statistiques d&apos;un profil AniList public. Ce site
-              n&apos;est ni affilié, ni sponsorisé, ni approuvé par AniList.
+              {t(
+                `${SITE.name} est un projet personnel et non commercial qui permet de visualiser les statistiques d'un profil AniList public. Ce site n'est ni affilié, ni sponsorisé, ni approuvé par AniList.`,
+                `${SITE.name} is a personal, non-commercial project to visualize the statistics of a public AniList profile. This site is not affiliated with, sponsored by, or endorsed by AniList.`
+              )}
             </p>
           </section>
 
           <section className="legal-modal__section">
-            <h3 className="legal-modal__heading">Données affichées</h3>
+            <h3 className="legal-modal__heading">{t("Données affichées", "Displayed data")}</h3>
             <p>
-              Les données (listes, notes, activités) et les images (jaquettes,
-              bannières, avatars) proviennent de l&apos;API publique d&apos;AniList et
-              restent la propriété de leurs détenteurs respectifs. Seuls les profils
-              publics peuvent être consultés.
+              {t(
+                "Les données (listes, notes, activités) et les images (jaquettes, bannières, avatars) proviennent de l'API publique d'AniList et restent la propriété de leurs détenteurs respectifs. Seuls les profils publics peuvent être consultés.",
+                "Data (lists, scores, activity) and images (covers, banners, avatars) come from AniList's public API and remain the property of their respective owners. Only public profiles can be viewed."
+              )}
             </p>
           </section>
 
           <section className="legal-modal__section">
-            <h3 className="legal-modal__heading">Confidentialité</h3>
+            <h3 className="legal-modal__heading">{t("Confidentialité", "Privacy")}</h3>
             <p>
-              {SITE.name} ne demande aucun mot de passe et ne collecte pas de données
-              personnelles à des fins publicitaires. Les statistiques d&apos;un profil
-              consulté peuvent être mises en cache (via Supabase) afin d&apos;accélérer
-              les chargements suivants, ces données proviennent uniquement d&apos;AniList
-              et peuvent être régénérées à tout moment.
+              {t(
+                `${SITE.name} ne demande aucun mot de passe et ne collecte pas de données personnelles à des fins publicitaires. Les statistiques d'un profil consulté peuvent être mises en cache (via Supabase) afin d'accélérer les chargements suivants, ces données proviennent uniquement d'AniList et peuvent être régénérées à tout moment.`,
+                `${SITE.name} never asks for a password and does not collect personal data for advertising. A viewed profile's statistics may be cached (via Supabase) to speed up later loads; this data comes only from AniList and can be regenerated at any time.`
+              )}
             </p>
           </section>
 
           <section className="legal-modal__section">
-            <h3 className="legal-modal__heading">Contact</h3>
+            <h3 className="legal-modal__heading">{t("Contact", "Contact")}</h3>
             <p>
-              Pour toute question, demande de retrait ou signalement de bug, ouvrez un
-              ticket sur{" "}
+              {t(
+                "Pour toute question, demande de retrait ou signalement de bug, ouvrez un ticket sur",
+                "For any question, removal request or bug report, open an issue on"
+              )}{" "}
               <a
                 className="site-footer__link"
                 href={GITHUB_ISSUES_URL}

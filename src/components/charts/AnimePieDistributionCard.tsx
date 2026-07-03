@@ -4,6 +4,7 @@ import { ChartCard } from "./ChartCard";
 import { EmptyState, MediaOriginFlagSvg, SectionTitle } from "../ui";
 import { ChartCollapseToggle } from "./ChartCollapseToggle";
 import { useCollapsedChart } from "../../hooks/useCollapsedChart";
+import { useT, useLang } from "../../i18n/I18n";
 export type AnimePieSlice = {
   key: string;
   label: string;
@@ -63,8 +64,8 @@ function pieTooltipContent(unitSingular: string, unitPlural: string) {
   };
 }
 
-function formatDonutTotal(value: number): string {
-  return new Intl.NumberFormat("fr-FR").format(value);
+function formatDonutTotal(value: number, lang: "fr" | "en"): string {
+  return new Intl.NumberFormat(lang === "en" ? "en-US" : "fr-FR").format(value);
 }
 
 export function AnimePieDistributionCard({
@@ -75,6 +76,8 @@ export function AnimePieDistributionCard({
   emptyExtra,
   collapseId,
 }: AnimePieDistributionCardProps) {
+  const t = useT();
+  const lang = useLang();
   const collapseState = useCollapsedChart(collapseId || "");
   const collapsed = collapseId ? collapseState.collapsed : false;
   const initialKey =
@@ -94,8 +97,8 @@ export function AnimePieDistributionCard({
   const activeMode = modes.find((m) => m.key === activeKey) ?? modes[0];
   const slices = activeMode?.slices ?? [];
   const footnote = activeMode?.footnote;
-  const emptyLabel = activeMode?.emptyLabel ?? "Aucune donnée pour cette période.";
-  const unitSingular = activeMode?.unitSingular ?? "titre";
+  const emptyLabel = activeMode?.emptyLabel ?? t("Aucune donnée pour cette période.", "No data for this period.");
+  const unitSingular = activeMode?.unitSingular ?? t("titre", "title");
   const unitPlural = activeMode?.unitPlural ?? `${unitSingular}s`;
   const safeModes = modes;
 
@@ -127,7 +130,7 @@ export function AnimePieDistributionCard({
               <div
                 className="list-tab-pie-card__mode-toggle"
                 role="radiogroup"
-                aria-label={`Métrique du graphique « ${title} »`}
+                aria-label={t(`Métrique du graphique « ${title} »`, `Chart metric for « ${title} »`)}
               >
                 {safeModes.map((m) => {
                   const isActive = m.key === activeMode?.key;
@@ -163,7 +166,12 @@ export function AnimePieDistributionCard({
         className="list-tab-pie-card"
         dataTable={{
           caption: screenReaderSummary || title,
-          columns: ["Catégorie", activeMode?.label ?? "Valeur", "Pourcentage", "Détail"],
+          columns: [
+            t("Catégorie", "Category"),
+            activeMode?.label ?? t("Valeur", "Value"),
+            t("Pourcentage", "Percentage"),
+            t("Détail", "Detail"),
+          ],
           rows: withPct.map((row) => [
             row.label,
             row.value,
@@ -214,8 +222,8 @@ export function AnimePieDistributionCard({
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="list-tab-pie-card__center-label" aria-hidden>
-                  <span className="list-tab-pie-card__center-value">{formatDonutTotal(total)}</span>
-                  <span className="list-tab-pie-card__center-unit">{activeMode?.label ?? "Total"}</span>
+                  <span className="list-tab-pie-card__center-value">{formatDonutTotal(total, lang)}</span>
+                  <span className="list-tab-pie-card__center-unit">{activeMode?.label ?? t("Total", "Total")}</span>
                 </div>
               </div>
               <ul className="list-tab-pie-card__legend">

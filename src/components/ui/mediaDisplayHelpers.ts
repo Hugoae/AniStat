@@ -1,3 +1,5 @@
+import type { AppLang } from "../../config/constants";
+
 /** MediaFormat AniList → libellé court pour capsule sur la jaquette */
 const MEDIA_FORMAT_LABELS: Record<string, string> = {
   TV: "TV",
@@ -20,26 +22,29 @@ export function mediaFormatShortLabel(formatRaw: unknown): string | null {
   return key.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-let regionNamesFr: Intl.DisplayNames | null = null;
+const regionNamesCache: Partial<Record<AppLang, Intl.DisplayNames | null>> = {};
 
-function countryCodeLabelFr(iso2: unknown): string {
+function countryCodeLabel(iso2: unknown, lang: AppLang): string {
   const code = String(iso2 || "").toUpperCase().trim();
   if (!/^[A-Z]{2}$/.test(code)) return code || "";
   try {
-    if (!regionNamesFr && typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function") {
-      regionNamesFr = new Intl.DisplayNames(["fr"], { type: "region" });
+    if (regionNamesCache[lang] === undefined && typeof Intl !== "undefined" && typeof Intl.DisplayNames === "function") {
+      regionNamesCache[lang] = new Intl.DisplayNames([lang], { type: "region" });
     }
-    const name = regionNamesFr?.of(code);
+    const name = regionNamesCache[lang]?.of(code);
     return name || code;
   } catch {
     return code;
   }
 }
 
-export function mediaCountryOriginMeta(countryCode: unknown): { code: string; label: string } | null {
+export function mediaCountryOriginMeta(
+  countryCode: unknown,
+  lang: AppLang
+): { code: string; label: string } | null {
   const upper = String(countryCode || "").toUpperCase().trim();
   if (!/^[A-Z]{2}$/.test(upper)) return null;
-  return { code: upper, label: countryCodeLabelFr(upper) };
+  return { code: upper, label: countryCodeLabel(upper, lang) };
 }
 
 export function anilistMediaUrl(

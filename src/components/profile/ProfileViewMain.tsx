@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { C } from "../../config/constants";
 import { DevPanel, LoadingBlock, PeriodFloatingChip } from "../ui";
 import type { FetchLogEntry } from "../../api/anilistClient";
@@ -8,29 +8,7 @@ import {
   type ProfileFetchStats,
 } from "../../lib/profileFetchStats";
 import { useProfilePeriod } from "../../contexts/profilePeriodCore";
-
-/**
- * Messages narratifs pour le loader principal : un enchaînement court qui
- * raconte ce que fait l'app pendant les quelques secondes où on attend la
- * réponse d'AniList. Chaque message s'affiche ~2,2 s avant de passer au suivant.
- */
-const PRIMARY_LOADING_MESSAGES = [
-  "Connexion à AniList…",
-  "Récupération de ton profil…",
-  "On rassemble tes anime…",
-  "On compile tes manga…",
-  "Analyse de tes notes…",
-  "Préparation du tableau de bord…",
-];
-
-const ALL_TIME_LOADING_MESSAGES = [
-  "Connexion à AniList…",
-  "Chargement complet de ton historique…",
-  "On parcourt toutes tes activités anime…",
-  "On parcourt toutes tes activités manga…",
-  "Compilation des statistiques All Time…",
-  "Préparation du tableau de bord…",
-];
+import { useT } from "../../i18n/I18n";
 
 type ActivityLoadDebug = {
   yearsTotal: number;
@@ -185,6 +163,34 @@ export function ProfileViewMain({
   children,
 }: ProfileViewMainProps) {
   const { tab, setTab } = useProfilePeriod();
+  const t = useT();
+  /**
+   * Messages narratifs pour le loader principal : un enchaînement court qui
+   * raconte ce que fait l'app pendant les quelques secondes où on attend la
+   * réponse d'AniList. Chaque message s'affiche ~2,2 s avant de passer au suivant.
+   */
+  const primaryLoadingMessages = useMemo(
+    () => [
+      t("Connexion à AniList…", "Connecting to AniList…"),
+      t("Récupération de ton profil…", "Fetching your profile…"),
+      t("On rassemble tes anime…", "Gathering your anime…"),
+      t("On compile tes manga…", "Compiling your manga…"),
+      t("Analyse de tes notes…", "Analyzing your scores…"),
+      t("Préparation du tableau de bord…", "Preparing the dashboard…"),
+    ],
+    [t]
+  );
+  const allTimeLoadingMessages = useMemo(
+    () => [
+      t("Connexion à AniList…", "Connecting to AniList…"),
+      t("Chargement complet de ton historique…", "Loading your full history…"),
+      t("On parcourt toutes tes activités anime…", "Going through all your anime activity…"),
+      t("On parcourt toutes tes activités manga…", "Going through all your manga activity…"),
+      t("Compilation des statistiques All Time…", "Compiling All Time statistics…"),
+      t("Préparation du tableau de bord…", "Preparing the dashboard…"),
+    ],
+    [t]
+  );
   /**
    * Stats de session des derniers fetchs profil complets.
    * Sert à projeter un ETA « reste ~Xs » dans le loader
@@ -216,11 +222,17 @@ export function ProfileViewMain({
     <div className="profile-view-main">
       {primaryProfileLoader && (
         <LoadingBlock
-          messages={awaitingAllTimeActivities ? ALL_TIME_LOADING_MESSAGES : PRIMARY_LOADING_MESSAGES}
+          messages={awaitingAllTimeActivities ? allTimeLoadingMessages : primaryLoadingMessages}
           caption={
             awaitingAllTimeActivities
-              ? "All Time peut être long : AniList envoie tout l'historique d'activités."
-              : "Première requête un peu longue ? AniList envoie toutes tes données d'un coup."
+              ? t(
+                  "All Time peut être long : AniList envoie tout l'historique d'activités.",
+                  "All Time can take a while: AniList sends the entire activity history."
+                )
+              : t(
+                  "Première requête un peu longue ? AniList envoie toutes tes données d'un coup.",
+                  "First request a bit slow? AniList sends all your data at once."
+                )
           }
           estimatedMs={primaryLoaderEstimateMs}
         />
@@ -232,17 +244,21 @@ export function ProfileViewMain({
           role="status"
           aria-live="polite"
         >
-          <strong className="error-banner__title">AniList est momentanément indisponible</strong>
+          <strong className="error-banner__title">
+            {t("AniList est momentanément indisponible", "AniList is temporarily unavailable")}
+          </strong>
           <span className="error-banner__message">
-            L'API d'AniList a répondu qu'elle était désactivée. Ce n'est pas un
-            problème de ton côté : réessaie dans quelques minutes.
+            {t(
+              "L'API d'AniList a répondu qu'elle était désactivée. Ce n'est pas un problème de ton côté : réessaie dans quelques minutes.",
+              "The AniList API reported that it is disabled. This isn't a problem on your end: try again in a few minutes."
+            )}
           </span>
         </div>
       )}
 
       {error && !apiDisabled && (
         <div className="error-banner" role="alert">
-          Erreur : {error}
+          {t("Erreur", "Error")} : {error}
         </div>
       )}
 
@@ -250,12 +266,15 @@ export function ProfileViewMain({
         <div className="activity-loading-line">
           <span className="activity-loading-message-blink">
             {hasProvisionalAllTimeActivities
-              ? "All Time provisoire affiche : AniList consolide encore l'historique complet en arriere-plan"
+              ? t(
+                  "All Time provisoire affiche : AniList consolide encore l'historique complet en arriere-plan",
+                  "Showing provisional All Time: AniList is still consolidating the full history in the background"
+                )
               : displayActivityLoadingMessage || activityLoadingMessage}
             {activityEtaLabel
-              ? ` · reste ~${activityEtaLabel}`
+              ? ` · ${t("reste", "left")} ~${activityEtaLabel}`
               : activityEtaSeconds === 0
-                ? " — finalisation…"
+                ? t(" — finalisation…", " — finalizing…")
                 : ""}
             {rateInfoLabel ? ` · ${rateInfoLabel}` : ""}
           </span>
@@ -271,7 +290,7 @@ export function ProfileViewMain({
             onClick={handleRetryComparisonNow}
             className="btn-outline btn-outline--accent"
           >
-            Reessayer la comparaison maintenant
+            {t("Reessayer la comparaison maintenant", "Retry comparison now")}
           </button>
           {retryableYears.map((yy) => (
             <button
@@ -280,7 +299,7 @@ export function ProfileViewMain({
               onClick={() => retryYearNow(yy)}
               className="btn-outline btn-outline--neutral"
             >
-              Reessayer {yy}
+              {t("Reessayer", "Retry")} {yy}
             </button>
           ))}
         </div>

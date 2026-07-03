@@ -9,6 +9,7 @@ import type {
 import { fmtMin } from "../lib/stats";
 import { StatIcon } from "../components/ui/StatPrimitives";
 import { C } from "../config/constants";
+import { useT, useLang } from "../i18n/I18n";
 import { WrappedMonthlyCompareChart } from "../components/charts/WrappedActivityChart";
 import {
   PolarAngleAxis,
@@ -110,6 +111,7 @@ function WrappedStat({
   status?: WrappedStatusSummary;
   currentLabel?: string;
 }) {
+  const t = useT();
   return (
     <div className="wrapped-overview-stat">
       <div className="wrapped-overview-stat__bubble">
@@ -121,18 +123,18 @@ function WrappedStat({
             {value}
           </strong>
           {status ? (
-            <span className="wrapped-status-row" aria-label={`${label} par statut`}>
+            <span className="wrapped-status-row" aria-label={t(`${label} par statut`, `${label} by status`)}>
               <span className="wrapped-status-chip wrapped-status-chip--completed">
                 <span className="wrapped-status-chip__dot" aria-hidden />
-                {status.completed} terminés
+                {status.completed} {t("terminés", "completed")}
               </span>
               <span className="wrapped-status-chip wrapped-status-chip--current">
                 <span className="wrapped-status-chip__dot" aria-hidden />
-                {status.current} {currentLabel || "en cours"}
+                {status.current} {currentLabel || t("en cours", "in progress")}
               </span>
               <span className="wrapped-status-chip wrapped-status-chip--dropped">
                 <span className="wrapped-status-chip__dot" aria-hidden />
-                {status.dropped} drop
+                {status.dropped} {t("abandonnés", "dropped")}
               </span>
             </span>
           ) : null}
@@ -184,9 +186,10 @@ function WrappedTimelineCard({
   pair: WrappedTimelinePair;
   emptyLabel: string;
 }) {
+  const t = useT();
   const slots = [
-    { key: "first", label: "Première", item: pair.first },
-    { key: "last", label: "Dernière", item: pair.last },
+    { key: "first", label: t("Première", "First"), item: pair.first },
+    { key: "last", label: t("Dernière", "Last"), item: pair.last },
   ] as const;
 
   if (!pair.first && !pair.last) {
@@ -224,12 +227,13 @@ function WrappedTimelineCard({
 }
 
 function WrappedGenreChart({ rows }: { rows: WrappedGenreRow[] }) {
+  const t = useT();
   const radarRows = rows.slice(0, 10);
   return (
     <div className="wrapped-genre-block">
-      <h4 className="wrapped-timeline-card__title">Genres</h4>
+      <h4 className="wrapped-timeline-card__title">{t("Genres", "Genres")}</h4>
       <div className="wrapped-bento-box wrapped-bento-box--genre">
-        <div className="wrapped-genre-radar" aria-label="Genres anime et manga combinés">
+        <div className="wrapped-genre-radar" aria-label={t("Genres anime et manga combinés", "Combined anime and manga genres")}>
           {rows.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <RadarChart data={radarRows} outerRadius="72%" margin={{ top: 4, right: 36, bottom: 4, left: 36 }}>
@@ -260,7 +264,7 @@ function WrappedGenreChart({ rows }: { rows: WrappedGenreRow[] }) {
                       <div className="chart-tooltip chart-tooltip--basic">
                         <div className="chart-tooltip__label">{row.name}</div>
                         <div style={{ color: C.accent }}>
-                          {row.count} titres, {row.percent.toFixed(1)}%
+                          {t(`${row.count} titres`, `${row.count} titles`)}, {row.percent.toFixed(1)}%
                         </div>
                       </div>
                     );
@@ -269,7 +273,7 @@ function WrappedGenreChart({ rows }: { rows: WrappedGenreRow[] }) {
               </RadarChart>
             </ResponsiveContainer>
           ) : (
-            <p className="wrapped-timeline-card__empty">Aucun genre.</p>
+            <p className="wrapped-timeline-card__empty">{t("Aucun genre.", "No genre.")}</p>
           )}
         </div>
       </div>
@@ -278,6 +282,8 @@ function WrappedGenreChart({ rows }: { rows: WrappedGenreRow[] }) {
 }
 
 export function WrappedPage({ summary }: WrappedPageProps) {
+  const t = useT();
+  const lang = useLang();
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const exportRef = useRef<HTMLDivElement | null>(null);
@@ -312,7 +318,7 @@ export function WrappedPage({ summary }: WrappedPageProps) {
         `anistat_wrapped_${safeFilePart(summary.userName)}_${summary.year}.png`
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Export impossible";
+      const message = err instanceof Error ? err.message : t("Export impossible", "Export failed");
       setExportError(message);
     } finally {
       setExporting(false);
@@ -324,7 +330,9 @@ export function WrappedPage({ summary }: WrappedPageProps) {
       <section className="wrapped-page wrapped-page--empty" aria-labelledby="wrapped-title">
         <div className="wrapped-empty-card">
           <p className="wrapped-kicker">AniStat Wrapped</p>
-          <h1 id="wrapped-title">Pas encore assez de données pour {summary.year}</h1>
+          <h1 id="wrapped-title">
+            {t(`Pas encore assez de données pour ${summary.year}`, `Not enough data yet for ${summary.year}`)}
+          </h1>
           <p>{summary.emptyReason}</p>
         </div>
       </section>
@@ -336,12 +344,17 @@ export function WrappedPage({ summary }: WrappedPageProps) {
       <div className="wrapped-page__header">
         <div>
           <p className="wrapped-kicker">AniStat Wrapped</p>
-          <h1 id="wrapped-title">Ton bilan {summary.year}</h1>
-          <p className="wrapped-page__subtitle">Une carte partageable, générée à partir de ton historique AniList.</p>
+          <h1 id="wrapped-title">{t(`Ton bilan ${summary.year}`, `Your ${summary.year} recap`)}</h1>
+          <p className="wrapped-page__subtitle">
+            {t(
+              "Une carte partageable, générée à partir de ton historique AniList.",
+              "A shareable card, generated from your AniList history."
+            )}
+          </p>
         </div>
         <div className="wrapped-actions">
           <button className="wrapped-button" type="button" onClick={exportIntroCard} disabled={exporting}>
-            {exporting ? "Export…" : "Télécharger PNG"}
+            {exporting ? t("Export…", "Exporting…") : t("Télécharger PNG", "Download PNG")}
           </button>
         </div>
       </div>
@@ -351,82 +364,84 @@ export function WrappedPage({ summary }: WrappedPageProps) {
 
         <div className="wrapped-bento-grid">
           <div className="wrapped-bento-col wrapped-bento-col--stats">
-            <WrappedSectionTitle>Statistiques</WrappedSectionTitle>
+            <WrappedSectionTitle>{t("Statistiques", "Statistics")}</WrappedSectionTitle>
             <div className="wrapped-overview-stats">
               <WrappedStat
                 icon="book"
                 value={totals.mangaCount}
                 label="Manga"
                 status={totals.mangaStatus}
-                currentLabel="reading"
+                currentLabel={t("en lecture", "reading")}
               />
-              <WrappedStat icon="book" value={totals.chapters} label="Chapitres" />
-              <WrappedStat icon="star" value={formatScore(totals.averageMangaScore)} label="Score manga" />
-              <WrappedStat icon="calendar" value={totals.activeDays} label="Jours actifs" />
+              <WrappedStat icon="book" value={totals.chapters} label={t("Chapitres", "Chapters")} />
+              <WrappedStat icon="star" value={formatScore(totals.averageMangaScore)} label={t("Score manga", "Manga score")} />
+              <WrappedStat icon="calendar" value={totals.activeDays} label={t("Jours actifs", "Active days")} />
               <WrappedStat
                 icon="tv"
                 value={totals.animeCount}
-                label="Animé"
+                label={t("Animé", "Anime")}
                 status={totals.animeStatus}
-                currentLabel="watching"
+                currentLabel={t("en cours", "watching")}
               />
-              <WrappedStat icon="play" value={totals.episodes} label="Épisodes" />
-              <WrappedStat icon="star" value={formatScore(totals.averageAnimeScore)} label="Score anime" />
-              <WrappedStat icon="clock" value={fmtMin(totals.minutes)} label="Temps total" />
+              <WrappedStat icon="play" value={totals.episodes} label={t("Épisodes", "Episodes")} />
+              <WrappedStat icon="star" value={formatScore(totals.averageAnimeScore)} label={t("Score anime", "Anime score")} />
+              <WrappedStat icon="clock" value={fmtMin(totals.minutes, lang)} label={t("Temps total", "Total time")} />
             </div>
           </div>
 
           <div className="wrapped-bento-col wrapped-bento-col--timelines">
             <div className="wrapped-timeline-stack">
               <WrappedTimelineCard
-                title="Activité de l'année"
+                title={t("Activité de l'année", "Activity of the year")}
                 pair={summary.activityTimeline}
-                emptyLabel="Aucune activité."
+                emptyLabel={t("Aucune activité.", "No activity.")}
               />
               <WrappedTimelineCard
-                title="Nouvelle série"
+                title={t("Nouvelle série", "New series")}
                 pair={summary.newSeriesTimeline}
-                emptyLabel="Aucune œuvre commencée."
+                emptyLabel={t("Aucune œuvre commencée.", "No title started.")}
               />
             </div>
             <WrappedGenreChart rows={summary.genreChartData} />
           </div>
 
-          <WrappedTopPanel title="Top 5 Manga" className="wrapped-bento-col--top-manga">
-            <WrappedTopRow items={summary.topMangaList} emptyLabel="Pas assez de manga notés." />
+          <WrappedTopPanel title={t("Top 5 Manga", "Top 5 Manga")} className="wrapped-bento-col--top-manga">
+            <WrappedTopRow items={summary.topMangaList} emptyLabel={t("Pas assez de manga notés.", "Not enough rated manga.")} />
           </WrappedTopPanel>
 
           <div className="wrapped-bento-col wrapped-bento-col--manga-chart">
-            <WrappedSectionTitle>Chapitres lus</WrappedSectionTitle>
+            <WrappedSectionTitle>{t("Chapitres lus", "Chapters read")}</WrappedSectionTitle>
             <div className="wrapped-bento-box wrapped-bento-box--chart">
               <WrappedMonthlyCompareChart
                 data={summary.mangaChaptersChartData}
                 year={summary.year}
                 compareYear={summary.compareYear}
-                unitLabel="chapitres"
+                unitLabel={t("chapitres", "chapters")}
               />
             </div>
           </div>
 
           <div className="wrapped-bento-col wrapped-bento-col--anime-chart">
-            <WrappedSectionTitle>Épisodes regardés</WrappedSectionTitle>
+            <WrappedSectionTitle>{t("Épisodes regardés", "Episodes watched")}</WrappedSectionTitle>
             <div className="wrapped-bento-box wrapped-bento-box--chart">
               <WrappedMonthlyCompareChart
                 data={summary.animeEpisodesChartData}
                 year={summary.year}
                 compareYear={summary.compareYear}
-                unitLabel="épisodes"
+                unitLabel={t("épisodes", "episodes")}
               />
             </div>
           </div>
 
-          <WrappedTopPanel title="Top 5 Anime" className="wrapped-bento-col--top-anime">
-            <WrappedTopRow items={summary.topAnimeList} emptyLabel="Pas assez d'anime notés." />
+          <WrappedTopPanel title={t("Top 5 Anime", "Top 5 Anime")} className="wrapped-bento-col--top-anime">
+            <WrappedTopRow items={summary.topAnimeList} emptyLabel={t("Pas assez d'anime notés.", "Not enough rated anime.")} />
           </WrappedTopPanel>
         </div>
       </div>
 
-      {exportError ? <p className="wrapped-export-error">Export PNG échoué : {exportError}</p> : null}
+      {exportError ? (
+        <p className="wrapped-export-error">{t(`Export PNG échoué : ${exportError}`, `PNG export failed: ${exportError}`)}</p>
+      ) : null}
     </section>
   );
 }

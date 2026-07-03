@@ -4,6 +4,7 @@ import { EmptyState, SectionTitle } from "../ui";
 import { ChartCollapseToggle } from "./ChartCollapseToggle";
 import { StatLabelHint } from "../ui/StatPrimitives";
 import { useCollapsedChart } from "../../hooks/useCollapsedChart";
+import { useT } from "../../i18n/I18n";
 export type TopTagsRow = {
   name: string;
   count: number;
@@ -48,6 +49,7 @@ export function TopTagsCard({
   initialVisible = DEFAULT_INITIAL_VISIBLE,
   className,
 }: TopTagsCardProps) {
+  const t = useT();
   const collapseState = useCollapsedChart(collapseId || "");
   const collapsed = collapseId ? collapseState.collapsed : false;
   const groupId = useId();
@@ -66,8 +68,14 @@ export function TopTagsCard({
 
   const titleHint =
     kind === "manga"
-      ? "Tags AniList agrégés sur les manga de la période. Beaucoup plus granulaires que les genres, ils révèlent les motifs récurrents (« Time Loop », « Female Protagonist », « Cooking »…). Le nombre indique combien de manga de la période portent ce tag. Spoilers et tags adultes filtrés par défaut."
-      : "Tags AniList agrégés sur les anime de la période. Beaucoup plus granulaires que les genres, ils révèlent les motifs récurrents (« Time Loop », « Female Protagonist », « Anti-Hero »…). Le nombre indique combien d'anime de la période portent ce tag. Spoilers et tags adultes filtrés par défaut.";
+      ? t(
+          "Tags AniList agrégés sur les manga de la période. Beaucoup plus granulaires que les genres, ils révèlent les motifs récurrents (« Time Loop », « Female Protagonist », « Cooking »…). Le nombre indique combien de manga de la période portent ce tag. Spoilers et tags adultes filtrés par défaut.",
+          "AniList tags aggregated over the manga in the period. Much more granular than genres, they reveal recurring patterns (\u00ab Time Loop \u00bb, \u00ab Female Protagonist \u00bb, \u00ab Cooking \u00bb\u2026). The number indicates how many manga in the period carry this tag. Spoilers and adult tags filtered out by default."
+        )
+      : t(
+          "Tags AniList agrégés sur les anime de la période. Beaucoup plus granulaires que les genres, ils révèlent les motifs récurrents (« Time Loop », « Female Protagonist », « Anti-Hero »…). Le nombre indique combien d'anime de la période portent ce tag. Spoilers et tags adultes filtrés par défaut.",
+          "AniList tags aggregated over the anime in the period. Much more granular than genres, they reveal recurring patterns (\u00ab Time Loop \u00bb, \u00ab Female Protagonist \u00bb, \u00ab Anti-Hero \u00bb\u2026). The number indicates how many anime in the period carry this tag. Spoilers and adult tags filtered out by default."
+        );
 
   return (
     <div className={`list-tab-anime-chart-block${className ? ` ${className}` : ""}`}>
@@ -96,12 +104,15 @@ export function TopTagsCard({
         <div id={collapseId ? bodyId : undefined} className="collapsible-chart-animator__inner">
           <ChartCard
             noTitle
-            screenReaderSummary={`Top tags AniList sur la période. ${tags.length} tags distincts identifiés sur les ${noun} de cette période.`}
+            screenReaderSummary={`${t("Top tags AniList sur la période.", "Top AniList tags for the period.")} ${t(`${tags.length} tags distincts identifiés sur les ${noun} de cette période.`, `${tags.length} distinct tags identified across the ${noun} in this period.`)}`}
           >
             {tags.length === 0 ? (
               <EmptyState
                 icon="bolt"
-                title={`Aucun tag AniList disponible pour les ${noun} de cette période.`}
+                title={t(
+                  `Aucun tag AniList disponible pour les ${noun} de cette période.`,
+                  `No AniList tag available for the ${noun} in this period.`
+                )}
                 cta={emptyExtra}
               />
             ) : (
@@ -111,12 +122,12 @@ export function TopTagsCard({
                     const intensity = intensityForCount(tag.count, maxCount);
                     const meanRankRounded = Math.round(tag.meanRank);
                     const tooltipParts = [
-                      `${tag.count} ${noun}${tag.count > 1 ? "s" : ""} portant ce tag`,
+                      `${tag.count} ${noun}${tag.count > 1 ? "s" : ""} ${t("portant ce tag", "with this tag")}`,
                     ];
                     if (tag.meanRank > 0) {
-                      tooltipParts.push(`Force moyenne AniList : ${meanRankRounded}/100`);
+                      tooltipParts.push(`${t("Force moyenne AniList", "Average AniList strength")} : ${meanRankRounded}/100`);
                     }
-                    if (tag.category) tooltipParts.push(`Catégorie : ${tag.category}`);
+                    if (tag.category) tooltipParts.push(`${t("Catégorie", "Category")} : ${tag.category}`);
                     return (
                       <li key={tag.name} className="top-tags__item">
                         <a

@@ -4,7 +4,7 @@ import {
   MONTHS_FULL,
   ALL_TIME_YEAR,
 } from './config/constants';
-import { countActivityDays, mergeActivityRowsForPreview } from "./lib/activityPreview";
+import { mergeActivityRowsForPreview } from "./lib/activityPreview";
 import { getFirstKnownUserYear } from "./lib/accountYears";
 import { formatSyncAbsoluteDate } from "./lib/dateLabels";
 import {
@@ -14,7 +14,7 @@ import {
   completedInMonth,
   startedInMonth,
   fmtMin,
-  countActiveCalendarDays,
+  countActiveProgressDays,
   getPeriodDayTotal,
   computeDailyDeltasInYear,
   getMediaIdsWithProgressInPeriod,
@@ -44,10 +44,13 @@ import {
   IS_DEV_LOCAL,
 } from "./lib/profileLocalCache";
 import {
-  buildProfileHash,
-  parseRouteFromHash,
-  profileHashForUserName,
+  buildProfilePath,
+  buildHomePath,
+  buildAlternateLangPath,
+  parseRoute,
+  navigateToPath,
 } from "./lib/routing";
+import { useI18n } from "./i18n/I18n";
 import { buildWrappedSummary } from "./lib/wrapped";
 import { buildOverviewRecentActivities } from "./lib/overviewRecentActivities";
 import { usePersistenceStatus, clearPersistenceError } from "./lib/persistenceStatus";
@@ -117,7 +120,6 @@ function App() {
   const [animeActivityCache, setAnimeActivityCache] = useState<ActivityCacheByYear>({});
   const [mangaActivityCache, setMangaActivityCache] = useState<ActivityCacheByYear>({});
   const [loadingActivities, setLoadingActivities] = useState(false);
-  const [activityLoadingMessage, setActivityLoadingMessage] = useState("Chargement des activites...");
   const [activityWarning, setActivityWarning] = useState<string | null>(null);
   const [resourceStatus, setResourceStatus] = useState<Record<string, unknown>>({});
   const [rateLimitState, setRateLimitState] = useState(() => getRateLimitState());
@@ -279,14 +281,17 @@ function App() {
 
   const appUser = user as AniListUser | null;
   const isAllTime = year === ALL_TIME_YEAR;
+  const { t, lang } = useI18n();
+  const fmtMinL = useCallback((min: number) => fmtMin(min, lang), [lang]);
+  const [activityLoadingMessage, setActivityLoadingMessage] = useState("");
 
   /* ─── Deep links : URL → state ────────────────────────────────────────
-   * À chaque `hashchange` (incrémente `hashTick`), on relit la route et on
-   * applique tab / year / month s'ils sont explicitement présents dans la
-   * query string. Les valeurs absentes (`null`) laissent l'état courant
-   * intact — typique d'une navigation utilisateur basique `#/user/Bob`
-   * qui ne doit pas écraser une période choisie auparavant pendant la même
-   * session si la logique amont l'a déjà réinitialisée.
+   * À chaque changement de route (`hashTick` incrémenté par `useProfileLoader`
+   * sur popstate / navigation), on relit la route et on applique tab / year /
+   * month s'ils sont explicitement présents dans l'URL. Les valeurs absentes
+   * (`null`) laissent l'état courant intact — typique d'une navigation basique
+   * `/u/Bob` qui ne doit pas écraser une période choisie auparavant pendant la
+   * même session si la logique amont l'a déjà réinitialisée.
    *
    * On garde un ref `hashTickAppliedRef` pour ne pas re-appliquer les
    * valeurs URL après un changement de state local (ce qui créerait des
@@ -295,7 +300,7 @@ function App() {
   useEffect(() => {
     if (hashTickAppliedRef.current === hashTick) return;
     hashTickAppliedRef.current = hashTick;
-    const r = parseRouteFromHash();
+    const r = parseRoute();
     if (r.type !== "user") return;
     if (r.tab) setTab(r.tab);
     if (r.year != null) setYear(r.year);
@@ -304,23 +309,18 @@ function App() {
 
   /* ─── Deep links : state → URL ────────────────────────────────────────
    * Quand tab / year / month changent côté UI (chip de période, onglets,
-   * etc.), on réécrit la query string du hash via `history.replaceState`.
-   * `replaceState` ne déclenche pas `hashchange`, donc pas de boucle.
+   * etc.), on réécrit l'URL via `history.replaceState` (`navigateToPath` avec
+   * `replace`). En `replace`, aucun événement de route n'est émis, donc pas de
+   * boucle.
    *
-   * On utilise `parseRouteFromHash()` au lieu de `currentRoute` (mémoïsé
-   * via `hashTick`) parce que la donnée importante ici est la route
-   * actuelle telle que stockée dans l'URL, pas un snapshot React. */
+   * On utilise `parseRoute()` (lecture directe de l'URL) au lieu de
+   * `currentRoute` (snapshot React mémoïsé via `hashTick`) car la donnée
+   * importante ici est la route actuelle telle que stockée dans l'URL. */
   useEffect(() => {
-    const r = parseRouteFromHash();
+    const r = parseRoute();
     if (r.type !== "user") return;
-    const want = buildProfileHash(r.name, { tab, year, month });
-    if (window.location.hash === want) return;
-    try {
-      const path = `${window.location.pathname}${window.location.search}${want}`;
-      window.history.replaceState(null, "", path);
-    } catch {
-      /* ignore */
-    }
+    const want = buildProfilePath(r.name, { tab, year, month, lang: r.lang });
+    navigateToPath(want, { replace: true });
   }, [tab, year, month, hashTick]);
 
   useEffect(() => {
@@ -425,10 +425,10 @@ function App() {
     const blockedMs = rateLimitState?.blockedForMs || 0;
     if (blockedMs > 5000) {
       const sec = Math.ceil(blockedMs / 1000);
-      return `API en cooldown ~${sec}s`;
+      return t(`API en cooldown ~${sec}s`, `API cooldown ~${sec}s`);
     }
     return null;
-  }, [rateLimitState]);
+  }, [rateLimitState, t]);
 
   const apiStatusBadge = useMemo(() => {
     const blockedMs = rateLimitState?.blockedForMs || 0;
@@ -444,8 +444,8 @@ function App() {
   }, [rateLimitState]);
   const showApiBadge = IS_DEV_LOCAL || (rateLimitState?.blockedForMs || 0) > 0;
   const syncStatusLabel = useMemo(
-    () => formatSyncAbsoluteDate(lastSupabaseSyncAt),
-    [lastSupabaseSyncAt]
+    () => formatSyncAbsoluteDate(lastSupabaseSyncAt, lang),
+    [lastSupabaseSyncAt, lang]
   );
   const persistenceStatus = usePersistenceStatus();
 
@@ -479,8 +479,13 @@ function App() {
     if (!q) return;
     headerSearchInputRef.current?.blur();
     setHeaderSearchFocused(false);
-    window.location.hash = profileHashForUserName(q);
+    navigateToPath(buildProfilePath(q));
   };
+
+  /** Navigation client vers l'accueil (utilisée par le logo du header). */
+  const goHome = useCallback(() => {
+    navigateToPath(buildHomePath());
+  }, []);
 
   /*
    * Années navigables, dérivées des listes chargées : union de l'année
@@ -996,12 +1001,14 @@ function App() {
     overviewTopAnime.length
   );
 
+  /**
+   * Jours actifs : définition canonique unique (jours avec progression réelle,
+   * anime + manga), partagée avec la heatmap et le wrapped pour éviter toute
+   * dissonance de chiffres entre pages ou sur une même page.
+   */
   const activeDaysCount = useMemo(
-    () =>
-      isAllTime
-        ? countActivityDays([...mergedAnimeForTotals, ...mergedMangaForTotals])
-        : countActiveCalendarDays(year, month, mergedAnimeForTotals, mergedMangaForTotals, animeEntries, mangaEntries),
-    [isAllTime, year, month, mergedAnimeForTotals, mergedMangaForTotals, animeEntries, mangaEntries]
+    () => countActiveProgressDays(mergedAnimeForTotals, mergedMangaForTotals, year, month),
+    [year, month, mergedAnimeForTotals, mergedMangaForTotals]
   );
 
   /**
@@ -1036,7 +1043,7 @@ function App() {
   );
 
   const tabs = [
-    { key: "overview", label: "Vue d'ensemble" },
+    { key: "overview", label: t("Vue d'ensemble", "Overview") },
     { key: "manga", label: `Manga (${mangaTabEntries.length})` },
     { key: "anime", label: `Anime (${animeTabEntries.length})` },
     { key: "wrapped", label: "Wrapped", className: "tab-btn--wrapped" },
@@ -1068,11 +1075,14 @@ function App() {
       compareY: cy >= 1970 ? cy : null,
       loadingComparison,
       loadingLabel: label
-        ? `Chargement des données pour la comparaison (${label})…`
-        : "Chargement des données pour la comparaison…",
+        ? t(`Chargement des données pour la comparaison (${label})…`, `Loading comparison data (${label})…`)
+        : t("Chargement des données pour la comparaison…", "Loading comparison data…"),
       idleLabel: label
-        ? `Données « ${label} » indisponibles pour le moment (vérifiez la synchro Supabase).`
-        : "Comparaison indisponible pour le moment",
+        ? t(
+            `Données « ${label} » indisponibles pour le moment (vérifiez la synchro Supabase).`,
+            `"${label}" data unavailable for now (check the Supabase sync).`
+          )
+        : t("Comparaison indisponible pour le moment", "Comparison unavailable for now"),
     };
   }, [
     year,
@@ -1081,6 +1091,7 @@ function App() {
     mangaActivityCache,
     loadingActivities,
     overviewCompareBusy,
+    t,
   ]);
 
   const handleRetryComparisonNowDynamic = useCallback(() => {
@@ -1166,17 +1177,70 @@ function App() {
     setInputVal(n);
     setHeaderSearchFocused(false);
     headerSearchInputRef.current?.blur();
-    window.location.hash = profileHashForUserName(n);
+    navigateToPath(buildProfilePath(n));
   }, [setInputVal]);
 
-  /* `hashTick` est incrémenté à chaque `hashchange` par `useProfileLoader` ;
-   * on s'en sert comme dépendance pour recalculer la route sans écouter
-   * `window.location` directement (évite la désynchronisation React).
-   * `parseRouteFromHash` lit `window.location.hash`, donc la dep `hashTick`
-   * est bien nécessaire côté comportement même si ESLint ne la voit pas. */
+  /* `hashTick` est incrémenté à chaque changement de route par
+   * `useProfileLoader` (popstate / navigation) ; on s'en sert comme dépendance
+   * pour recalculer la route sans écouter `window.location` directement (évite
+   * la désynchronisation React). `parseRoute` lit `window.location`, donc la
+   * dep `hashTick` est bien nécessaire même si ESLint ne la voit pas. */
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const currentRoute = useMemo(() => parseRouteFromHash(), [hashTick]);
+  const currentRoute = useMemo(() => parseRoute(), [hashTick]);
   const isLandingHome = currentRoute.type === "home";
+
+  /* ─── Head dynamique (titre, canonical, lang) ─────────────────────────
+   * Vraies URLs = pages distinctes : on met à jour le <title>, le lien
+   * canonique (sans la query de période, pour éviter le contenu dupliqué)
+   * et l'attribut lang du document à chaque changement de route. */
+  useEffect(() => {
+    const tabLabels: Record<string, string> = {
+      overview: t("Vue d'ensemble", "Overview"),
+      anime: "Anime",
+      manga: "Manga",
+      wrapped: "Wrapped",
+    };
+    const routeName = currentRoute.type === "user" ? user?.name || currentRoute.name : "";
+    const homeTitle = t("AniStat — Statistiques de profils AniList", "AniStat — AniList profile statistics");
+    document.title =
+      currentRoute.type === "user" && routeName
+        ? `${routeName} · ${tabLabels[tab] || tabLabels.overview} — AniStat`
+        : homeTitle;
+
+    try {
+      const lang = currentRoute.lang;
+      document.documentElement.lang = lang;
+      const origin = window.location.origin;
+      const canonicalUrl = `${origin}${window.location.pathname}`;
+      const upsertLink = (selector: string, rel: string, href: string, hreflang?: string) => {
+        let link = document.head.querySelector<HTMLLinkElement>(selector);
+        if (!link) {
+          link = document.createElement("link");
+          link.rel = rel;
+          if (hreflang) link.hreflang = hreflang;
+          document.head.appendChild(link);
+        }
+        link.href = href;
+      };
+      upsertLink('link[rel="canonical"]', "canonical", canonicalUrl);
+      // Alternates hreflang fr / en / x-default pour le SEO multilingue.
+      upsertLink('link[rel="alternate"][hreflang="fr"]', "alternate", `${origin}${buildAlternateLangPath("fr")}`, "fr");
+      upsertLink('link[rel="alternate"][hreflang="en"]', "alternate", `${origin}${buildAlternateLangPath("en")}`, "en");
+      upsertLink(
+        'link[rel="alternate"][hreflang="x-default"]',
+        "alternate",
+        `${origin}${buildAlternateLangPath("fr")}`,
+        "x-default"
+      );
+
+      const ogUrl = document.head.querySelector<HTMLMetaElement>('meta[property="og:url"]');
+      if (ogUrl) ogUrl.content = canonicalUrl;
+      const ogLocale = document.head.querySelector<HTMLMetaElement>('meta[property="og:locale"]');
+      if (ogLocale) ogLocale.content = lang === "en" ? "en_US" : "fr_FR";
+    } catch {
+      /* ignore */
+    }
+  }, [currentRoute, tab, user, t]);
 
   /* Valeur agrégée du contexte de période. Memoïsée pour que l'identité
    * reste stable tant que rien ne change : sans ça, on recréerait l'objet
@@ -1209,8 +1273,9 @@ function App() {
         allManga,
         animeActivityCache: effectiveAnimeActivityCache,
         mangaActivityCache: effectiveMangaActivityCache,
+        lang,
       }),
-    [appUser, wrappedYear, allAnime, allManga, effectiveAnimeActivityCache, effectiveMangaActivityCache]
+    [appUser, wrappedYear, allAnime, allManga, effectiveAnimeActivityCache, effectiveMangaActivityCache, lang]
   );
 
   /** Le loader global ne doit bloquer que tant que le profil de base n'est pas affichable. */
@@ -1248,6 +1313,7 @@ function App() {
         headerQuickPickMatches={headerQuickPickMatches}
         pickQuickProfile={pickQuickProfile}
         handleSubmit={handleSubmit}
+        onGoHome={goHome}
         showApiBadge={showApiBadge}
         apiStatusBadge={apiStatusBadge}
         isDevLocal={IS_DEV_LOCAL}
@@ -1274,7 +1340,7 @@ function App() {
             type="button"
             className="persistence-error-banner__close"
             onClick={clearPersistenceError}
-            aria-label="Fermer l'alerte"
+            aria-label={t("Fermer l'alerte", "Dismiss alert")}
           >
             ×
           </button>
@@ -1317,13 +1383,13 @@ function App() {
         tabs={tabs}
       >
             <div key={tab} className="tab-transition-wrapper">
-            <Suspense fallback={<LoadingBlock caption="Chargement de l'onglet…" />}>
+            <Suspense fallback={<LoadingBlock caption={t("Chargement de l'onglet…", "Loading tab…")} />}>
             {tab === "overview" && (
               <OverviewTab
                 totalEp={totalEp}
                 totalAnime={animeTabEntries.length}
                 totalManga={mangaTabEntries.length}
-                totalTimeLabel={fmtMin(totalMinAnimeTab)}
+                totalTimeLabel={fmtMinL(totalMinAnimeTab)}
                 avgA={avgA}
                 animeVsCommunityScoreStdDev={animeVsCommunityScoreStdDev}
                 totalCh={totalCh}
@@ -1338,7 +1404,7 @@ function App() {
                 overviewCompareLineDimmed={compareAvailability.missing}
                 overviewCompareEmptyLabel={
                   !compareAvailability.missing && !overviewCompareHasAnyData
-                    ? "Aucune donnée pour cette période"
+                    ? t("Aucune donnée pour cette période", "No data for this period")
                     : null
                 }
                 compareAvailability={compareAvailability}
@@ -1368,7 +1434,7 @@ function App() {
                 animeEntriesLength={animeTabEntries.length}
                 totalEp={totalEpAnimeTab}
                 totalMin={totalMinAnimeTab}
-                fmtMin={fmtMin}
+                fmtMin={fmtMinL}
                 avgA={avgATab}
                 animeVsCommunityScoreStdDev={animeVsCommunityScoreStdDev}
                 animeStatusEntriesOrdered={animeStatusEntriesOrdered}

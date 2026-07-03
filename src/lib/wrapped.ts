@@ -1,7 +1,9 @@
 import type { ActivityCacheByYear, ActivityItem, AniListEntry, AniListUser, RecordMediaRef } from "../types/domain";
-import { MONTHS } from "../config/constants";
+import { monthsShort, type AppLang } from "../config/constants";
+import { makeT, type TFunction } from "../i18n/I18n";
 import {
   completedInYear,
+  countActiveProgressDays,
   computeMonthlyDeltasFromActivities,
   computePeriodAnimeActivityTotals,
   computePeriodBiggestSession,
@@ -96,24 +98,13 @@ type BuildWrappedSummaryArgs = {
   allManga: readonly AniListEntry[];
   animeActivityCache: ActivityCacheByYear;
   mangaActivityCache: ActivityCacheByYear;
+  lang?: AppLang;
 };
 
 function isTsInYear(activity: ActivityItem, year: number): boolean {
   const ts = Number(activity?.createdAt || 0);
   if (!Number.isFinite(ts) || ts <= 0) return false;
   return new Date(ts * 1000).getFullYear() === year;
-}
-
-function countActiveDays(activities: readonly ActivityItem[], year: number): number {
-  const days = new Set<string>();
-  for (const activity of activities) {
-    if (!isTsInYear(activity, year)) continue;
-    const d = new Date(Number(activity.createdAt || 0) * 1000);
-    days.add(
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-    );
-  }
-  return days.size;
 }
 
 function mediaTitle(entry: AniListEntry): string {
@@ -215,8 +206,8 @@ function statusSummary(entries: readonly AniListEntry[]): WrappedStatusSummary {
   );
 }
 
-function formatShortDate(date: Date): string {
-  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
+function formatShortDate(date: Date, lang: AppLang = "fr"): string {
+  return date.toLocaleDateString(lang === "en" ? "en-US" : "fr-FR", { day: "2-digit", month: "short" });
 }
 
 function dateFromEntryDate(value: AniListEntry["startedAt"]): Date | null {
@@ -239,7 +230,8 @@ function buildMediaLookup(entries: readonly AniListEntry[]): Map<number, Wrapped
 function buildActivityTimeline(
   activities: readonly ActivityItem[],
   year: number,
-  fallbackByMediaId: Map<number, WrappedMedia>
+  fallbackByMediaId: Map<number, WrappedMedia>,
+  lang: AppLang = "fr"
 ): WrappedTimelinePair {
   const items = activities
     .filter((activity) => isTsInYear(activity, year))
@@ -248,7 +240,7 @@ function buildActivityTimeline(
       const ts = Number(activity.createdAt || 0);
       if (!media || !Number.isFinite(ts) || ts <= 0) return null;
       const date = new Date(ts * 1000);
-      return { media, date, dateLabel: formatShortDate(date) };
+      return { media, date, dateLabel: formatShortDate(date, lang) };
     })
     .filter((item): item is { media: WrappedMedia; date: Date; dateLabel: string } => Boolean(item))
     .sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -259,13 +251,17 @@ function buildActivityTimeline(
   };
 }
 
-function buildNewSeriesTimeline(entries: readonly AniListEntry[], year: number): WrappedTimelinePair {
+function buildNewSeriesTimeline(
+  entries: readonly AniListEntry[],
+  year: number,
+  lang: AppLang = "fr"
+): WrappedTimelinePair {
   const items = entries
     .map((entry) => {
       const date = dateFromEntryDate(entry.startedAt);
       const media = toWrappedMedia(entry);
       if (!date || date.getFullYear() !== year || !media) return null;
-      return { media, date, dateLabel: formatShortDate(date) };
+      return { media, date, dateLabel: formatShortDate(date, lang) };
     })
     .filter((item): item is { media: WrappedMedia; date: Date; dateLabel: string } => Boolean(item))
     .sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -312,14 +308,11 @@ function formatHours(minutes: number): string {
   return `${hours} h`;
 }
 
-function plural(value: number, singular: string, pluralLabel: string): string {
-  return `${value} ${value > 1 ? pluralLabel : singular}`;
-}
-
 function buildWrappedMonthlyChartData(
   year: number,
   activityCache: ActivityCacheByYear,
-  kind: "anime" | "manga"
+  kind: "anime" | "manga",
+  lang: AppLang = "fr"
 ): WrappedMonthlyChartRow[] {
   const compareYear = year - 1;
   const cur = mergeActivitiesForDelta(year, activityCache);
@@ -327,7 +320,7 @@ function buildWrappedMonthlyChartData(
   const curM = computeMonthlyDeltasFromActivities(cur, year, kind);
   const compM = computeMonthlyDeltasFromActivities(comp, compareYear, kind);
 
-  return MONTHS.map((name, index) => {
+  return monthsShort(lang).map((name, index) => {
     const month = index + 1;
     return {
       label: name,
@@ -344,7 +337,9 @@ export function buildWrappedSummary({
   allManga,
   animeActivityCache,
   mangaActivityCache,
+  lang = "fr",
 }: BuildWrappedSummaryArgs): WrappedSummary {
+  const t: TFunction = makeT(lang);
   const animeActivities = mergeActivitiesForDelta(year, animeActivityCache);
   const mangaActivities = mergeActivitiesForDelta(year, mangaActivityCache);
   const animeActiveIds = getMediaIdsWithProgressInPeriod(animeActivities, year, 0, "anime") as Set<number>;
@@ -352,9 +347,29 @@ export function buildWrappedSummary({
   const animeEntries = periodEntries(allAnime, year, animeActiveIds);
   const mangaEntries = periodEntries(allManga, year, mangaActiveIds);
 
-  const animeTotals = computePeriodAnimeActivityTotals(animeActivities, year, 0);
-  const chapters = computePeriodDeltaFromActivities(mangaActivities, year, 0, "manga");
-  const activeDays = countActiveDays([...animeActivities, ...mangaActivities], year);
+  /**
+   * Totaux « épisodes / minutes / chapitres » : on filtre les activités aux
+   * médias présents dans les entrées de la période, exactement comme l'overview
+   * (`mergedAnimeForTabTotals`). Cela garantit des chiffres identiques entre la
+   * carte « Épisodes vus » de l'overview et le wrapped, et cohérents avec les
+   * entrées affichées.
+   */
+  const animeEntryMediaIds = new Set(
+    animeEntries.map((e) => Number(e.media?.id || 0)).filter((id) => id > 0)
+  );
+  const mangaEntryMediaIds = new Set(
+    mangaEntries.map((e) => Number(e.media?.id || 0)).filter((id) => id > 0)
+  );
+  const animeActivitiesForTotals = animeActivities.filter((a) =>
+    animeEntryMediaIds.has(Number(a?.media?.id || 0))
+  );
+  const mangaActivitiesForTotals = mangaActivities.filter((a) =>
+    mangaEntryMediaIds.has(Number(a?.media?.id || 0))
+  );
+
+  const animeTotals = computePeriodAnimeActivityTotals(animeActivitiesForTotals, year, 0);
+  const chapters = computePeriodDeltaFromActivities(mangaActivitiesForTotals, year, 0, "manga");
+  const activeDays = countActiveProgressDays(animeActivities, mangaActivities, year, 0);
   const combinedEntries = [...animeEntries, ...mangaEntries];
   const topTags = computePeriodTopTags(combinedEntries);
   const topStudios = computeAnimeTopStudios(animeEntries, animeActivities, false);
@@ -373,65 +388,79 @@ export function buildWrappedSummary({
     .filter((media): media is WrappedMedia => Boolean(media))
     .slice(0, 8);
 
+  const episodesCount = animeTotals.episodes;
   const highlights: WrappedHighlight[] = [
     {
-      label: "Temps anime",
+      label: t("Temps anime", "Anime time"),
       value: formatHours(animeTotals.minutes),
-      detail: `${plural(animeTotals.episodes, "episode", "episodes")} vus`,
+      detail: t(
+        `${episodesCount} ${episodesCount > 1 ? "episodes" : "episode"} vus`,
+        `${episodesCount} ${episodesCount > 1 ? "episodes" : "episode"} watched`
+      ),
     },
     {
-      label: "Lecture manga",
+      label: t("Lecture manga", "Manga reading"),
       value: String(Math.max(0, Math.round(chapters))),
-      detail: "chapitres lus",
+      detail: t("chapitres lus", "chapters read"),
     },
     {
-      label: "Jours actifs",
+      label: t("Jours actifs", "Active days"),
       value: String(activeDays),
-      detail: "jours avec au moins une activité",
+      detail: t("jours avec des épisodes ou chapitres", "days with episodes or chapters"),
     },
   ];
 
   if (longestStreak) {
     highlights.push({
-      label: "Meilleure série",
-      value: `${longestStreak.length} j`,
+      label: t("Meilleure série", "Best streak"),
+      value: t(`${longestStreak.length} j`, `${longestStreak.length} d`),
       detail:
         longestStreak.length === 1
-          ? `Le ${longestStreak.startDateLabel}`
-          : `Du ${longestStreak.startDateLabel} au ${longestStreak.endDateLabel}`,
+          ? t(`Le ${longestStreak.startDateLabel}`, `On ${longestStreak.startDateLabel}`)
+          : t(
+              `Du ${longestStreak.startDateLabel} au ${longestStreak.endDateLabel}`,
+              `From ${longestStreak.startDateLabel} to ${longestStreak.endDateLabel}`
+            ),
     });
   }
 
   const biggestSession =
     (animeBiggestSession?.count || 0) >= (mangaBiggestSession?.count || 0)
       ? animeBiggestSession
-        ? { ...animeBiggestSession, unit: "episodes" }
+        ? { ...animeBiggestSession, unit: t("episodes", "episodes") }
         : null
       : mangaBiggestSession
-        ? { ...mangaBiggestSession, unit: "chapitres" }
+        ? { ...mangaBiggestSession, unit: t("chapitres", "chapters") }
         : null;
   if (biggestSession) {
     highlights.push({
-      label: "Plus grosse session",
+      label: t("Plus grosse session", "Biggest session"),
       value: String(biggestSession.count),
-      detail: `${biggestSession.unit} le ${biggestSession.dateLabel}`,
+      detail: t(
+        `${biggestSession.unit} le ${biggestSession.dateLabel}`,
+        `${biggestSession.unit} on ${biggestSession.dateLabel}`
+      ),
     });
   }
 
   const emptyReason =
     animeEntries.length === 0 && mangaEntries.length === 0
-      ? `Aucune activité consolidée pour ${year}. Essaie une autre année ou lance une synchronisation.`
+      ? t(
+          `Aucune activité consolidée pour ${year}. Essaie une autre année ou lance une synchronisation.`,
+          `No consolidated activity for ${year}. Try another year or run a sync.`
+        )
       : null;
 
   const compareYear = year - 1;
-  const mangaChaptersChartData = buildWrappedMonthlyChartData(year, mangaActivityCache, "manga");
-  const animeEpisodesChartData = buildWrappedMonthlyChartData(year, animeActivityCache, "anime");
+  const mangaChaptersChartData = buildWrappedMonthlyChartData(year, mangaActivityCache, "manga", lang);
+  const animeEpisodesChartData = buildWrappedMonthlyChartData(year, animeActivityCache, "anime", lang);
   const activityTimeline = buildActivityTimeline(
     [...animeActivities, ...mangaActivities],
     year,
-    buildMediaLookup(combinedEntries)
+    buildMediaLookup(combinedEntries),
+    lang
   );
-  const newSeriesTimeline = buildNewSeriesTimeline(combinedEntries, year);
+  const newSeriesTimeline = buildNewSeriesTimeline(combinedEntries, year, lang);
   const genreChartData = genreRowsFromEntries(combinedEntries);
 
   return {

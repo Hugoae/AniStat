@@ -1,5 +1,8 @@
-import type { RefObject } from "react";
+import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
 import { C } from "../../config/constants";
+import { buildHomePath } from "../../lib/routing";
+import { useT } from "../../i18n/I18n";
+import { LanguageSwitcher } from "../ui/LanguageSwitcher";
 
 import { SITE } from "../../config/site";
 import { SiteLogo } from "../SiteLogo";
@@ -26,6 +29,7 @@ export type ProfileAppHeaderProps = {
   headerQuickPickMatches: ProfileHeaderQuickPick[];
   pickQuickProfile: (name: string) => void;
   handleSubmit: () => void;
+  onGoHome: () => void;
   showApiBadge: boolean;
   apiStatusBadge: { label: string; color: string };
   isDevLocal: boolean;
@@ -50,6 +54,7 @@ export function ProfileAppHeader({
   headerQuickPickMatches,
   pickQuickProfile,
   handleSubmit,
+  onGoHome,
   showApiBadge,
   apiStatusBadge,
   isDevLocal,
@@ -62,6 +67,14 @@ export function ProfileAppHeader({
   syncRefreshing,
   onRefreshProfile,
 }: ProfileAppHeaderProps) {
+  const t = useT();
+  const homeHref = buildHomePath();
+  const handleHomeClick = (e: ReactMouseEvent<HTMLAnchorElement>) => {
+    // Laisse le navigateur gérer ctrl/cmd/middle-click (ouvrir dans un onglet).
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    onGoHome();
+  };
   return (
     <div
       className={`header-surface ${headerBannerImage ? "header-surface--banner" : "header-surface--plain"}`}
@@ -75,7 +88,12 @@ export function ProfileAppHeader({
     >
       <div className="header-container">
         <div className="header-top-row">
-          <a href="#/" className="header-brand header-brand--home" aria-label={`${SITE.name} — Accueil`}>
+          <a
+            href={homeHref}
+            onClick={handleHomeClick}
+            className="header-brand header-brand--home"
+            aria-label={`${SITE.name} — ${t("Accueil", "Home")}`}
+          >
             <SiteLogo variant="header" />
           </a>
           <div className="header-search-wrap">
@@ -102,9 +120,9 @@ export function ProfileAppHeader({
                   }
                   if (e.key === "Escape") setHeaderSearchFocused(false);
                 }}
-                placeholder="Nom d'utilisateur AniList"
+                placeholder={t("Nom d'utilisateur AniList", "AniList username")}
                 autoComplete="off"
-                aria-label="Rechercher un pseudo AniList"
+                aria-label={t("Rechercher un pseudo AniList", "Search an AniList username")}
                 aria-autocomplete="list"
                 aria-expanded={showHeaderQuickPicks}
                 aria-controls="header-quick-picks"
@@ -113,7 +131,7 @@ export function ProfileAppHeader({
               <button
                 type="button"
                 className="header-search-submit"
-                aria-label="Rechercher ce profil"
+                aria-label={t("Rechercher ce profil", "Search this profile")}
                 disabled={!inputVal.trim()}
                 onClick={handleSubmit}
               >
@@ -169,10 +187,11 @@ export function ProfileAppHeader({
               </ul>
             ) : null}
           </div>
-          <a href="#/" className="header-home-link">
-            Accueil
+          <a href={homeHref} onClick={handleHomeClick} className="header-home-link">
+            {t("Accueil", "Home")}
           </a>
           <div className="header-nav-fill" aria-hidden />
+          <LanguageSwitcher />
           {showApiBadge && (
             <div className="header-api-badge" style={{ color: apiStatusBadge.color }}>
               {apiStatusBadge.label}
@@ -184,7 +203,7 @@ export function ProfileAppHeader({
               className="header-dev-toggle"
               onClick={() => setShowDevPanel((v) => !v)}
             >
-              {showDevPanel ? "Masquer debug" : "Afficher debug"}
+              {showDevPanel ? t("Masquer debug", "Hide debug") : t("Afficher debug", "Show debug")}
             </button>
           )}
         </div>
@@ -216,7 +235,7 @@ export function ProfileAppHeader({
               </a>
               {transitionActive ? (
                 <div className="header-profile-meta header-profile-meta--pending">
-                  Chargement du profil…
+                  {t("Chargement du profil…", "Loading profile…")}
                 </div>
               ) : null}
               {syncStatusLabel ? (
@@ -229,8 +248,8 @@ export function ProfileAppHeader({
                     className={`header-sync-refresh-btn${syncRefreshing ? " header-sync-refresh-btn--spinning" : ""}`}
                     onClick={onRefreshProfile}
                     disabled={syncRefreshing}
-                    aria-label="Actualiser depuis AniList (delta sync)"
-                    title="Actualiser depuis AniList (delta sync)"
+                    aria-label={t("Actualiser depuis AniList (delta sync)", "Refresh from AniList (delta sync)")}
+                    title={t("Actualiser depuis AniList (delta sync)", "Refresh from AniList (delta sync)")}
                   >
                     <svg
                       width="14"

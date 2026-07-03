@@ -8,6 +8,7 @@ export { ListTabSectionNav } from "./ListTabSectionNav";
 export type { ListTabSectionNavItem } from "./ListTabSectionNav";
 export { DevPanel } from "./DevPanel";
 export { MediaCard } from "./MediaCard";
+export { LanguageSwitcher } from "./LanguageSwitcher";
 export { CTooltip, CompareLineTooltip, GenreRadarTooltip } from "../charts/ChartTooltips";
 export { MediaOriginFlagSvg } from "./MediaOriginFlagSvg";
 /* Barrel file regroupant composants + quelques helpers utilisés en tandem.

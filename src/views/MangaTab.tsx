@@ -44,6 +44,7 @@ import { LIST_TAB_PAIR_CHART_HEIGHT } from "../config/listConstants";
 import { getComparisonPeriodMeta } from "../lib/stats";
 import { GenreRadarChart, type GenreRadarRow } from "../components/charts/GenreRadarChart";
 import type { AniListEntry, PeriodRecordsBundle } from "../types/domain";
+import { useT, useLang } from "../i18n/I18n";
 
 export type MangaTabProps = {
   mangaEntriesLength: number;
@@ -95,6 +96,8 @@ export const MangaTab = memo(function MangaTab({
   mangaListLayoutActive,
   mangaPeriodProgressByMedia,
 }: MangaTabProps) {
+  const t = useT();
+  const lang = useLang();
   const { year, month, isAllTime, setMonth } = useProfilePeriod();
   const genreComparisonLabel = useMemo(
     () => (isAllTime ? "" : getComparisonPeriodMeta(year, month).legendCompare),
@@ -103,7 +106,7 @@ export const MangaTab = memo(function MangaTab({
   const viewFullYearCta =
     month !== 0 ? (
       <button type="button" className="list-tab-empty-cta" onClick={() => setMonth(0)}>
-        Voir toute l&apos;année {year}
+        {t("Voir toute l'année", "View the full year")} {year}
       </button>
     ) : null;
   const periodYearLabel = isAllTime ? "All Time" : String(year);
@@ -127,7 +130,7 @@ export const MangaTab = memo(function MangaTab({
 
   const formatChaptersLabel = (chaptersRaw: number) => {
     const ch = Math.max(0, Math.round(Number(chaptersRaw) || 0));
-    return `${ch} chapitre${ch > 1 ? "s" : ""}`;
+    return `${ch} ${t(ch > 1 ? "chapitres" : "chapitre", ch > 1 ? "chapters" : "chapter")}`;
   };
   const formatChaptersByName = useMemo(
     () =>
@@ -145,7 +148,7 @@ export const MangaTab = memo(function MangaTab({
   );
   const formatTitlesLabel = (titlesRaw: number) => {
     const n = Math.max(0, Math.round(Number(titlesRaw) || 0));
-    return `${n} titre${n > 1 ? "s" : ""}`;
+    return `${n} ${t(n > 1 ? "titres" : "titre", n > 1 ? "titles" : "title")}`;
   };
   const formatColorMap = useMemo(
     () => buildColorMapFromOrderedKeys(mangaFmtData.map((row) => String(row.name))),
@@ -165,7 +168,7 @@ export const MangaTab = memo(function MangaTab({
         fill: getColorForLabel(String(row.name), formatColorMap),
         extraInfo: formatChaptersLabel(formatChaptersByName.get(String(row.name)) || 0),
       })),
-    [mangaFmtData, formatColorMap, formatChaptersByName]
+    [mangaFmtData, formatColorMap, formatChaptersByName, t]
   );
   const formatPieSlicesByChapters = useMemo(() => {
     const titlesByName = new Map(mangaFmtData.map((row) => [String(row.name), Number(row.value) || 0] as const));
@@ -178,13 +181,13 @@ export const MangaTab = memo(function MangaTab({
         fill: getColorForLabel(String(row.name), formatColorMap),
         extraInfo: formatTitlesLabel(titlesByName.get(String(row.name)) || 0),
       }));
-  }, [mangaChaptersByFormatData, mangaFmtData, formatColorMap]);
+  }, [mangaChaptersByFormatData, mangaFmtData, formatColorMap, t]);
 
   const countryPieSlicesByTitles = useMemo(
     () =>
       mangaCountryEntriesOrdered.map(([code, c]) => {
-        const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code);
-        const label = meta ? meta.label : "Inconnu";
+        const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code, lang);
+        const label = meta ? meta.label : t("Inconnu", "Unknown");
         return {
           key: code,
           label,
@@ -194,7 +197,7 @@ export const MangaTab = memo(function MangaTab({
           extraInfo: formatChaptersLabel(countryChaptersByCode.get(code) || 0),
         };
       }),
-    [mangaCountryEntriesOrdered, countryColorMap, countryChaptersByCode]
+    [mangaCountryEntriesOrdered, countryColorMap, countryChaptersByCode, formatChaptersLabel, t, lang]
   );
   const countryPieSlicesByChapters = useMemo(() => {
     const titlesByCode = new Map(
@@ -204,8 +207,8 @@ export const MangaTab = memo(function MangaTab({
       .filter((row) => Number(row.chapters) > 0)
       .map((row) => {
         const code = String(row.code);
-        const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code);
-        const label = meta ? meta.label : "Inconnu";
+        const meta = code === "__UNKNOWN__" ? null : mediaCountryOriginMeta(code, lang);
+        const label = meta ? meta.label : t("Inconnu", "Unknown");
         return {
           key: code,
           label,
@@ -215,7 +218,7 @@ export const MangaTab = memo(function MangaTab({
           extraInfo: formatTitlesLabel(titlesByCode.get(code) || 0),
         };
       });
-  }, [mangaChaptersByCountryData, mangaCountryEntriesOrdered, countryColorMap]);
+  }, [mangaChaptersByCountryData, mangaCountryEntriesOrdered, countryColorMap, formatTitlesLabel, t, lang]);
   const statusPieSlices = useMemo(
     () => buildStatusPieSlices(mangaStatusEntriesOrdered),
     [mangaStatusEntriesOrdered]
@@ -229,7 +232,7 @@ export const MangaTab = memo(function MangaTab({
       { key: "51-100", label: "51-100", count: 0 },
       { key: "101-200", label: "101-200", count: 0 },
       { key: "200+", label: "200+", count: 0 },
-      { key: "unknown", label: "Inconnu", count: 0 },
+      { key: "unknown", label: t("Inconnu", "Unknown"), count: 0 },
     ];
     for (const entry of mangaTabEntries) {
       const chapters = Number(entry.media?.chapters || 0);
@@ -243,7 +246,7 @@ export const MangaTab = memo(function MangaTab({
       else rows[7].count += 1;
     }
     return rows.filter((row) => row.count > 0);
-  }, [mangaTabEntries]);
+  }, [mangaTabEntries, t]);
   const mangaScoreHalfDistributionVisibleRows = useMemo(() => {
     if (mangaScoreHalfDistributionRows.length === 0) return [];
     const nonZeroIndices = mangaScoreHalfDistributionRows
@@ -265,28 +268,31 @@ export const MangaTab = memo(function MangaTab({
   });
 
   const sectionNavItems = useMemo(() => [
-    { id: "manga-synthese", label: "Statistiques" },
-    { id: "manga-repartition", label: "Liste des œuvres" },
-    { id: "manga-records", label: "Records" },
-    { id: "manga-graphiques", label: "Graphiques" },
-    { id: "manga-auteurs", label: "Auteurs" },
-  ], []);
+    { id: "manga-synthese", label: t("Statistiques", "Statistics") },
+    { id: "manga-repartition", label: t("Liste des œuvres", "List of titles") },
+    { id: "manga-records", label: t("Records", "Records") },
+    { id: "manga-graphiques", label: t("Graphiques", "Charts") },
+    { id: "manga-auteurs", label: t("Auteurs", "Authors") },
+  ], [t]);
 
   return (
     <div className="list-tab-shell">
-      <ListTabSectionNav items={sectionNavItems} label="Navigation des sections manga" />
+      <ListTabSectionNav items={sectionNavItems} label={t("Navigation des sections manga", "Manga sections navigation")} />
       <div className="list-tab-page">
       <div id="manga-synthese" className="overview-stats-cluster list-tab-anchor">
         <div className="fade-in stat-stat-al-row--overview">
-          <StatCard label="Total manga" value={mangaEntriesLength} icon="book" />
-          <StatCard label="Chapitres lus" value={totalCh} icon="book" />
-          <StatCard label="Volumes" value={totalVol} icon="stack" />
-          <StatCard label="Score moyen" value={avgM} icon="star" />
+          <StatCard label={t("Total manga", "Total manga")} value={mangaEntriesLength} icon="book" />
+          <StatCard label={t("Chapitres lus", "Chapters read")} value={totalCh} icon="book" />
+          <StatCard label={t("Volumes", "Volumes")} value={totalVol} icon="stack" />
+          <StatCard label={t("Score moyen", "Average score")} value={avgM} icon="star" />
           <StatCard
-            label="Dispersion (σ)"
+            label={t("Dispersion (σ)", "Dispersion (σ)")}
             value={mangaVsCommunityScoreStdDev}
             icon="divide"
-            labelHint="Écart-type (σ) de vos écarts (votre note − moyenne AniList) sur la période, en points sur 10. C'est l'amplitude typique d'un écart, sans considérer son sens : 0 = vos notes collent à la moyenne du site, plus la valeur monte plus vos notes sont tranchées (au-dessus comme au-dessous). Pour savoir si vous sur- ou sous-notez en moyenne, regardez le graphique « Ta note vs note AniList » plus bas."
+            labelHint={t(
+              "Écart-type (σ) de vos écarts (votre note − moyenne AniList) sur la période, en points sur 10. C'est l'amplitude typique d'un écart, sans considérer son sens : 0 = vos notes collent à la moyenne du site, plus la valeur monte plus vos notes sont tranchées (au-dessus comme au-dessous). Pour savoir si vous sur- ou sous-notez en moyenne, regardez le graphique « Ta note vs note AniList » plus bas.",
+              "Standard deviation (σ) of your gaps (your score − AniList average) over the period, in points out of 10. It is the typical magnitude of a gap, regardless of its direction: 0 = your scores match the site average, and the higher the value the more polarized your scores are (both above and below). To find out whether you over- or under-rate on average, see the “Your score vs AniList score” chart below."
+            )}
           />
         </div>
       </div>
@@ -299,12 +305,15 @@ export const MangaTab = memo(function MangaTab({
         >
           <ActivityHeatmap
             year={year}
-            title={`Calendrier d'activité manga ${periodYearLabel}`}
+            title={`${t("Calendrier d'activité manga", "Manga activity calendar")} ${periodYearLabel}`}
             dailyTotals={mangaDailyTotalsForYear}
-            unitSingular="chapitre"
-            unitPlural="chapitres"
+            unitSingular={t("chapitre", "chapter")}
+            unitPlural={t("chapitres", "chapters")}
             collapseId="manga.heatmap"
-            titleHint="Chaque cellule représente une journée de l'année. La couleur indique le nombre de chapitres lus ce jour-là (toutes activités manga AniList confondues, période ignorée). Survole une cellule pour voir le total exact."
+            titleHint={t(
+              "Chaque cellule représente une journée de l'année. La couleur indique le nombre de chapitres lus ce jour-là (toutes activités manga AniList confondues, période ignorée). Survole une cellule pour voir le total exact.",
+              "Each cell represents a day of the year. The color indicates the number of chapters read that day (across all AniList manga activity, ignoring the period). Hover over a cell to see the exact total."
+            )}
           />
         </section>
       ) : null}
@@ -337,18 +346,24 @@ export const MangaTab = memo(function MangaTab({
           <div className="list-tab-anime-charts list-tab-anime-charts--two">
             <CollapsibleChartBlock
               id="manga.scores"
-              title="Répartition des scores"
+              title={t("Répartition des scores", "Score distribution")}
               withHint
               titleAside={
-                <StatLabelHint text="Chaque note est ramenée au demi-point le plus proche avant d’être comptée (ex. 7,2 → 7 ; 7,8 → 8 ; 8,25 → 8,5)" />
+                <StatLabelHint text={t(
+                  "Chaque note est ramenée au demi-point le plus proche avant d’être comptée (ex. 7,2 → 7 ; 7,8 → 8 ; 8,25 → 8,5)",
+                  "Each score is rounded to the nearest half-point before being counted (e.g. 7.2 → 7; 7.8 → 8; 8.25 → 8.5)"
+                )} />
               }
             >
               <ChartCard
                 noTitle
                 className="list-tab-anime-chart--scores"
-                screenReaderSummary="Histogramme des scores : effectifs par tranche de demi-point de 1 à 10 pour les manga notés sur la période."
+                screenReaderSummary={t(
+                  "Histogramme des scores : effectifs par tranche de demi-point de 1 à 10 pour les manga notés sur la période.",
+                  "Score histogram: counts per half-point bracket from 1 to 10 for manga rated in the period."
+                )}
                 dataTable={{
-                  caption: "Répartition des scores manga",
+                  caption: t("Répartition des scores manga", "Manga score distribution"),
                   columns: ["Score", "Manga"],
                   rows: mangaScoreHalfDistributionVisibleRows.map((row) => [row.label, row.count]),
                 }}
@@ -399,7 +414,7 @@ export const MangaTab = memo(function MangaTab({
                 ) : (
                   <EmptyState
                     icon="star"
-                    title="Aucun score sur les manga de cette période."
+                    title={t("Aucun score sur les manga de cette période.", "No score for manga in this period.")}
                     cta={viewFullYearCta}
                   />
                 )}
@@ -435,13 +450,16 @@ export const MangaTab = memo(function MangaTab({
           </div>
 
           <div className="list-tab-anime-charts">
-            <CollapsibleChartBlock id="manga.releaseYear" title="Année de sortie">
+            <CollapsibleChartBlock id="manga.releaseYear" title={t("Année de sortie", "Release year")}>
               <ChartCard
                 noTitle
-                screenReaderSummary="Nombre de manga de la période par année de sortie (date de début)."
+                screenReaderSummary={t(
+                  "Nombre de manga de la période par année de sortie (date de début).",
+                  "Number of manga in the period by release year (start date)."
+                )}
                 dataTable={{
-                  caption: "Manga par année de sortie",
-                  columns: ["Année", "Titres"],
+                  caption: t("Manga par année de sortie", "Manga by release year"),
+                  columns: [t("Année", "Year"), t("Titres", "Titles")],
                   rows: mangaReleaseYearHistogram.map((row) => [row.yearLabel, row.count]),
                 }}
               >
@@ -474,7 +492,7 @@ export const MangaTab = memo(function MangaTab({
                           allowDecimals={false}
                           domain={[0, "auto"]}
                         />
-                        <Tooltip content={<CTooltip />} formatter={(v: number) => [String(v), "Titres"]} />
+                        <Tooltip content={<CTooltip />} formatter={(v: number) => [String(v), t("Titres", "Titles")]} />
                         <Area
                           type="monotone"
                           dataKey="count"
@@ -515,7 +533,7 @@ export const MangaTab = memo(function MangaTab({
                 ) : (
                   <EmptyState
                     icon="calendar"
-                    title="Aucune année de sortie renseignée sur ces titres."
+                    title={t("Aucune année de sortie renseignée sur ces titres.", "No release year listed for these titles.")}
                     cta={viewFullYearCta}
                   />
                 )}
@@ -527,56 +545,68 @@ export const MangaTab = memo(function MangaTab({
         <div id="manga-camemberts" className="list-tab-anime-pie-bottom list-tab-anchor">
           <div className="list-tab-pie-pair">
             <AnimePieDistributionCard
-              title="Répartition par format"
-              screenReaderSummary="Camembert des formats sur la période."
+              title={t("Répartition par format", "Distribution by format")}
+              screenReaderSummary={t("Camembert des formats sur la période.", "Pie chart of formats over the period.")}
               emptyExtra={viewFullYearCta}
               defaultModeKey="titles"
               collapseId="manga.format"
               modes={[
                 {
                   key: "titles",
-                  label: "Titres",
-                  unitSingular: "titre",
-                  unitPlural: "titres",
+                  label: t("Titres", "Titles"),
+                  unitSingular: t("titre", "title"),
+                  unitPlural: t("titres", "titles"),
                   slices: formatPieSlicesByTitles,
                   footnote:
-                    "Le pourcentage représente la part de titres, le nombre de chapitres lus est une information complémentaire.",
+                    t(
+                      "Le pourcentage représente la part de titres, le nombre de chapitres lus est une information complémentaire.",
+                      "The percentage represents the share of titles; the number of chapters read is additional information."
+                    ),
                 },
                 {
                   key: "chapters",
-                  label: "Chapitres",
-                  unitSingular: "chapitre lu",
-                  unitPlural: "chapitres lus",
+                  label: t("Chapitres", "Chapters"),
+                  unitSingular: t("chapitre lu", "chapter read"),
+                  unitPlural: t("chapitres lus", "chapters read"),
                   slices: formatPieSlicesByChapters,
                   footnote:
-                    "Le pourcentage représente la part de chapitres lus, le nombre de titres est une information complémentaire.",
+                    t(
+                      "Le pourcentage représente la part de chapitres lus, le nombre de titres est une information complémentaire.",
+                      "The percentage represents the share of chapters read; the number of titles is additional information."
+                    ),
                 },
               ]}
             />
             <AnimePieDistributionCard
-              title="Pays d’origine"
-              screenReaderSummary="Camembert des pays d’origine des manga sur la période."
+              title={t("Pays d'origine", "Country of origin")}
+              screenReaderSummary={t("Camembert des pays d'origine des manga sur la période.", "Pie chart of manga countries of origin over the period.")}
               emptyExtra={viewFullYearCta}
               defaultModeKey="titles"
               collapseId="manga.country"
               modes={[
                 {
                   key: "titles",
-                  label: "Titres",
-                  unitSingular: "titre",
-                  unitPlural: "titres",
+                  label: t("Titres", "Titles"),
+                  unitSingular: t("titre", "title"),
+                  unitPlural: t("titres", "titles"),
                   slices: countryPieSlicesByTitles,
                   footnote:
-                    "Le pourcentage représente la part de titres, le nombre de chapitres lus est une information complémentaire.",
+                    t(
+                      "Le pourcentage représente la part de titres, le nombre de chapitres lus est une information complémentaire.",
+                      "The percentage represents the share of titles; the number of chapters read is additional information."
+                    ),
                 },
                 {
                   key: "chapters",
-                  label: "Chapitres",
-                  unitSingular: "chapitre lu",
-                  unitPlural: "chapitres lus",
+                  label: t("Chapitres", "Chapters"),
+                  unitSingular: t("chapitre lu", "chapter read"),
+                  unitPlural: t("chapitres lus", "chapters read"),
                   slices: countryPieSlicesByChapters,
                   footnote:
-                    "Le pourcentage représente la part de chapitres lus, le nombre de titres est une information complémentaire.",
+                    t(
+                      "Le pourcentage représente la part de chapitres lus, le nombre de titres est une information complémentaire.",
+                      "The percentage represents the share of chapters read; the number of titles is additional information."
+                    ),
                 },
               ]}
             />
@@ -584,29 +614,38 @@ export const MangaTab = memo(function MangaTab({
           {isAllTime ? (
             <div className="list-tab-pie-pair list-tab-alltime-extra-charts">
               <AnimePieDistributionCard
-                title="Répartition par statut"
-                screenReaderSummary="Camembert des statuts manga All Time, incluant terminés, en cours, abandonnés et planifiés."
+                title={t("Répartition par statut", "Distribution by status")}
+                screenReaderSummary={t(
+                  "Camembert des statuts manga All Time, incluant terminés, en cours, abandonnés et planifiés.",
+                  "Pie chart of All Time manga statuses, including completed, in progress, dropped and planned."
+                )}
                 defaultModeKey="titles"
                 collapseId="manga.statusAllTime"
                 modes={[
                   {
                     key: "titles",
-                    label: "Titres",
-                    unitSingular: "titre",
-                    unitPlural: "titres",
+                    label: t("Titres", "Titles"),
+                    unitSingular: t("titre", "title"),
+                    unitPlural: t("titres", "titles"),
                     slices: statusPieSlices,
                     footnote:
-                      "Le pourcentage représente la part de titres, le nombre de titres est une information complémentaire.",
+                      t(
+                        "Le pourcentage représente la part de titres, le nombre de titres est une information complémentaire.",
+                        "The percentage represents the share of titles; the number of titles is additional information."
+                      ),
                   },
                 ]}
               />
-              <CollapsibleChartBlock id="manga.chapterBuckets" title="Longueur des œuvres">
+              <CollapsibleChartBlock id="manga.chapterBuckets" title={t("Longueur des œuvres", "Length of titles")}>
                 <ChartCard
                   noTitle
-                  screenReaderSummary="Distribution All Time des manga par volume de chapitres."
+                  screenReaderSummary={t(
+                    "Distribution All Time des manga par volume de chapitres.",
+                    "All Time distribution of manga by chapter count."
+                  )}
                   dataTable={{
-                    caption: "Distribution manga par volume de chapitres",
-                    columns: ["Catégorie", "Titres"],
+                    caption: t("Distribution manga par volume de chapitres", "Manga distribution by chapter count"),
+                    columns: [t("Catégorie", "Category"), t("Titres", "Titles")],
                     rows: mangaChapterVolumeBuckets.map((row) => [row.label, row.count]),
                   }}
                 >
@@ -626,7 +665,7 @@ export const MangaTab = memo(function MangaTab({
                             />
                             <YAxis type="number" hide width={0} domain={[0, "auto"]} />
                             <Tooltip content={<CTooltip />} cursor={{ fill: "rgba(61, 180, 242, 0.07)" }} />
-                            <Bar dataKey="count" name="Titres" fill={C.accent} radius={[8, 8, 0, 0]} maxBarSize={48}>
+                            <Bar dataKey="count" name={t("Titres", "Titles")} fill={C.accent} radius={[8, 8, 0, 0]} maxBarSize={48}>
                               <LabelList
                                 dataKey="count"
                                 position="top"
@@ -642,10 +681,13 @@ export const MangaTab = memo(function MangaTab({
                       </RechartsWhenVisible>
                     </div>
                   ) : (
-                    <EmptyState icon="book" title="Aucun volume de chapitres à afficher." />
+                    <EmptyState icon="book" title={t("Aucun volume de chapitres à afficher.", "No chapter count to display.")} />
                   )}
                   <p className="list-tab-pie-card__footnote">
-                    Répartition des mangas selon leur nombre total de chapitres.
+                    {t(
+                      "Répartition des mangas selon leur nombre total de chapitres.",
+                      "Distribution of manga by their total number of chapters."
+                    )}
                   </p>
                 </ChartCard>
               </CollapsibleChartBlock>
@@ -668,14 +710,17 @@ export const MangaTab = memo(function MangaTab({
               <ChartCollapseToggle
                 collapsed={mangaAuthorsCollapse.collapsed}
                 onToggle={mangaAuthorsCollapse.toggle}
-                chartTitle="Auteurs"
+                chartTitle={t("Auteurs", "Authors")}
                 controlsId="manga-authors-body"
               />
-              <StatLabelHint text="Auteurs créditeurs des manga de la période (mangakas, scénaristes, illustrateurs, créateurs originaux). Les rôles secondaires comme la traduction ou l'édition sont exclus. Les chapitres lus sont calculés sur la période sélectionnée à partir des activités AniList." />
+              <StatLabelHint text={t(
+                "Auteurs créditeurs des manga de la période (mangakas, scénaristes, illustrateurs, créateurs originaux). Les rôles secondaires comme la traduction ou l'édition sont exclus. Les chapitres lus sont calculés sur la période sélectionnée à partir des activités AniList.",
+                "Authors credited on the manga in the period (mangaka, writers, illustrators, original creators). Secondary roles such as translation or editing are excluded. Chapters read are computed over the selected period from AniList activity."
+              )} />
             </>
           }
         >
-          Auteurs
+          {t("Auteurs", "Authors")}
         </SectionTitle>
         <div
           className={`collapsible-chart-animator${mangaAuthorsCollapse.collapsed ? " collapsible-chart-animator--collapsed" : ""}`}
@@ -685,7 +730,10 @@ export const MangaTab = memo(function MangaTab({
             {mangaTopAuthors.length > 0 ? (
               <>
                 <p id="manga-authors-summary" className="chart-card__sr-only">
-                  Auteurs AniList sur la période, avec leur rôle dominant et un aperçu des titres.
+                  {t(
+                    "Auteurs AniList sur la période, avec leur rôle dominant et un aperçu des titres.",
+                    "AniList authors over the period, with their dominant role and a preview of titles."
+                  )}
                 </p>
                 <div className="list-tab-authors-grid stagger-reveal">
                   {authorsVisibleRows.map((author) => {
@@ -735,8 +783,14 @@ export const MangaTab = memo(function MangaTab({
                             {periodRank > 0 ? (
                               <div
                                 className="list-tab-author-card__rank"
-                                title={`${periodRank}${periodRank === 1 ? "er" : "e"} sur la période (titres, puis note moyenne)`}
-                                aria-label={`Classement sur la période : ${periodRank} sur ${mangaTopAuthors.length}`}
+                                title={t(
+                                  `${periodRank}${periodRank === 1 ? "er" : "e"} sur la période (titres, puis note moyenne)`,
+                                  `Rank ${periodRank} of the period (by titles, then average score)`
+                                )}
+                                aria-label={t(
+                                  `Classement sur la période : ${periodRank} sur ${mangaTopAuthors.length}`,
+                                  `Ranking over the period: ${periodRank} of ${mangaTopAuthors.length}`
+                                )}
                               >
                                 {periodRank}
                               </div>
@@ -745,25 +799,25 @@ export const MangaTab = memo(function MangaTab({
                           <div className="list-tab-author-card__stats">
                             <div className="list-tab-author-stat">
                               <div className="list-tab-author-stat__value">{author.count}</div>
-                              <div className="list-tab-author-stat__label">Titres</div>
+                              <div className="list-tab-author-stat__label">{t("Titres", "Titles")}</div>
                             </div>
                             <div className="list-tab-author-stat">
                               <div className="list-tab-author-stat__value">
                                 {author.meanUserScore > 0 ? author.meanUserScore.toFixed(1) : "—"}
                               </div>
-                              <div className="list-tab-author-stat__label">Score moyen</div>
+                              <div className="list-tab-author-stat__label">{t("Score moyen", "Average score")}</div>
                             </div>
                             <div className="list-tab-author-stat">
                               <div className="list-tab-author-stat__value list-tab-author-stat__value--chapters">
                                 {author.chaptersRead}
                               </div>
-                              <div className="list-tab-author-stat__label">Chapitres lus</div>
+                              <div className="list-tab-author-stat__label">{t("Chapitres lus", "Chapters read")}</div>
                             </div>
                           </div>
                         </div>
                         <div
                           className="list-tab-author-card__carousel"
-                          aria-label={`Titres lus de ${author.name}`}
+                          aria-label={t(`Titres lus de ${author.name}`, `Titles read by ${author.name}`)}
                         >
                           {author.carouselMedia.map((media) => {
                             const cover = media.coverImageUrl ? (
@@ -786,7 +840,7 @@ export const MangaTab = memo(function MangaTab({
                                   rel="noopener noreferrer"
                                   className="list-tab-author-card__carousel-item list-tab-author-card__carousel-link"
                                   title={media.title}
-                                  aria-label={`${media.title} sur AniList`}
+                                  aria-label={t(`${media.title} sur AniList`, `${media.title} on AniList`)}
                                 >
                                   {cover}
                                 </a>
@@ -815,7 +869,7 @@ export const MangaTab = memo(function MangaTab({
                       onClick={() => setAuthorsExpanded((v) => !v)}
                       aria-expanded={authorsExpanded}
                     >
-                      <span>{authorsExpanded ? "Voir moins" : "Voir plus"}</span>
+                      <span>{authorsExpanded ? t("Voir moins", "Show less") : t("Voir plus", "Show more")}</span>
                       <svg
                         className="list-tab-anime-more-btn__icon"
                         width="20"
@@ -837,7 +891,7 @@ export const MangaTab = memo(function MangaTab({
             ) : (
               <EmptyState
                 icon="book"
-                title="Aucun auteur listé par l'API pour cette sélection."
+                title={t("Aucun auteur listé par l'API pour cette sélection.", "No author listed by the API for this selection.")}
                 cta={viewFullYearCta}
               />
             )}

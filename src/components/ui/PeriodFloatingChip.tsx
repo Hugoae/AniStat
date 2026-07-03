@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { MONTHS, MONTHS_FULL } from "../../config/constants";
+import { MONTHS, monthsFull, monthsShort, localizeMonthAbbr } from "../../config/constants";
 import { useProfilePeriod } from "../../contexts/profilePeriodCore";
+import { useT, useLang } from "../../i18n/I18n";
 
 const ALL_TIME_YEAR = 0;
 
@@ -28,6 +29,8 @@ function capitalize(label: string): string {
  * « Modifier ». Le focus retourne sur le déclencheur à la fermeture Escape.
  */
 export function PeriodFloatingChip() {
+  const t = useT();
+  const lang = useLang();
   const { years, year, month, isAllTime, changeYear, setMonth } = useProfilePeriod();
   const [popoverOpen, setPopoverOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
@@ -40,10 +43,10 @@ export function PeriodFloatingChip() {
 
   const monthLabel = useMemo(() => {
     if (isAllTime) return "";
-    if (month === 0) return "Toute l'année";
-    const name = MONTHS_FULL[month - 1] ?? MONTHS[month - 1] ?? "";
+    if (month === 0) return t("Toute l'année", "Whole year");
+    const name = monthsFull(lang)[month - 1] ?? monthsShort(lang)[month - 1] ?? "";
     return capitalize(name);
-  }, [isAllTime, month]);
+  }, [isAllTime, month, lang, t]);
 
   /* Navigation verticale = année uniquement (▲ = +1 année, ▼ = -1 année). */
   const canGoPrevYear = isAllTime || year > minYear;
@@ -109,15 +112,15 @@ export function PeriodFloatingChip() {
     <aside
       className="period-floating-chip"
       role="region"
-      aria-label="Navigation période"
+      aria-label={t("Navigation période", "Period navigation")}
     >
-      <div className="period-floating-chip__label">Période</div>
+      <div className="period-floating-chip__label">{t("Période", "Period")}</div>
       <button
         type="button"
         className="period-floating-chip__nav-btn period-floating-chip__nav-btn--up"
         onClick={goNextYear}
         disabled={!canGoNextYear}
-        aria-label="Année suivante"
+        aria-label={t("Année suivante", "Next year")}
       >
         <svg
           width="16"
@@ -140,7 +143,7 @@ export function PeriodFloatingChip() {
             className="period-floating-chip__nav-btn-side period-floating-chip__nav-btn-side--left"
             onClick={goPrevMonth}
             disabled={!canGoPrevMonth}
-            aria-label="Mois précédent"
+            aria-label={t("Mois précédent", "Previous month")}
           >
             <svg
               width="14"
@@ -167,7 +170,7 @@ export function PeriodFloatingChip() {
             className="period-floating-chip__nav-btn-side period-floating-chip__nav-btn-side--right"
             onClick={goNextMonth}
             disabled={!canGoNextMonth}
-            aria-label="Mois suivant"
+            aria-label={t("Mois suivant", "Next month")}
           >
             <svg
               width="14"
@@ -190,7 +193,7 @@ export function PeriodFloatingChip() {
         className="period-floating-chip__nav-btn period-floating-chip__nav-btn--down"
         onClick={goPrevYear}
         disabled={!canGoPrevYear}
-        aria-label="Année précédente"
+        aria-label={t("Année précédente", "Previous year")}
       >
         <svg
           width="16"
@@ -215,7 +218,7 @@ export function PeriodFloatingChip() {
         aria-controls={popoverId}
         aria-haspopup="dialog"
       >
-        Modifier
+        {t("Modifier", "Edit")}
       </button>
       {popoverOpen && (
         <div
@@ -223,9 +226,9 @@ export function PeriodFloatingChip() {
           id={popoverId}
           className="period-floating-chip__popover"
           role="dialog"
-          aria-label="Sélection de la période"
+          aria-label={t("Sélection de la période", "Period selection")}
         >
-          <div className="period-panel-title">Période d'analyse</div>
+          <div className="period-panel-title">{t("Période d'analyse", "Analysis period")}</div>
           <div className="period-pills period-pills--years">
             <button
               type="button"
@@ -254,7 +257,7 @@ export function PeriodFloatingChip() {
                   className={`period-pill period-pill--wide ${month === 0 ? "active" : ""}`}
                   onClick={() => setMonth(0)}
                 >
-                  Toute l'année
+                  {t("Toute l'année", "Whole year")}
                 </button>
                 {MONTHS.map((m, idx) => (
                   <button
@@ -263,7 +266,7 @@ export function PeriodFloatingChip() {
                     className={`period-pill ${month === idx + 1 ? "active" : ""}`}
                     onClick={() => setMonth(idx + 1)}
                   >
-                    {m}
+                    {localizeMonthAbbr(m, lang)}
                   </button>
                 ))}
               </div>

@@ -9,6 +9,7 @@ import {
 import { OverviewActivityLineChart } from "../components/charts/OverviewActivityLineChart";
 import { ActivityHeatmap, type DailyTotalsByIso } from "../components/charts/ActivityHeatmap";
 import { CarouselNavButtons } from "../components/ui/CarouselNavButtons";
+import { useT } from "../i18n/I18n";
 import { useProfilePeriod } from "../contexts/profilePeriodCore";
 import type { AniListEntry } from "../types/domain";
 import {
@@ -104,6 +105,7 @@ export const OverviewTab = memo(function OverviewTab({
   mangaDailyTotalsForYear,
   overviewRecentActivities,
 }: OverviewTabProps) {
+  const t = useT();
   const { year, month, isAllTime } = useProfilePeriod();
   const [recentExpanded, setRecentExpanded] = useState(false);
 
@@ -123,28 +125,28 @@ export const OverviewTab = memo(function OverviewTab({
         {isAllTime ? (
           <>
             <div className="fade-in stat-stat-al-row--overview">
-              <StatCard label="Total manga" value={totalManga} icon="book" />
-              <StatCard label="Chapitres lus" value={totalCh} icon="book" />
-              <StatCard label="Score moyen manga" value={avgM} icon="star" />
-              <StatCard label="Dispersion (σ) manga" value={mangaVsCommunityScoreStdDev} icon="divide" />
-              <StatCard label="Jours actifs" value={activeDaysCount} icon="calendar" />
+              <StatCard label={t("Total manga", "Total manga")} value={totalManga} icon="book" />
+              <StatCard label={t("Chapitres lus", "Chapters read")} value={totalCh} icon="book" />
+              <StatCard label={t("Score moyen manga", "Average manga score")} value={avgM} icon="star" />
+              <StatCard label={t("Dispersion (σ) manga", "Dispersion (σ) manga")} value={mangaVsCommunityScoreStdDev} icon="divide" />
+              <StatCard label={t("Jours actifs", "Active days")} value={activeDaysCount} icon="calendar" />
             </div>
             <div className="fade-in stat-stat-al-row--overview">
-              <StatCard label="Total animé" value={totalAnime} icon="tv" />
-              <StatCard label="Épisodes vus" value={totalEp} icon="play" />
-              <StatCard label="Score moyen anime" value={avgA} icon="star" />
-              <StatCard label="Dispersion (σ) anime" value={animeVsCommunityScoreStdDev} icon="divide" />
-              <StatCard label="Temps total" value={totalTimeLabel} icon="clock" />
+              <StatCard label={t("Total animé", "Total anime")} value={totalAnime} icon="tv" />
+              <StatCard label={t("Épisodes vus", "Episodes watched")} value={totalEp} icon="play" />
+              <StatCard label={t("Score moyen anime", "Average anime score")} value={avgA} icon="star" />
+              <StatCard label={t("Dispersion (σ) anime", "Dispersion (σ) anime")} value={animeVsCommunityScoreStdDev} icon="divide" />
+              <StatCard label={t("Temps total", "Total time")} value={totalTimeLabel} icon="clock" />
             </div>
           </>
         ) : (
           <div className="fade-in stat-stat-al-row--overview">
-            <StatCard label="Épisodes vus" value={totalEp} icon="play" />
-            <StatCard label="Score anime" value={avgA} icon="star" />
-            <StatCard label="Chapitres lus" value={totalCh} icon="book" />
-            <StatCard label="Score manga" value={avgM} icon="star" />
+            <StatCard label={t("Épisodes vus", "Episodes watched")} value={totalEp} icon="play" />
+            <StatCard label={t("Score anime", "Anime score")} value={avgA} icon="star" />
+            <StatCard label={t("Chapitres lus", "Chapters read")} value={totalCh} icon="book" />
+            <StatCard label={t("Score manga", "Manga score")} value={avgM} icon="star" />
             <StatCard
-              label="Jours actifs"
+              label={t("Jours actifs", "Active days")}
               value={`${activeDaysCount}\u00A0/\u00A0${periodDayTotal}`}
               icon="calendar"
             />
@@ -157,25 +159,25 @@ export const OverviewTab = memo(function OverviewTab({
         <div className="fade-in fade-in-delay-1">
         <ActivityHeatmap
           year={year}
-          title={`Calendrier d'activité ${periodYearLabel}`}
+          title={t(`Calendrier d'activité ${periodYearLabel}`, `Activity calendar ${periodYearLabel}`)}
           dailyTotals={overviewDailyTotalsForYear}
-          unitSingular="action"
-          unitPlural="actions"
+          unitSingular={t("action", "action")}
+          unitPlural={t("actions", "actions")}
           collapseId="overview.heatmap"
-          titleHint="Chaque cellule représente une journée de l'année. La couleur indique l'intensité totale d'activité (anime + manga). Une « action » correspond à un épisode vu ou un chapitre lu. Survole une cellule pour voir le détail anime / manga du jour."
+          titleHint={t("Chaque cellule représente une journée de l'année. La couleur indique l'intensité totale d'activité (anime + manga). Une « action » correspond à un épisode vu ou un chapitre lu. Survole une cellule pour voir le détail anime / manga du jour.", "Each cell represents a day of the year. The color indicates the total activity intensity (anime + manga). An \u201Caction\u201D corresponds to an episode watched or a chapter read. Hover over a cell to see the anime / manga breakdown for that day.")}
           breakdown={[
             {
               key: "anime",
               label: "Anime",
-              unitSingular: "épisode",
-              unitPlural: "épisodes",
+              unitSingular: t("épisode", "episode"),
+              unitPlural: t("épisodes", "episodes"),
               values: animeDailyTotalsForYear,
             },
             {
               key: "manga",
               label: "Manga",
-              unitSingular: "chapitre",
-              unitPlural: "chapitres",
+              unitSingular: t("chapitre", "chapter"),
+              unitPlural: t("chapitres", "chapters"),
               values: mangaDailyTotalsForYear,
             },
           ]}
@@ -188,7 +190,7 @@ export const OverviewTab = memo(function OverviewTab({
           <div className="overview-section fade-in fade-in-delay-1">
             <div className="overview-section__inner">
               <div className="chart-section">
-                <SectionTitle size="lg">Chapitres lus</SectionTitle>
+                <SectionTitle size="lg">{t("Chapitres lus", "Chapters read")}</SectionTitle>
                 <ChartCard noTitle className="chart-card--overview-line">
                   {!isAllTime && compareAvailability.missing ? (
                     <div
@@ -216,7 +218,7 @@ export const OverviewTab = memo(function OverviewTab({
 
               <div className="fade-in fade-in-delay-2">
                 <SectionTitle as="h3" size="lg">
-                  Ton top {overviewTopCount} manga {overviewTopPeriodTitle}
+                  {t("Ton top", "Your top")} {overviewTopCount} manga {overviewTopPeriodTitle}
                 </SectionTitle>
                 {overviewTopManga.length > 0 ? (
                   <div
@@ -249,7 +251,7 @@ export const OverviewTab = memo(function OverviewTab({
                   <EmptyState
                     compact
                     icon="book"
-                    title="Aucun manga à afficher pour cette période."
+                    title={t("Aucun manga à afficher pour cette période.", "No manga to show for this period.")}
                   />
                 )}
               </div>
@@ -259,7 +261,7 @@ export const OverviewTab = memo(function OverviewTab({
           <div className="overview-section fade-in fade-in-delay-3">
             <div className="overview-section__inner">
               <div className="chart-section">
-                <SectionTitle size="lg">Épisodes vus</SectionTitle>
+                <SectionTitle size="lg">{t("Épisodes vus", "Episodes watched")}</SectionTitle>
                 <ChartCard noTitle className="chart-card--overview-line">
                   {!isAllTime && compareAvailability.missing ? (
                     <div
@@ -287,7 +289,7 @@ export const OverviewTab = memo(function OverviewTab({
 
               <div className="fade-in fade-in-delay-4">
                 <SectionTitle as="h3" size="lg">
-                  Ton top {overviewTopCount} anime {overviewTopPeriodTitle}
+                  {t("Ton top", "Your top")} {overviewTopCount} anime {overviewTopPeriodTitle}
                 </SectionTitle>
                 {overviewTopAnime.length > 0 ? (
                   <div
@@ -320,7 +322,7 @@ export const OverviewTab = memo(function OverviewTab({
                   <EmptyState
                     compact
                     icon="tv"
-                    title="Aucun anime à afficher pour cette période."
+                    title={t("Aucun anime à afficher pour cette période.", "No anime to show for this period.")}
                   />
                 )}
               </div>
@@ -329,7 +331,7 @@ export const OverviewTab = memo(function OverviewTab({
 
           <div className="overview-recent-activities fade-in fade-in-delay-5">
             <SectionTitle as="h3" size="lg">
-              Dernières activités
+              {t("Dernières activités", "Latest activity")}
             </SectionTitle>
             {mergedRecentActivities.length > 0 ? (
               <>
@@ -377,7 +379,7 @@ export const OverviewTab = memo(function OverviewTab({
                       onClick={() => setRecentExpanded((prev) => !prev)}
                       aria-expanded={recentExpanded}
                     >
-                      <span>{recentExpanded ? "Voir moins" : "Voir plus"}</span>
+                      <span>{recentExpanded ? t("Voir moins", "Show less") : t("Voir plus", "Show more")}</span>
                       <svg
                         className="list-tab-anime-more-btn__icon"
                         width="20"
@@ -400,7 +402,7 @@ export const OverviewTab = memo(function OverviewTab({
               <EmptyState
                 compact
                 icon="calendar"
-                title="Aucune activité récente pour cette période."
+                title={t("Aucune activité récente pour cette période.", "No recent activity for this period.")}
               />
             )}
           </div>

@@ -20,14 +20,15 @@ import { MONTHS } from '../config/constants';
   const completedInMonth = (e, y, m) => e.completedAt?.year === y && e.completedAt?.month === m;
   const startedInMonth = (e, y, m) => e.startedAt?.year === y && e.startedAt?.month === m;
 
-  function fmtMin(min) {
+  function fmtMin(min, lang = "fr") {
     if (!min || min <= 0) return "0h";
     const d = Math.floor(min / 1440);
     const h = Math.floor((min % 1440) / 60);
     const m = min % 60;
     /** Espaces insécables : évite « 5j 10h » / « 27m » sur deux lignes dans les cartes stats. */
     const nb = "\u00A0";
-    if (d > 0) return `${d}j${nb}${h}h${nb}${m}m`;
+    const dU = lang === "en" ? "d" : "j";
+    if (d > 0) return `${d}${dU}${nb}${h}h${nb}${m}m`;
     if (h > 0) return `${h}h${nb}${m}m`;
     return `${m}m`;
   }
@@ -300,6 +301,35 @@ import { MONTHS } from '../config/constants';
       addYmd(e.completedAt?.year, e.completedAt?.month, e.completedAt?.day);
       addYmd(e.startedAt?.year, e.startedAt?.month, e.startedAt?.day);
     });
+    return set.size;
+  }
+
+  /**
+   * Définition CANONIQUE des « jours actifs » utilisée partout (overview,
+   * wrapped, heatmap) : nombre de jours calendaires distincts sur lesquels il y
+   * a eu au moins une progression réelle (delta d'épisodes/chapitres > 0),
+   * anime et manga confondus. On se base sur les mêmes deltas que la heatmap
+   * pour garantir que le chiffre affiché == nombre de cases colorées.
+   *
+   * `year === 0` (all time) et `month === 0` (année entière) sont gérés via
+   * `isTsInPeriod`.
+   */
+  function countActiveProgressDays(animeActs, mangaActs, year, month) {
+    const set = new Set();
+    const collect = (acts, kind) => {
+      const rows = buildActivityDeltaRows(acts || [], kind);
+      rows.forEach((row) => {
+        if (!(row.delta > 0)) return;
+        const ts = Number(row.createdAt || 0);
+        if (!isTsInPeriod(ts, year, month)) return;
+        const d = new Date(ts * 1000);
+        set.add(
+          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+        );
+      });
+    };
+    collect(animeActs, "anime");
+    collect(mangaActs, "manga");
     return set.size;
   }
 
@@ -1049,6 +1079,7 @@ export {
   startedInMonth,
   fmtMin,
   countActiveCalendarDays,
+  countActiveProgressDays,
   getPeriodDayTotal,
   computePeriodDeltaFromActivities,
   computePeriodAnimeActivityTotals,

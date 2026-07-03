@@ -1,6 +1,8 @@
 import { useEffect, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { SITE } from "../config/site";
 import { SiteLogo } from "./SiteLogo";
+import { useT } from "../i18n/I18n";
+import { LanguageSwitcher } from "./ui/LanguageSwitcher";
 
 export type HomeQuickPickRow = {
   userName: string;
@@ -35,6 +37,7 @@ export function HomeLanding({
   headerQuickPickMatches,
   pickQuickProfile,
 }: HomeLandingProps) {
+  const t = useT();
   useEffect(() => {
     const id = window.requestAnimationFrame(() => {
       try {
@@ -54,6 +57,8 @@ export function HomeLanding({
         <div className="home-landing__glow home-landing__glow--2" />
       </div>
 
+      <LanguageSwitcher className="lang-switcher--landing" />
+
       <div className="home-landing__inner">
         <div className="home-landing__brand-row">
           <SiteLogo variant="landing" />
@@ -61,9 +66,12 @@ export function HomeLanding({
         </div>
 
         <header className="home-landing__hero">
-          <h1 className="home-landing__title">Vos statistiques AniList</h1>
+          <h1 className="home-landing__title">{t("Vos statistiques AniList", "Your AniList stats")}</h1>
           <p className="home-landing__subtitle">
-            Visualisez l&apos;activité, les tops et les graphiques d&apos;un profil public à un seul endroit
+            {t(
+              "Visualisez l'activité, les tops et les graphiques d'un profil public à un seul endroit",
+              "Explore activity, tops and charts of any public profile in one place"
+            )}
           </p>
         </header>
 
@@ -92,9 +100,9 @@ export function HomeLanding({
                   }
                   if (e.key === "Escape") setHeaderSearchFocused(false);
                 }}
-                placeholder="Rechercher un pseudo AniList…"
+                placeholder={t("Rechercher un pseudo AniList…", "Search an AniList username…")}
                 autoComplete="off"
-                aria-label="Rechercher un pseudo AniList"
+                aria-label={t("Rechercher un pseudo AniList", "Search an AniList username")}
                 aria-autocomplete="list"
                 aria-expanded={showHeaderQuickPicks}
                 aria-controls="landing-quick-picks"
@@ -103,7 +111,7 @@ export function HomeLanding({
               <button
                 type="button"
                 className="header-search-submit home-landing__search-submit"
-                aria-label="Rechercher ce profil"
+                aria-label={t("Rechercher ce profil", "Search this profile")}
                 disabled={!inputVal.trim()}
                 onClick={handleSubmit}
               >
@@ -143,7 +151,12 @@ export function HomeLanding({
               </ul>
             ) : null}
           </div>
-          <p className="home-landing__search-hint">Profils publics uniquement · données fournies par AniList</p>
+          <p className="home-landing__search-hint">
+            {t(
+              "Profils publics uniquement · données fournies par AniList",
+              "Public profiles only · data provided by AniList"
+            )}
+          </p>
         </div>
       </div>
     </div>
