@@ -12,9 +12,7 @@ import {
   type ActivityMediaBits,
 } from "../lib/activityEnrichment";
 import {
-  deleteActivities,
   getActivities,
-  getActivityIdsForYear,
   getLatestActivityId,
   recordSyncRun,
   saveActivities,
@@ -94,26 +92,6 @@ function collectSupabaseHydrationTargets(
 const shouldAutoRefreshYear = (targetYear: number) =>
   targetYear === ALL_TIME_YEAR || targetYear >= new Date().getFullYear();
 
-function findOrphanedActivityIds(existingIds: number[], fetchedIds: Iterable<number>): number[] {
-  const fetched = new Set(fetchedIds);
-  return existingIds.filter((id) => !fetched.has(id));
-}
-
-async function reconcileActivitiesWithAniList(
-  userId: number,
-  activityType: ActivitySnapshotType,
-  targetYear: number,
-  fetchedActivities: ActivityItem[]
-): Promise<number> {
-  const fetchedIds = fetchedActivities
-    .map((activity) => Number(activity?.id || 0))
-    .filter((id) => Number.isFinite(id) && id > 0);
-  const existingIds = await getActivityIdsForYear(userId, activityType, targetYear);
-  const orphanedIds = findOrphanedActivityIds(existingIds, fetchedIds);
-  if (orphanedIds.length === 0) return 0;
-  return deleteActivities(userId, activityType, orphanedIds);
-}
-
 function mergeActivityRows(newRows: ActivityItem[], existingRows: ActivityItem[]): ActivityItem[] {
   const seen = new Set<string>();
   const merged: ActivityItem[] = [];
@@ -133,7 +111,6 @@ function archiveSyncRunToSupabase(args: {
   kind: "delta" | "manual";
   status: "success" | "error";
   rowsUpserted?: number;
-  rowsDeleted?: number;
   pagesFetched?: number;
   errorMessage?: string | null;
 }) {
@@ -146,11 +123,7 @@ function archiveSyncRunToSupabase(args: {
         rowsUpserted: args.rowsUpserted ?? 0,
         pagesFetched: args.pagesFetched ?? 0,
         errorMessage: args.errorMessage ?? null,
-        metadata: {
-          year: args.year,
-          source: "useActivityYearsLoader",
-          rowsDeleted: args.rowsDeleted ?? 0,
-        },
+        metadata: { year: args.year, source: "useActivityYearsLoader" },
       });
     } catch (err: unknown) {
       // Diagnostic uniquement : ne doit pas affecter le rendu, mais on logge
@@ -359,10 +332,9 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
       const aKey = `activity:${uid}:ANIME_LIST:${targetYear}`;
       const mKey = `activity:${uid}:MANGA_LIST:${targetYear}`;
       const shouldLogSyncRun = options.force || targetYear === new Date().getFullYear();
-      const shouldUseDelta = !options.force && targetYear === new Date().getFullYear();
+      const shouldUseDelta = targetYear === new Date().getFullYear();
       let pagesFetchedForLog = 0;
       let rowsUpsertedForLog = 0;
-      let rowsDeletedForLog = 0;
       try {
         const fetchOne = async (type: "ANIME_LIST" | "MANGA_LIST") => {
           const key = `activity:${uid}:${type}:${targetYear}`;
@@ -397,14 +369,6 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
             : mangaActivityCache[targetYear] || [];
         const nextAnime = shouldUseDelta ? mergeActivityRows(aActs, existingAnime) : aActs;
         const nextManga = shouldUseDelta ? mergeActivityRows(mActs, existingManga) : mActs;
-        if (options.force) {
-          const [animeDeleted, mangaDeleted] = await Promise.all([
-            reconcileActivitiesWithAniList(uid, "ANIME_LIST", targetYear, aActs),
-            reconcileActivitiesWithAniList(uid, "MANGA_LIST", targetYear, mActs),
-          ]);
-          rowsDeletedForLog = animeDeleted + mangaDeleted;
-          if (latestUserIdRef.current !== uid) return;
-        }
         archiveActivitiesToSupabase(uid, "ANIME_LIST", aActs, t("activités", "activity"));
         archiveActivitiesToSupabase(uid, "MANGA_LIST", mActs, t("activités", "activity"));
         setAnimeActivityCache((prev) => ({ ...prev, [targetYear]: nextAnime }));
@@ -422,7 +386,6 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
             status: "success",
             pagesFetched: pagesFetchedForLog,
             rowsUpserted: rowsUpsertedForLog,
-            rowsDeleted: rowsDeletedForLog,
           });
         }
       } catch (err: unknown) {
