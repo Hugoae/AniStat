@@ -109,6 +109,53 @@ export async function getActivities(
     .filter((payload): payload is ActivityItem => Boolean(payload && typeof payload === "object"));
 }
 
+export async function getActivityIdsForYear(
+  userId: number,
+  activityType: ActivitySnapshotType,
+  year: number
+): Promise<number[]> {
+  const ids: number[] = [];
+  const yearBounds = getYearBoundsUnix(year);
+
+  for (let from = 0; ; from += ACTIVITY_SELECT_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("activities")
+      .select("id")
+      .eq("anilist_user_id", userId)
+      .eq("activity_type", activityType)
+      .gte("created_at_unix", yearBounds.startUnix)
+      .lt("created_at_unix", yearBounds.endUnix)
+      .order("id", { ascending: true })
+      .range(from, from + ACTIVITY_SELECT_PAGE_SIZE - 1);
+
+    if (error) throw error;
+    for (const row of data ?? []) {
+      const id = Number(row.id);
+      if (Number.isFinite(id) && id > 0) ids.push(id);
+    }
+    if (!data || data.length < ACTIVITY_SELECT_PAGE_SIZE) break;
+  }
+
+  return ids;
+}
+
+export async function deleteActivities(
+  userId: number,
+  activityType: ActivitySnapshotType,
+  activityIds: number[]
+): Promise<void> {
+  const validIds = activityIds.filter((id) => Number.isFinite(id) && id > 0);
+  for (const chunk of chunkArray(validIds, ACTIVITY_UPSERT_CHUNK_SIZE)) {
+    const { error } = await supabase
+      .from("activities")
+      .delete()
+      .eq("anilist_user_id", userId)
+      .eq("activity_type", activityType)
+      .in("id", chunk);
+    if (error) throw error;
+  }
+}
+
 export async function getLatestActivityId(
   userId: number,
   activityType: string

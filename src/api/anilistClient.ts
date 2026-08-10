@@ -225,13 +225,26 @@ query UserProfile($name: String!) {
  * les calculs sur les autres activités.
  */
 const LIST_ACTIVITY_QUERY = gql`
-query ListActivities($userId: Int!, $type: ActivityType!, $page: Int!, $perPage: Int!) {
+query ListActivities(
+  $userId: Int!
+  $type: ActivityType!
+  $page: Int!
+  $perPage: Int!
+  $createdAtGreater: Int
+  $createdAtLesser: Int
+) {
   Page(page: $page, perPage: $perPage) {
     pageInfo {
       currentPage
       hasNextPage
     }
-    activities(userId: $userId, type: $type, sort: ID_DESC) {
+    activities(
+      userId: $userId
+      type: $type
+      createdAt_greater: $createdAtGreater
+      createdAt_lesser: $createdAtLesser
+      sort: ID_DESC
+    ) {
       ... on ListActivity {
         id
         status
@@ -889,7 +902,7 @@ export async function fetchListActivitiesForYear(
   const { signal, pageMaxRetries = 2, sinceId = null } = options;
   const stopAtId = Number(sinceId || 0);
   const allTime = year === 0;
-  const { start } = allTime ? { start: 0 } : getStartEndTsForYear(year);
+  const bounds = allTime ? null : getStartEndTsForYear(year);
   const perPage = 50;
   let page = 1;
   let hasNextPage = true;
@@ -898,33 +911,36 @@ export async function fetchListActivitiesForYear(
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
     const data = await fetchAL<ListActivitiesQuery>(
       LIST_ACTIVITY_QUERY,
-      { userId, type, page, perPage },
+      {
+        userId,
+        type,
+        page,
+        perPage,
+        createdAtGreater: bounds ? Math.floor(bounds.start) - 1 : null,
+        createdAtLesser: bounds ? Math.floor(bounds.end) : null,
+      },
       { signal, maxRetries: pageMaxRetries }
     );
     const block = data?.Page;
     const items = (block?.activities || []).filter(
       (it): it is ListActivityItem => it != null
     );
+    const yearItems = bounds
+      ? items.filter((item) => {
+          const createdAt =
+            "createdAt" in item && typeof item.createdAt === "number" ? item.createdAt : 0;
+          return createdAt >= bounds.start && createdAt < bounds.end;
+        })
+      : items;
     const freshItems =
       stopAtId > 0
-        ? items.filter((item) => !("id" in item) || Number(item.id || 0) > stopAtId)
-        : items;
+        ? yearItems.filter((item) => !("id" in item) || Number(item.id || 0) > stopAtId)
+        : yearItems;
     all.push(...freshItems);
     hasNextPage = Boolean(block?.pageInfo?.hasNextPage);
     if (stopAtId > 0 && items.some((item) => "id" in item && Number(item.id || 0) <= stopAtId)) {
       break;
     }
-    const oldestInPage = items.reduce(
-      (minTs: number, item) =>
-        Math.min(
-          minTs,
-          "createdAt" in item && typeof item.createdAt === "number"
-            ? item.createdAt
-            : Number.MAX_SAFE_INTEGER
-        ),
-      Number.MAX_SAFE_INTEGER
-    );
-    if (!allTime && oldestInPage < start) break;
     page += 1;
     if (page > (allTime ? 400 : 80)) break;
     await sleep(280, signal);

@@ -12,7 +12,13 @@ import {
   type ActivityMediaBits,
 } from "../lib/activityEnrichment";
 import {
+  findOrphanedActivityIds,
+  replaceActivityYear,
+} from "../lib/activityReconciliation";
+import {
+  deleteActivities,
   getActivities,
+  getActivityIdsForYear,
   getLatestActivityId,
   recordSyncRun,
   saveActivities,
@@ -105,12 +111,25 @@ function mergeActivityRows(newRows: ActivityItem[], existingRows: ActivityItem[]
   return merged.sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
 }
 
+async function reconcileActivityYear(
+  userId: number,
+  activityType: ActivitySnapshotType,
+  year: number,
+  fetchedActivities: ActivityItem[]
+): Promise<number> {
+  const existingIds = await getActivityIdsForYear(userId, activityType, year);
+  const orphanedIds = findOrphanedActivityIds(existingIds, fetchedActivities);
+  await deleteActivities(userId, activityType, orphanedIds);
+  return orphanedIds.length;
+}
+
 function archiveSyncRunToSupabase(args: {
   userId: number;
   year: number;
   kind: "delta" | "manual";
   status: "success" | "error";
   rowsUpserted?: number;
+  rowsDeleted?: number;
   pagesFetched?: number;
   errorMessage?: string | null;
 }) {
@@ -123,7 +142,11 @@ function archiveSyncRunToSupabase(args: {
         rowsUpserted: args.rowsUpserted ?? 0,
         pagesFetched: args.pagesFetched ?? 0,
         errorMessage: args.errorMessage ?? null,
-        metadata: { year: args.year, source: "useActivityYearsLoader" },
+        metadata: {
+          year: args.year,
+          source: "useActivityYearsLoader",
+          rowsDeleted: args.rowsDeleted ?? 0,
+        },
       });
     } catch (err: unknown) {
       // Diagnostic uniquement : ne doit pas affecter le rendu, mais on logge
@@ -331,18 +354,29 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
       if (!options.force && !shouldAutoRefreshYear(targetYear)) return;
       const aKey = `activity:${uid}:ANIME_LIST:${targetYear}`;
       const mKey = `activity:${uid}:MANGA_LIST:${targetYear}`;
-      const shouldLogSyncRun = options.force || targetYear === new Date().getFullYear();
-      const shouldUseDelta = targetYear === new Date().getFullYear();
+      const currentYear = new Date().getFullYear();
+      const reconciliationYear = options.force
+        ? targetYear === ALL_TIME_YEAR
+          ? currentYear
+          : targetYear
+        : null;
+      const shouldLogSyncRun = options.force || targetYear === currentYear;
+      const shouldUseDelta =
+        targetYear === ALL_TIME_YEAR || (!options.force && targetYear === currentYear);
       let pagesFetchedForLog = 0;
       let rowsUpsertedForLog = 0;
+      let rowsDeletedForLog = 0;
       try {
-        const fetchOne = async (type: "ANIME_LIST" | "MANGA_LIST") => {
-          const key = `activity:${uid}:${type}:${targetYear}`;
+        const fetchOne = async (
+          type: ActivitySnapshotType,
+          fetchYear: number,
+          sinceId: number | null
+        ) => {
+          const mode = sinceId ? `delta:${sinceId}` : "full";
+          const key = `activity:${uid}:${type}:${fetchYear}:${mode}`;
           let req = activityInFlightRef.current.get(key);
           if (!req) {
-            setResource(key, "loading");
-            const sinceId = shouldUseDelta ? await getLatestActivityId(uid, type) : null;
-            req = fetchActivitiesWithRetry(uid, type, targetYear, undefined, { sinceId });
+            req = fetchActivitiesWithRetry(uid, type, fetchYear, undefined, { sinceId });
             activityInFlightRef.current.set(key, req);
           }
           try {
@@ -351,14 +385,28 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
             activityInFlightRef.current.delete(key);
           }
         };
-        const aActsRaw = await fetchOne("ANIME_LIST");
-        const mActsRaw = await fetchOne("MANGA_LIST");
+        setResource(aKey, "loading");
+        setResource(mKey, "loading");
+        const animeSinceId = shouldUseDelta ? await getLatestActivityId(uid, "ANIME_LIST") : null;
+        const mangaSinceId = shouldUseDelta ? await getLatestActivityId(uid, "MANGA_LIST") : null;
+        const aActsRaw = await fetchOne("ANIME_LIST", targetYear, animeSinceId);
+        const mActsRaw = await fetchOne("MANGA_LIST", targetYear, mangaSinceId);
+        const needsSeparateReconciliationFetch =
+          reconciliationYear != null && reconciliationYear !== targetYear;
+        const aReconciliationRaw = needsSeparateReconciliationFetch
+          ? await fetchOne("ANIME_LIST", reconciliationYear, null)
+          : aActsRaw;
+        const mReconciliationRaw = needsSeparateReconciliationFetch
+          ? await fetchOne("MANGA_LIST", reconciliationYear, null)
+          : mActsRaw;
         if (latestUserIdRef.current !== uid) return;
         // Enrichit avec les métadonnées media (durée, format…) issues des
         // listes déjà chargées : la query a été allégée à `media { id }`.
         const mediaBits = mediaBitsByIdRef.current;
         const aActs = enrichActivitiesWithMediaBits(aActsRaw, mediaBits);
         const mActs = enrichActivitiesWithMediaBits(mActsRaw, mediaBits);
+        const aReconciliation = enrichActivitiesWithMediaBits(aReconciliationRaw, mediaBits);
+        const mReconciliation = enrichActivitiesWithMediaBits(mReconciliationRaw, mediaBits);
         const existingAnime =
           shouldUseDelta
             ? animeActivityCache[targetYear] || (await getActivities(uid, "ANIME_LIST", targetYear))
@@ -367,17 +415,58 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
           shouldUseDelta
             ? mangaActivityCache[targetYear] || (await getActivities(uid, "MANGA_LIST", targetYear))
             : mangaActivityCache[targetYear] || [];
-        const nextAnime = shouldUseDelta ? mergeActivityRows(aActs, existingAnime) : aActs;
-        const nextManga = shouldUseDelta ? mergeActivityRows(mActs, existingManga) : mActs;
+        const mergedAnime = shouldUseDelta ? mergeActivityRows(aActs, existingAnime) : aActs;
+        const mergedManga = shouldUseDelta ? mergeActivityRows(mActs, existingManga) : mActs;
+        const nextAnime =
+          reconciliationYear == null
+            ? mergedAnime
+            : replaceActivityYear(mergedAnime, aReconciliation, reconciliationYear);
+        const nextManga =
+          reconciliationYear == null
+            ? mergedManga
+            : replaceActivityYear(mergedManga, mReconciliation, reconciliationYear);
+        if (reconciliationYear != null) {
+          const [animeDeleted, mangaDeleted] = await Promise.all([
+            reconcileActivityYear(uid, "ANIME_LIST", reconciliationYear, aReconciliation),
+            reconcileActivityYear(uid, "MANGA_LIST", reconciliationYear, mReconciliation),
+          ]);
+          rowsDeletedForLog = animeDeleted + mangaDeleted;
+          if (latestUserIdRef.current !== uid) return;
+        }
         archiveActivitiesToSupabase(uid, "ANIME_LIST", aActs, t("activités", "activity"));
         archiveActivitiesToSupabase(uid, "MANGA_LIST", mActs, t("activités", "activity"));
+        if (needsSeparateReconciliationFetch) {
+          archiveActivitiesToSupabase(
+            uid,
+            "ANIME_LIST",
+            aReconciliation,
+            t("activités", "activity")
+          );
+          archiveActivitiesToSupabase(
+            uid,
+            "MANGA_LIST",
+            mReconciliation,
+            t("activités", "activity")
+          );
+        }
         setAnimeActivityCache((prev) => ({ ...prev, [targetYear]: nextAnime }));
         setMangaActivityCache((prev) => ({ ...prev, [targetYear]: nextManga }));
         setResource(aKey, "success");
         setResource(mKey, "success");
         metricInc("cacheWrite", 2);
-        pagesFetchedForLog = Math.ceil(aActsRaw.length / 50) + Math.ceil(mActsRaw.length / 50);
-        rowsUpsertedForLog = aActs.length + mActs.length;
+        pagesFetchedForLog =
+          Math.ceil(aActsRaw.length / 50) +
+          Math.ceil(mActsRaw.length / 50) +
+          (needsSeparateReconciliationFetch
+            ? Math.ceil(aReconciliationRaw.length / 50) +
+              Math.ceil(mReconciliationRaw.length / 50)
+            : 0);
+        rowsUpsertedForLog =
+          aActs.length +
+          mActs.length +
+          (needsSeparateReconciliationFetch
+            ? aReconciliation.length + mReconciliation.length
+            : 0);
         if (shouldLogSyncRun) {
           archiveSyncRunToSupabase({
             userId: uid,
@@ -386,6 +475,7 @@ export function useActivityYearsLoader(p: ActivityYearsLoaderParams) {
             status: "success",
             pagesFetched: pagesFetchedForLog,
             rowsUpserted: rowsUpsertedForLog,
+            rowsDeleted: rowsDeletedForLog,
           });
         }
       } catch (err: unknown) {

@@ -4723,6 +4723,8 @@ export type ListActivitiesQueryVariables = Exact<{
   type: ActivityType;
   page: Scalars['Int']['input'];
   perPage: Scalars['Int']['input'];
+  createdAtGreater?: InputMaybe<Scalars['Int']['input']>;
+  createdAtLesser?: InputMaybe<Scalars['Int']['input']>;
 }>;
 
 
