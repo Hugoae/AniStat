@@ -1,4 +1,9 @@
 import type { ActivityItem, AniListEntry } from "../types/domain";
+import {
+  isCompletedLikeActivityStatus,
+  isDroppedActivityStatus,
+  isRewatchOrRereadStatus,
+} from "./activityStatus";
 
 export type OverviewRecentActivity = {
   key: string;
@@ -11,7 +16,10 @@ export type OverviewRecentActivity = {
   mediaUrl: string;
   formattedAt: string;
   createdAt: number;
-  /** Activité « terminé » : ne doit jamais être fusionnée avec une progression. */
+  /**
+   * Groupe de fusion : un changement de statut (terminé / revu / abandonné)
+   * ne doit jamais être fusionné avec une progression de la même œuvre.
+   */
   isCompleted: boolean;
 };
 
@@ -60,7 +68,7 @@ function formatActivityAbsoluteDate(ts: number): string {
 
 /** Verbe d'action déduit du format et du statut (rewatch / reread inclus). */
 function actionVerb(kind: "anime" | "manga", status: string | null | undefined): string {
-  const repeating = String(status ?? "").toUpperCase() === "REPEATING";
+  const repeating = isRewatchOrRereadStatus(status);
   if (kind === "anime") return repeating ? "Revu" : "Regardé";
   return repeating ? "Relu" : "Lu";
 }
@@ -89,15 +97,16 @@ function formatProgressLabel(progressRaw: string | null | undefined, kind: "anim
 }
 
 /**
- * Conserve les activités de consommation (lu / relu / regardé / revu) ainsi que
- * les passages en « terminé », qui n'ont souvent aucune progression chiffrée
- * (film / one-shot, ou fin d'une série loguée d'un coup) mais restent pertinents.
+ * Conserve les activités de consommation (lu / relu / regardé / revu),
+ * les passages en « terminé », et les abandons, qui n'ont souvent aucune
+ * progression chiffrée mais restent pertinents dans le fil récent.
  */
 function isConsumptiveActivity(activity: ActivityItem, kind: "anime" | "manga"): boolean {
   const status = String(activity.status ?? "").toUpperCase();
   if (status === "PLANNING") return false;
+  if (isDroppedActivityStatus(activity.status)) return true;
   if (formatProgressLabel(activity.progress, kind)) return true;
-  return status === "REPEATING" || status === "COMPLETED";
+  return isCompletedLikeActivityStatus(activity.status) || isRewatchOrRereadStatus(activity.status);
 }
 
 /** Construit le préfixe d'activité terminé par " de ", à coller devant le lien œuvre. */
@@ -105,12 +114,19 @@ function buildActivityPrefix(activity: ActivityItem, kind: "anime" | "manga"): s
   const status = String(activity.status ?? "").toUpperCase();
   const progressLabel = formatProgressLabel(activity.progress, kind);
 
-  // « Terminé » sans progression exploitable : phrasé direct ("Terminé <œuvre>").
-  if (status === "COMPLETED" && !progressLabel) {
-    return "Terminé ";
+  if (isDroppedActivityStatus(activity.status)) {
+    return "Abandonné ";
   }
 
-  const verb = actionVerb(kind, status);
+  // Sans progression exploitable : phrasé direct ("Terminé <œuvre>", "Revu <œuvre>").
+  if (!progressLabel) {
+    if (status === "COMPLETED") return "Terminé ";
+    if (isRewatchOrRereadStatus(activity.status)) {
+      return kind === "anime" ? "Revu " : "Relu ";
+    }
+  }
+
+  const verb = actionVerb(kind, activity.status);
   if (progressLabel) {
     return `${verb} ${progressLabel} de `;
   }
@@ -152,7 +168,11 @@ export function buildOverviewRecentActivities({
       mediaUrl: `https://anilist.co/${kind}/${mediaId}`,
       formattedAt: formatActivityAbsoluteDate(createdAt),
       createdAt,
-      isCompleted: String(activity.status ?? "").toUpperCase() === "COMPLETED",
+      isCompleted:
+        isDroppedActivityStatus(activity.status) ||
+        String(activity.status ?? "").toUpperCase() === "COMPLETED" ||
+        (isCompletedLikeActivityStatus(activity.status) &&
+          !formatProgressLabel(activity.progress, kind)),
     });
   };
 

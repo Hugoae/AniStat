@@ -182,6 +182,21 @@ describe("stats", () => {
     expect(daily[1] || 0).toBe(0);
   });
 
+  it("anilist dropped status with null progress is not counted", () => {
+    const ts = 1735689600;
+    const acts = [
+      {
+        id: 3,
+        createdAt: ts,
+        status: "dropped",
+        progress: null,
+        media: { id: 902, duration: 24, format: "TV", episodes: 12 },
+      },
+    ];
+    expect(computePeriodDeltaFromActivities(acts, 2025, 1, "anime")).toBe(0);
+    expect(getMediaIdsWithProgressInPeriod(acts, 2025, 1, "anime").has(902)).toBe(false);
+  });
+
   it("manga completed one chapter", () => {
     const ts = 1735689600;
     const acts = [
@@ -375,6 +390,80 @@ describe("stats", () => {
     expect(countActiveProgressDays(anime, [], 2026, 5)).toBe(1);
     expect(countActiveProgressDays(anime, [], 2026, 0)).toBe(2);
     expect(countActiveProgressDays(anime, [], 2025, 0)).toBe(0);
+  });
+
+  it("movie rewatch with null progress counts as a new episode", () => {
+    const firstWatch = Math.floor(new Date(2024, 11, 2, 20, 0, 0).getTime() / 1000);
+    const rewatch = Math.floor(new Date(2026, 8, 4, 18, 0, 0).getTime() / 1000);
+    const media = { id: 47, duration: 124, format: "MOVIE", episodes: 1 };
+    const acts = [
+      { id: 1, createdAt: firstWatch, status: "completed", progress: null, media },
+      { id: 2, createdAt: rewatch, status: "rewatched", progress: null, media },
+    ];
+    expect(computePeriodDeltaFromActivities(acts, 2024, 0, "anime")).toBe(1);
+    expect(computePeriodDeltaFromActivities(acts, 2026, 0, "anime")).toBe(1);
+    expect(computePeriodDeltaFromActivities(acts, 0, 0, "anime")).toBe(2);
+    expect(getMediaIdsWithProgressInPeriod(acts, 2026, 9, "anime").has(47)).toBe(true);
+  });
+
+  it("rewatched episode progress after a completed series still counts", () => {
+    const firstWatch = Math.floor(new Date(2025, 0, 10, 12, 0, 0).getTime() / 1000);
+    const rewatch = Math.floor(new Date(2026, 8, 4, 18, 0, 0).getTime() / 1000);
+    const media = { id: 20, duration: 24, format: "TV", episodes: 12 };
+    const acts = [
+      { id: 1, createdAt: firstWatch, status: "completed", progress: null, media },
+      { id: 2, createdAt: rewatch, status: "rewatched episode", progress: "1 - 3", media },
+    ];
+    expect(computePeriodDeltaFromActivities(acts, 2026, 9, "anime")).toBe(3);
+  });
+
+  it("sequential rewatch episodes accumulate from a fresh cycle", () => {
+    const firstWatch = Math.floor(new Date(2025, 0, 10, 12, 0, 0).getTime() / 1000);
+    const t2 = Math.floor(new Date(2026, 8, 2, 18, 0, 0).getTime() / 1000);
+    const t3 = Math.floor(new Date(2026, 8, 3, 18, 0, 0).getTime() / 1000);
+    const media = { id: 20, duration: 24, format: "TV", episodes: 12 };
+    const acts = [
+      { id: 1, createdAt: firstWatch, status: "completed", progress: null, media },
+      { id: 2, createdAt: t2, status: "rewatched episode", progress: "1", media },
+      { id: 3, createdAt: t3, status: "rewatched episode", progress: "2 - 4", media },
+    ];
+    expect(computePeriodDeltaFromActivities(acts, 2026, 9, "anime")).toBe(4);
+  });
+
+  it("manga reread without progress counts chapters again", () => {
+    const firstRead = Math.floor(new Date(2025, 2, 1, 12, 0, 0).getTime() / 1000);
+    const reread = Math.floor(new Date(2026, 8, 4, 18, 0, 0).getTime() / 1000);
+    const media = { id: 900, chapters: 8 };
+    const acts = [
+      { id: 1, createdAt: firstRead, status: "completed", progress: null, media },
+      { id: 2, createdAt: reread, status: "reread", progress: null, media },
+    ];
+    expect(computePeriodDeltaFromActivities(acts, 2026, 9, "manga")).toBe(8);
+    expect(computePeriodDeltaFromActivities(acts, 0, 0, "manga")).toBe(16);
+  });
+
+  it("reread chapter range after a finished manga still counts", () => {
+    const firstRead = Math.floor(new Date(2025, 6, 15, 19, 0, 0).getTime() / 1000);
+    const reread = Math.floor(new Date(2026, 3, 15, 12, 0, 0).getTime() / 1000);
+    const acts = [
+      { id: 30, createdAt: firstRead, status: "completed", progress: null, media: { id: 30012, chapters: 706 } },
+      { id: 31, createdAt: reread, status: "reread chapter", progress: "1 - 16", media: { id: 30012, chapters: 706 } },
+    ];
+    expect(computePeriodDeltaFromActivities(acts, 2026, 4, "manga")).toBe(16);
+  });
+
+  it("second whole-title movie rewatch still counts", () => {
+    const firstWatch = Math.floor(new Date(2024, 0, 1, 12, 0, 0).getTime() / 1000);
+    const rewatch1 = Math.floor(new Date(2025, 0, 1, 12, 0, 0).getTime() / 1000);
+    const rewatch2 = Math.floor(new Date(2026, 8, 4, 12, 0, 0).getTime() / 1000);
+    const media = { id: 47, duration: 124, format: "MOVIE", episodes: 1 };
+    const acts = [
+      { id: 1, createdAt: firstWatch, status: "completed", progress: null, media },
+      { id: 2, createdAt: rewatch1, status: "rewatched", progress: null, media },
+      { id: 3, createdAt: rewatch2, status: "rewatched", progress: null, media },
+    ];
+    expect(computePeriodDeltaFromActivities(acts, 0, 0, "anime")).toBe(3);
+    expect(computePeriodDeltaFromActivities(acts, 2026, 0, "anime")).toBe(1);
   });
 
   it("collectPeriodWorksCompletedEntries only completed in period", () => {

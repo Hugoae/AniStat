@@ -1,4 +1,5 @@
 import { MONTHS } from '../config/constants';
+import { isCompletedLikeActivityStatus, isRewatchOrRereadStatus } from './activityStatus';
 
   type GenrePercentRow = {
     name: string;
@@ -87,14 +88,9 @@ import { MONTHS } from '../config/constants';
     return Number.isFinite(n) ? n : fallback;
   };
 
-  /** Statut liste AniList sur une ListActivity (ex. COMPLETED). */
-  function isCompletedListActivityStatus(statusRaw) {
-    return String(statusRaw || "").toUpperCase() === "COMPLETED";
-  }
-
   /**
-   * Cible de progression quand l’activité est « completed » mais sans nombre exploitable dans `progress`
-   * (cas fréquent : film / one-shot marqué terminé en une fois).
+   * Cible de progression quand l’activité est « completed » / « rewatched » / « reread »
+   * mais sans nombre exploitable dans `progress` (film / one-shot loggué d'un coup).
    */
   function inferCompletedCap(a, kind) {
     const media = a?.media || {};
@@ -116,24 +112,53 @@ import { MONTHS } from '../config/constants';
   function activityEffectiveProgress(a, prev, kind) {
     const parsed = getProgressNumber(a?.progress);
     if (parsed > 0) return parsed;
-    if (!isCompletedListActivityStatus(a?.status)) return 0;
+    if (!isCompletedLikeActivityStatus(a?.status)) return 0;
     const cap = inferCompletedCap(a, kind);
     if (cap != null) return Math.max(prev, cap);
     return prev > 0 ? prev + 1 : 1;
+  }
+
+  function progressLooksLikeRange(progressRaw) {
+    return /(\d+)\s*-\s*(\d+)/.test(String(progressRaw ?? ""));
+  }
+
+  /**
+   * Rewatch / reread starts a new consumption cycle: progress is no longer
+   * comparable to the original watch (a movie stays at episode 1).
+   */
+  function shouldResetRepeatCycle(isRepeat, prevWasRepeat, parsed, progressRaw, prev) {
+    if (!isRepeat) return false;
+    if (!prevWasRepeat) return true;
+    if (parsed > 0 && parsed < prev) return true;
+    return parsed === 0 && !progressLooksLikeRange(progressRaw);
   }
 
   function buildActivityDeltaRows(activities, kind = "anime") {
     const chronological = [...(activities || [])].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
     const lastProgressByMedia = new Map();
     const lastCreatedAtByMedia = new Map();
+    const lastWasRepeatByMedia = new Map();
     const rows = [];
 
     chronological.forEach((a) => {
       const mediaId = a?.media?.id;
       const createdAt = Number(a?.createdAt || 0);
       if (!mediaId || !createdAt) return;
-      const prev = lastProgressByMedia.has(mediaId) ? lastProgressByMedia.get(mediaId) : 0;
+      let prev = lastProgressByMedia.has(mediaId) ? lastProgressByMedia.get(mediaId) : 0;
       const previousCreatedAt = lastCreatedAtByMedia.has(mediaId) ? lastCreatedAtByMedia.get(mediaId) : 0;
+      const isRepeat = isRewatchOrRereadStatus(a?.status);
+      const parsed = getProgressNumber(a?.progress);
+      if (
+        shouldResetRepeatCycle(
+          isRepeat,
+          Boolean(lastWasRepeatByMedia.get(mediaId)),
+          parsed,
+          a?.progress,
+          prev
+        )
+      ) {
+        prev = 0;
+      }
       const current = activityEffectiveProgress(a, prev, kind);
       const explicitDelta = getProgressRangeDelta(a?.progress, prev, { previousCreatedAt, createdAt });
       const delta = explicitDelta != null ? explicitDelta : Math.max(0, current - prev);
@@ -149,6 +174,7 @@ import { MONTHS } from '../config/constants';
       });
       lastProgressByMedia.set(mediaId, current);
       lastCreatedAtByMedia.set(mediaId, createdAt);
+      lastWasRepeatByMedia.set(mediaId, isRepeat);
     });
 
     return rows;
